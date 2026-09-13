@@ -828,6 +828,9 @@ void gxScene::clear(const float rgb[3], float alpha, float z, bool clear_argb, b
 	if(!clear_argb && !clear_z) return;
 	int flags = (clear_argb ? D3DCLEAR_TARGET : 0) | (clear_z ? D3DCLEAR_ZBUFFER : 0);
 	unsigned argb = (int(alpha * 255.0f) << 24) | (int(rgb[0] * 255.0f) << 16) | (int(rgb[1] * 255.0f) << 8) | int(rgb[2] * 255.0f);
+	if (clear_argb && gpuFrame.active() && target) {
+		argb = target->getClsColor();
+	}
 	dir3dDev->Clear(0, 0, flags, argb, z, 0);
 	if (clear_argb) {
 		gpuClearColor[0] = rgb[0];
