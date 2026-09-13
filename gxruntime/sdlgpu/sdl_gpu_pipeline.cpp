@@ -161,11 +161,12 @@ namespace sdlgpu {
 			SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_INVALID;
 			SDL_GPUTextureFormat depthFormat = SDL_GPU_TEXTUREFORMAT_INVALID;
 			unsigned stride = 0;
-			bool alphaBlend = false;
+			int blend = MESH_BLEND_REPLACE;
+			int zMode = MESH_Z_NORMAL;
 			SDL_GPUCullMode cullMode = SDL_GPU_CULLMODE_NONE;
 			bool operator==(const MeshPipeKey& o) const {
 				return format == o.format && depthFormat == o.depthFormat && stride == o.stride &&
-					alphaBlend == o.alphaBlend && cullMode == o.cullMode;
+					blend == o.blend && zMode == o.zMode && cullMode == o.cullMode;
 			}
 		};
 		struct MeshPipeEntry { MeshPipeKey key; SDL_GPUGraphicsPipeline* pipe = nullptr; };
@@ -274,12 +275,14 @@ namespace sdlgpu {
 		return g_whiteTex;
 	}
 
-	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, int colorFormatOverride, int depthFormatOverride, bool alphaBlend, SDL_GPUCullMode cullMode) {
+	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode) {
 		SDL_GPUTextureFormat fmt = colorFormatOverride ? (SDL_GPUTextureFormat)colorFormatOverride : SDL_GetGPUSwapchainTextureFormat(dev, win);
 		SDL_GPUTextureFormat depthFmt = depthFormatOverride ? (SDL_GPUTextureFormat)depthFormatOverride : PickMeshDepthFormat(dev);
 		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
+		if (blendMode < MESH_BLEND_REPLACE || blendMode > MESH_BLEND_ADD) blendMode = MESH_BLEND_ALPHA;
+		if (zMode < MESH_Z_NORMAL || zMode > MESH_Z_CMPONLY) zMode = MESH_Z_NORMAL;
 
-		MeshPipeKey key{ fmt, depthFmt, stride, alphaBlend, cullMode };
+		MeshPipeKey key{ fmt, depthFmt, stride, blendMode, zMode, cullMode };
 		for (auto& e : g_meshPipes) {
 			if (e.key == key) return e.pipe;
 		}
@@ -328,14 +331,28 @@ namespace sdlgpu {
 
 		SDL_GPUColorTargetDescription target{};
 		target.format = fmt;
-		if (alphaBlend) {
+		if (blendMode != MESH_BLEND_REPLACE) {
 			target.blend_state.enable_blend = true;
-			target.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-			target.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 			target.blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
-			target.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
-			target.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 			target.blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+			if (blendMode == MESH_BLEND_MULTIPLY) {
+				target.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_DST_COLOR;
+				target.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+				target.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_DST_ALPHA;
+				target.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+			}
+			else if (blendMode == MESH_BLEND_ADD) {
+				target.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+				target.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+				target.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+				target.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+			}
+			else {
+				target.blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+				target.blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+				target.blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+				target.blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+			}
 		}
 
 		SDL_GPUGraphicsPipelineCreateInfo info{};
@@ -354,8 +371,8 @@ namespace sdlgpu {
 		info.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
 		info.multisample_state.sample_mask = 0;
 
-		info.depth_stencil_state.enable_depth_test = true;
-		info.depth_stencil_state.enable_depth_write = !alphaBlend;
+		info.depth_stencil_state.enable_depth_test = (zMode != MESH_Z_DISABLE);
+		info.depth_stencil_state.enable_depth_write = (zMode == MESH_Z_NORMAL);
 		info.depth_stencil_state.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
 		info.depth_stencil_state.enable_stencil_test = false;
 		info.depth_stencil_state.back_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
@@ -373,7 +390,7 @@ namespace sdlgpu {
 			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateGPUGraphicsPipeline mesh failed: %s", SDL_GetError());
 			return nullptr;
 		}
-		if (g_meshPipes.size() >= 8) {
+		if (g_meshPipes.size() >= 16) {
 			SDL_GPUGraphicsPipeline* old = g_meshPipes.front().pipe;
 			if (old) SDL_ReleaseGPUGraphicsPipeline(dev, old);
 			g_meshPipes.erase(g_meshPipes.begin());
@@ -394,7 +411,7 @@ namespace sdlgpu {
 		return newPipe;
 	}
 
-	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, SDL_GPUTexture* tex, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, bool alphaBlend, SDL_GPUCullMode cullMode) {
+	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, SDL_GPUTexture* tex, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, int blendMode, int zMode, SDL_GPUCullMode cullMode) {
 		if (!dev || !cmds || !pass || !mesh || !uniforms || !uniformBytes || !indexCount) return;
 		if (!colorFormat && !win) return;
 		if (startIndex + indexCount > mesh->maxTris * 3u) return;
@@ -403,7 +420,7 @@ namespace sdlgpu {
 		if (!mesh->verts || !mesh->indices) return;
 		if (SDL_GetGPUShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
 
-		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, colorFormat, depthFormat, alphaBlend, cullMode);
+		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, colorFormat, depthFormat, blendMode, zMode, cullMode);
 		if (!meshPipe) return;
 		if (!g_meshSamp) return;
 
