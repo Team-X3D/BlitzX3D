@@ -465,7 +465,14 @@ void gxRuntime::flip(bool vwait) {
 	}
 
 	if (sdlGpu && sdlWindow) {
-		sdlgpu::SetVSync(sdlGpu, sdlWindow, vwait);
+		if (sceneBeganSinceFlip) {
+			vwaitPending = true;
+			vwaitValue = vwait;
+		}
+		else {
+			sdlgpu::SetVSync(sdlGpu, sdlWindow, vwait);
+		}
+		sceneBeganSinceFlip = false;
 		gxCanvas* back = graphics ? graphics->getBackCanvas() : nullptr;
 		if (graphics && graphics->presentSceneWithCanvas(sdlGpu, sdlWindow, back)) return;
 		unsigned argb = graphics ? graphics->getBackCanvas()->getClsColor() : 0;

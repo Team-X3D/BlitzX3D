@@ -26,6 +26,9 @@ public:
 
     SDL_Window* sdlWindow = nullptr;
     SDL_GPUDevice* sdlGpu = nullptr;
+    bool vwaitPending = false;
+    bool vwaitValue = true;
+    bool sceneBeganSinceFlip = false;
     HWND savedHwnd = nullptr;
     bool usingSDLWindow() const { return sdlWindow != nullptr; }
     void pumpSDLWindowEvents();

@@ -7,6 +7,8 @@ struct SDL_GPURenderPass;
 struct SDL_GPUTexture;
 struct SDL_Window;
 
+#include <stdint.h>
+
 class gxCanvas;
 
 namespace sdlgpu {
@@ -44,15 +46,24 @@ struct GpuSceneFrame {
 	SDL_GPUCommandBuffer* cmds = nullptr;
 	SDL_GPURenderPass* pass = nullptr;
 
-	SDL_GPUTexture* colorTarget = nullptr;
+	SDL_GPUTexture* swap = nullptr;
+	uint32_t swapW = 0, swapH = 0;
+
 	SDL_GPUTexture* depthTarget = nullptr;
-	unsigned width = 0, height = 0;
-	float optimClearR = 0.0f, optimClearG = 0.0f, optimClearB = 0.0f, optimClearA = 1.0f;
+	unsigned depthW = 0, depthH = 0;
+	int depthFormat = 0;
+
+	bool skipped = false;
+	bool drew3D = false;
 
 	bool active() const { return pass != nullptr; }
+	bool ready() const { return cmds != nullptr && swap != nullptr && !skipped; }
 };
 
-bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, unsigned w, unsigned h, float clearR, float clearG, float clearB);
+bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win);
+bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
+	float clearR, float clearG, float clearB, bool clearColor, bool clearDepth);
+void SetSceneViewport(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH);
 void RenderSceneMesh(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& uniforms, SDL_GPUTexture* tex, int first_vert, int vert_cnt, int first_tri, int tri_cnt, bool alphaBlend, int cullMode);
 void EndSceneFrame(GpuSceneFrame& frame);
 bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame);

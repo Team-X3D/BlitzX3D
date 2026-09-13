@@ -391,7 +391,7 @@ void gxGraphics::flip(bool vwait) {
 void gxGraphics::copy(gxCanvas* dest, int dx, int dy, int dw, int dh, gxCanvas* src, int sx, int sy, int sw, int sh) {
 	ddUtil::copy(dir3dDev, dest->getSurface(), dx, dy, dw, dh, src->getSurface(), sx, sy, sw, sh);
 	RECT r = { dx, dy, dx + dw, dy + dh };
-	dest->damage(r);
+	dest->damageD3D(r);
 }
 
 int gxGraphics::getScanLine() const { return 0; }

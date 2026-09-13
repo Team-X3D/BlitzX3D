@@ -88,7 +88,11 @@ SDL_GPUDevice* CreateGPUDevice() {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateProperties failed: %s", SDL_GetError());
 		return nullptr;
 	}
+#ifdef _DEBUG
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_VERBOSE_BOOLEAN, true);
+#else
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_VERBOSE_BOOLEAN, false);
+#endif
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXIL_BOOLEAN, true);
 	// SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan");
@@ -97,7 +101,9 @@ SDL_GPUDevice* CreateGPUDevice() {
 #else
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, false);
 #endif
+#ifdef _DEBUG
 	SDL_SetLogPriority(SDL_LOG_CATEGORY_GPU, SDL_LOG_PRIORITY_VERBOSE);
+#endif
 	SDL_GPUDevice* dev = SDL_CreateGPUDeviceWithProperties(props);
 	SDL_DestroyProperties(props);
 	if (dev) SDL_SetGPUAllowedFramesInFlight(dev, 3);
@@ -113,13 +119,16 @@ void DestroyGPUDevice(SDL_GPUDevice* dev) {
 	SDL_DestroyGPUDevice(dev);
 }
 
-bool ClaimWindow(SDL_GPUDevice* dev, SDL_Window* win) {
-	if (!dev || !win) return false;
-	return SDL_ClaimWindowForGPUDevice(dev, win);
-}
-
 namespace {
 	static std::unordered_map<SDL_Window*, SDL_GPUPresentMode> s_vsyncLastMode;
+}
+
+bool ClaimWindow(SDL_GPUDevice* dev, SDL_Window* win) {
+	if (!dev || !win) return false;
+	if (!SDL_ClaimWindowForGPUDevice(dev, win)) return false;
+	if (SDL_SetGPUSwapchainParameters(dev, win, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC))
+		s_vsyncLastMode[win] = SDL_GPU_PRESENTMODE_VSYNC;
+	return true;
 }
 
 void ReleaseWindow(SDL_GPUDevice* dev, SDL_Window* win) {
@@ -311,6 +320,11 @@ static void ForwardMouseMove(SDL_Window* win, gxRuntime* rt, int px, int py) {
 
 void PumpEvents(SDL_Window* win, gxRuntime* rt) {
 	if (!win || !rt) return;
+	static bool s_motionPolled = false;
+	if (!s_motionPolled) {
+		SDL_SetEventEnabled(SDL_EVENT_MOUSE_MOTION, false);
+		s_motionPolled = true;
+	}
 	SDL_Event ev;
 	while (SDL_PollEvent(&ev)) {
 		switch (ev.type) {
@@ -376,15 +390,17 @@ void PumpEvents(SDL_Window* win, gxRuntime* rt) {
 				ForwardMouseMove(win, rt, (int)ev.button.x, (int)ev.button.y);
 			}
 			break;
-		case SDL_EVENT_MOUSE_MOTION:
-			ForwardMouseMove(win, rt, (int)ev.motion.x, (int)ev.motion.y);
-			break;
 		case SDL_EVENT_MOUSE_WHEEL:
 			if (rt->input) rt->input->wm_mousewheel((int)(ev.wheel.y * 120.0f));
 			break;
 		default:
 			break;
 		}
+	}
+	if (rt->input && (SDL_GetWindowFlags(win) & SDL_WINDOW_INPUT_FOCUS)) {
+		float mx = 0.0f, my = 0.0f;
+		SDL_GetMouseState(&mx, &my);
+		ForwardMouseMove(win, rt, (int)mx, (int)my);
 	}
 }
 

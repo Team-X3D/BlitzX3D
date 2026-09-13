@@ -5,6 +5,7 @@
 #include "gxeffect.h"
 #include "gxmesh.h"
 #include "sdlgpu/sdl_gpu_texture.h"
+#include "sdlgpu/sdl_gpu_context.h"
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_video.h>
 
@@ -815,10 +816,14 @@ bool gxScene::begin(const std::vector<gxLight*>& lights) {
 	setRS(D3DRS_MULTISAMPLEANTIALIAS, antialias ? TRUE : FALSE);
 
 	gpuOnlyFrame = true;
-	if (graphics && graphics->runtime && graphics->runtime->sdlGpu) {
-		unsigned gw = (unsigned)viewport.Width;
-		unsigned gh = (unsigned)viewport.Height;
-		sdlgpu::BeginSceneFrame(gpuFrame, graphics->runtime->sdlGpu, gw, gh, gpuClearColor[0], gpuClearColor[1], gpuClearColor[2]);
+	if (graphics && graphics->runtime && graphics->runtime->sdlGpu && graphics->runtime->sdlWindow) {
+		if (graphics->runtime->vwaitPending) {
+			graphics->runtime->vwaitPending = false;
+			sdlgpu::SetVSync((SDL_GPUDevice*)graphics->runtime->sdlGpu,
+				(SDL_Window*)graphics->runtime->sdlWindow, graphics->runtime->vwaitValue);
+		}
+		graphics->runtime->sceneBeganSinceFlip = true;
+		sdlgpu::BeginSceneFrame(gpuFrame, (SDL_GPUDevice*)graphics->runtime->sdlGpu, (SDL_Window*)graphics->runtime->sdlWindow);
 	}
 
 	return true;
@@ -828,20 +833,20 @@ void gxScene::clear(const float rgb[3], float alpha, float z, bool clear_argb, b
 	if(!clear_argb && !clear_z) return;
 	int flags = (clear_argb ? D3DCLEAR_TARGET : 0) | (clear_z ? D3DCLEAR_ZBUFFER : 0);
 	unsigned argb = (int(alpha * 255.0f) << 24) | (int(rgb[0] * 255.0f) << 16) | (int(rgb[1] * 255.0f) << 8) | int(rgb[2] * 255.0f);
-	if (clear_argb && gpuFrame.active() && target) {
+	if (clear_argb && gpuFrame.ready() && target) {
 		argb = target->getClsColor();
 	}
 	dir3dDev->Clear(0, 0, flags, argb, z, 0);
-	if (clear_argb) {
-		gpuClearColor[0] = rgb[0];
-		gpuClearColor[1] = rgb[1];
-		gpuClearColor[2] = rgb[2];
+	if (gpuFrame.ready()) {
+		sdlgpu::BeginScenePass(gpuFrame, (int)viewport.X, (int)viewport.Y,
+			(int)viewport.Width, (int)viewport.Height,
+			rgb[0], rgb[1], rgb[2], clear_argb, clear_z);
 	}
 }
 
 void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt) {
 	bool drewGpu = false;
-	if (gpuFrame.active() && mesh && !mesh->isSkinned() && mesh->getGpuMirror()) {
+	if (gpuFrame.ready() && mesh && !mesh->isSkinned() && mesh->getGpuMirror()) {
 		bool skipGpu = false;
 		if (graphics && graphics->runtime && graphics->runtime->sdlWindow) {
 			SDL_Window* sdlWin = graphics->runtime->sdlWindow;
@@ -850,6 +855,10 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 			if (wf & SDL_WINDOW_HIDDEN) skipGpu = true;
 		}
 		if (gpuFrame.dev && SDL_GetGPUShaderFormats(gpuFrame.dev) == SDL_GPU_SHADERFORMAT_INVALID) skipGpu = true;
+		if (!skipGpu && !gpuFrame.active()) {
+			if (!sdlgpu::BeginScenePass(gpuFrame, (int)viewport.X, (int)viewport.Y,
+				(int)viewport.Width, (int)viewport.Height, 0, 0, 0, false, false)) skipGpu = true;
+		}
 		if (!skipGpu) {
 			sdlgpu::MeshUniforms uniforms;
 			computeGpuMeshUniforms(uniforms);
@@ -1116,13 +1125,13 @@ void gxScene::end() {
 	lastRenderStateValid = false;
 	dir3dDev->EndScene();
 	RECT r = { (LONG)viewport.X, (LONG)viewport.Y, (LONG)(viewport.X + viewport.Width), (LONG)(viewport.Y + viewport.Height) };
-	if (graphics && graphics->runtime && graphics->runtime->sdlGpu && gpuOnlyFrame && gpuFrame.colorTarget) target->damageScene(r);
-	else target->damage(r);
+	if (graphics && graphics->runtime && graphics->runtime->sdlGpu && gpuOnlyFrame && gpuFrame.drew3D) target->damageScene(r);
+	else target->damageD3D(r);
 	sdlgpu::EndSceneFrame(gpuFrame);
 }
 
 bool gxScene::hasGpuImage() const {
-	return gpuFrame.colorTarget != nullptr && gpuFrame.width != 0 && gpuFrame.height != 0;
+	return gpuFrame.drew3D;
 }
 
 bool gxScene::presentGpuFrame(struct SDL_GPUDevice* dev, struct SDL_Window* win) {

@@ -166,7 +166,6 @@ private:
 	float eyePos[3];
 
 	sdlgpu::GpuSceneFrame gpuFrame;
-	float gpuClearColor[3] = { 0, 0, 0 };
 	bool gpuOnlyFrame = true;
 
 	bool bumpNormalize = false;

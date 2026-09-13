@@ -34,6 +34,9 @@ public:
 	mutable unsigned char* locked_surf;
 	mutable bool lock_is_rt;
 	mutable bool lock_ro;
+	mutable unsigned char* cpu_bits = nullptr;
+	mutable int cpu_pitch = 0, cpu_w = 0, cpu_h = 0;
+	mutable bool d3d_dirty = false;
 	mutable RECT sdlDirtyRect;
 	mutable bool sdlDirtyValid;
 
@@ -55,6 +58,7 @@ public:
 	bool clip(RECT* d)          const;
 	bool clip(RECT* d, RECT* s) const;
 	void damage(const RECT& r)  const;
+	void damageD3D(const RECT& r) const;
 	void damageScene(const RECT& r) const;
 
 	void set2DEffect(gxEffect* effect);
@@ -84,6 +88,11 @@ private:
 
 	void updateBitMask(const RECT& r) const;
 	bool lockImpl(bool ro)const;
+	void allocCPUStore(int w, int h);
+	bool ensureTemp(int w, int h, int fmt) const;
+	bool pullD3D() const;
+	bool pushRectD3D(const RECT& r) const;
+	void damageImpl(const RECT& r, bool cpuSource) const;
 
 	mutable int blit_batch_depth;
 	mutable bool blit_batch_active;
