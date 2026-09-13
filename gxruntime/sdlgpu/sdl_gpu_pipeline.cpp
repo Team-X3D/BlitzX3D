@@ -28,7 +28,7 @@ namespace sdlgpu {
 	static void TeardownBlit();
 	void ClearTransferPool(SDL_GPUDevice* dev);
 
-	static SDL_GPUShader* LoadShader(SDL_GPUDevice* dev, SDL_GPUShaderFormat fmt, SDL_GPUShaderStage stage, const char* entry, const uint8_t* code, size_t size, unsigned samplers = 0, unsigned uniformBuffers = 0) {
+	static SDL_GPUShader* LoadShader(SDL_GPUDevice* dev, SDL_GPUShaderFormat fmt, SDL_GPUShaderStage stage, const char* entry, const uint8_t* code, size_t size, unsigned samplers = 0, unsigned uniformBuffers = 0, unsigned storageBuffers = 0) {
 		SDL_GPUShaderCreateInfo info{};
 		info.code = code;
 		info.code_size = size;
@@ -36,6 +36,7 @@ namespace sdlgpu {
 		info.format = fmt;
 		info.stage = stage;
 		info.num_samplers = samplers;
+		info.num_storage_buffers = storageBuffers;
 		info.num_uniform_buffers = uniformBuffers;
 		return SDL_CreateGPUShader(dev, &info);
 	}
@@ -161,12 +162,16 @@ namespace sdlgpu {
 			SDL_GPUTextureFormat format = SDL_GPU_TEXTUREFORMAT_INVALID;
 			SDL_GPUTextureFormat depthFormat = SDL_GPU_TEXTUREFORMAT_INVALID;
 			unsigned stride = 0;
+			bool skinned = false;
+			bool twoTex = false;
 			int blend = MESH_BLEND_REPLACE;
 			int zMode = MESH_Z_NORMAL;
 			SDL_GPUCullMode cullMode = SDL_GPU_CULLMODE_NONE;
+			bool wireframe = false;
 			bool operator==(const MeshPipeKey& o) const {
 				return format == o.format && depthFormat == o.depthFormat && stride == o.stride &&
-					blend == o.blend && zMode == o.zMode && cullMode == o.cullMode;
+					skinned == o.skinned && twoTex == o.twoTex &&
+					blend == o.blend && zMode == o.zMode && cullMode == o.cullMode && wireframe == o.wireframe;
 			}
 		};
 		struct MeshPipeEntry { MeshPipeKey key; SDL_GPUGraphicsPipeline* pipe = nullptr; };
@@ -275,14 +280,14 @@ namespace sdlgpu {
 		return g_whiteTex;
 	}
 
-	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode) {
+	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, bool skinned, bool twoTex, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode, bool wireframe) {
 		SDL_GPUTextureFormat fmt = colorFormatOverride ? (SDL_GPUTextureFormat)colorFormatOverride : SDL_GetGPUSwapchainTextureFormat(dev, win);
 		SDL_GPUTextureFormat depthFmt = depthFormatOverride ? (SDL_GPUTextureFormat)depthFormatOverride : PickMeshDepthFormat(dev);
 		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
 		if (blendMode < MESH_BLEND_REPLACE || blendMode > MESH_BLEND_ADD) blendMode = MESH_BLEND_ALPHA;
 		if (zMode < MESH_Z_NORMAL || zMode > MESH_Z_CMPONLY) zMode = MESH_Z_NORMAL;
 
-		MeshPipeKey key{ fmt, depthFmt, stride, blendMode, zMode, cullMode };
+		MeshPipeKey key{ fmt, depthFmt, stride, skinned, twoTex, blendMode, zMode, cullMode, wireframe };
 		for (auto& e : g_meshPipes) {
 			if (e.key == key) return e.pipe;
 		}
@@ -291,25 +296,31 @@ namespace sdlgpu {
 		const uint8_t* vsCode = nullptr;
 		const uint8_t* psCode = nullptr;
 		size_t vsSize = 0, psSize = 0;
+		const char* vsEntry = skinned ? "VSMainSkinned" : "VSMain";
+		const char* psEntry = twoTex ? "PSMain2Tex" : "PSMain";
 		SDL_GPUShaderFormat useFmt = SDL_GPU_SHADERFORMAT_INVALID;
 		if (supported & SDL_GPU_SHADERFORMAT_SPIRV) {
 			useFmt = SDL_GPU_SHADERFORMAT_SPIRV;
-			vsCode = kMeshVS_SPIRV; vsSize = kMeshVS_SPIRV_size;
-			psCode = kMeshPS_SPIRV; psSize = kMeshPS_SPIRV_size;
+			if (skinned) { vsCode = kSkinVS_SPIRV; vsSize = kSkinVS_SPIRV_size; }
+			else { vsCode = kMeshVS_SPIRV; vsSize = kMeshVS_SPIRV_size; }
+			if (twoTex) { psCode = kMeshPS2_SPIRV; psSize = kMeshPS2_SPIRV_size; }
+			else { psCode = kMeshPS_SPIRV; psSize = kMeshPS_SPIRV_size; }
 		}
 		else if (supported & SDL_GPU_SHADERFORMAT_DXIL) {
 			useFmt = SDL_GPU_SHADERFORMAT_DXIL;
-			vsCode = kMeshVS_DXIL; vsSize = kMeshVS_DXIL_size;
-			psCode = kMeshPS_DXIL; psSize = kMeshPS_DXIL_size;
+			if (skinned) { vsCode = kSkinVS_DXIL; vsSize = kSkinVS_DXIL_size; }
+			else { vsCode = kMeshVS_DXIL; vsSize = kMeshVS_DXIL_size; }
+			if (twoTex) { psCode = kMeshPS2_DXIL; psSize = kMeshPS2_DXIL_size; }
+			else { psCode = kMeshPS_DXIL; psSize = kMeshPS_DXIL_size; }
 		}
 		if (useFmt == SDL_GPU_SHADERFORMAT_INVALID) {
 			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No supported mesh shader format: %u", (unsigned)supported);
 			return nullptr;
 		}
 
-		SDL_GPUShader* vs = LoadShader(dev, useFmt, SDL_GPU_SHADERSTAGE_VERTEX, "VSMain", vsCode, vsSize, 0, 1);
+		SDL_GPUShader* vs = LoadShader(dev, useFmt, SDL_GPU_SHADERSTAGE_VERTEX, vsEntry, vsCode, vsSize, 0, 1, skinned ? 1 : 0);
 		if (!vs) return nullptr;
-		SDL_GPUShader* ps = LoadShader(dev, useFmt, SDL_GPU_SHADERSTAGE_FRAGMENT, "PSMain", psCode, psSize, 1, 0);
+		SDL_GPUShader* ps = LoadShader(dev, useFmt, SDL_GPU_SHADERSTAGE_FRAGMENT, psEntry, psCode, psSize, twoTex ? 2 : 1, twoTex ? 1 : 0);
 		if (!ps) { SDL_ReleaseGPUShader(dev, vs); return nullptr; }
 
 		static_assert(sizeof(float) * 3 == 12, "layout");
@@ -318,16 +329,23 @@ namespace sdlgpu {
 		vb.slot = 0;
 		vb.pitch = stride;
 		vb.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-		SDL_GPUVertexAttribute attrs[4]{};
+		SDL_GPUVertexAttribute attrs[7]{};
 		attrs[0].location = 0; attrs[0].buffer_slot = 0; attrs[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3; attrs[0].offset = 0;
 		attrs[1].location = 1; attrs[1].buffer_slot = 0; attrs[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3; attrs[1].offset = 12;
 		attrs[2].location = 2; attrs[2].buffer_slot = 0; attrs[2].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM; attrs[2].offset = 24;
 		attrs[3].location = 3; attrs[3].buffer_slot = 0; attrs[3].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2; attrs[3].offset = 28;
+		attrs[4].location = 4; attrs[4].buffer_slot = 0; attrs[4].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2; attrs[4].offset = 36;
+		unsigned attrCount = 5;
+		if (skinned) {
+			attrs[5].location = 5; attrs[5].buffer_slot = 0; attrs[5].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4; attrs[5].offset = 44;
+			attrs[6].location = 6; attrs[6].buffer_slot = 0; attrs[6].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4; attrs[6].offset = 60;
+			attrCount = 7;
+		}
 		SDL_GPUVertexInputState vin{};
 		vin.vertex_buffer_descriptions = &vb;
 		vin.num_vertex_buffers = 1;
 		vin.vertex_attributes = attrs;
-		vin.num_vertex_attributes = 4;
+		vin.num_vertex_attributes = attrCount;
 
 		SDL_GPUColorTargetDescription target{};
 		target.format = fmt;
@@ -390,7 +408,7 @@ namespace sdlgpu {
 			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateGPUGraphicsPipeline mesh failed: %s", SDL_GetError());
 			return nullptr;
 		}
-		if (g_meshPipes.size() >= 16) {
+		if (g_meshPipes.size() >= 24) {
 			SDL_GPUGraphicsPipeline* old = g_meshPipes.front().pipe;
 			if (old) SDL_ReleaseGPUGraphicsPipeline(dev, old);
 			g_meshPipes.erase(g_meshPipes.begin());
@@ -411,7 +429,7 @@ namespace sdlgpu {
 		return newPipe;
 	}
 
-	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, SDL_GPUTexture* tex, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, int blendMode, int zMode, SDL_GPUCullMode cullMode) {
+	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshDrawParams& p) {
 		if (!dev || !cmds || !pass || !mesh || !uniforms || !uniformBytes || !indexCount) return;
 		if (!colorFormat && !win) return;
 		if (startIndex + indexCount > mesh->maxTris * 3u) return;
@@ -419,12 +437,14 @@ namespace sdlgpu {
 		if (uniformBytes > 4096) return;
 		if (!mesh->verts || !mesh->indices) return;
 		if (SDL_GetGPUShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
+		bool skinned = p.boneBuf != nullptr;
+		bool twoTex = p.tex1 != nullptr;
 
-		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, colorFormat, depthFormat, blendMode, zMode, cullMode);
+		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, skinned, twoTex, colorFormat, depthFormat, p.blend, p.zMode, p.cull, p.wireframe);
 		if (!meshPipe) return;
 		if (!g_meshSamp) return;
 
-		SDL_GPUTexture* boundTex = tex;
+		SDL_GPUTexture* boundTex = p.tex;
 		if (!boundTex) {
 			boundTex = EnsureWhiteTexture(dev);
 			if (!boundTex) return;
@@ -543,6 +563,7 @@ namespace sdlgpu {
 		TeardownCanvas();
 		TeardownWhiteTexture();
 		TeardownText();
+		ReleaseBones(nullptr);
 		ClearTransferPool(nullptr);
 	}
 

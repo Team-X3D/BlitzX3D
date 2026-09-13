@@ -19,6 +19,12 @@ bool UploadMesh(SDL_GPUDevice* dev, GpuMesh* mesh, const void* vertData, unsigne
 bool UploadMeshRange(SDL_GPUDevice* dev, GpuMesh* mesh, const void* vertBase, unsigned vertDstOff, unsigned vertBytes, const void* idxBase, unsigned idxDstOff, unsigned idxBytes);
 void ReleaseMesh(SDL_GPUDevice* dev, GpuMesh* mesh);
 
+static constexpr unsigned kMaxBones = 64; // don't really think we need these anymore...
+static constexpr unsigned kBoneFloat4s = kMaxBones * 3;
+SDL_GPUBuffer* EnsureBoneBuffer(SDL_GPUDevice* dev);
+bool UploadBones(SDL_GPUDevice* dev, const float* boneData, unsigned boneCount);
+void ReleaseBones(SDL_GPUDevice* dev);
+
 }
 
 #endif

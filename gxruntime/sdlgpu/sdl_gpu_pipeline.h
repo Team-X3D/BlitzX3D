@@ -18,7 +18,19 @@ enum { MESH_BLEND_REPLACE = 0, MESH_BLEND_ALPHA = 1, MESH_BLEND_MULTIPLY = 2, ME
 enum { MESH_Z_NORMAL = 0, MESH_Z_DISABLE = 1, MESH_Z_CMPONLY = 2 };
 
 	bool PresentBlit(SDL_GPUDevice* dev, SDL_Window* win, float r, float g, float b, unsigned w, unsigned h, const void* px);
-	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, SDL_GPUTexture* tex, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, int blendMode, int zMode, SDL_GPUCullMode cullMode);
+	struct MeshDrawParams {
+		SDL_GPUTexture* tex = nullptr;
+		SDL_GPUTexture* tex1 = nullptr;
+		float stage1[4] = {};
+		SDL_GPUBuffer* boneBuf = nullptr;
+		bool wrapU0 = true, wrapV0 = true, point0 = false;
+		bool wrapU1 = true, wrapV1 = true, point1 = false;
+		int blend = MESH_BLEND_REPLACE;
+		int zMode = MESH_Z_NORMAL;
+		SDL_GPUCullMode cull = SDL_GPU_CULLMODE_BACK;
+		bool wireframe = false;
+	};
+	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshDrawParams& p);
 	void DrawCanvasOverlay(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass, SDL_GPUTexture* tex);
 	int MeshDepthFormat(SDL_GPUDevice* dev);
 	int SceneColorFormat();

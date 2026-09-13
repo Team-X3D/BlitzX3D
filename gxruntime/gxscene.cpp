@@ -6,6 +6,8 @@
 #include "gxmesh.h"
 #include "sdlgpu/sdl_gpu_texture.h"
 #include "sdlgpu/sdl_gpu_context.h"
+#include "sdlgpu/sdl_gpu_mesh.h"
+#include "sdlgpu/sdl_gpu_pipeline.h"
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_video.h>
 
@@ -875,12 +877,9 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 			computeGpuMeshUniforms(uniforms);
 			SDL_GPUDevice* dev = gpuFrame.dev ? gpuFrame.dev : (graphics && graphics->runtime ? (SDL_GPUDevice*)graphics->runtime->sdlGpu : nullptr);
 			if (dev) {
-				SDL_GPUTexture* tex = nullptr;
-				if (n_texs > 0 && texstate[0].canvas) tex = sdlgpu::GetCanvasTexture(dev, texstate[0].canvas);
-				SDL_GPUCullMode cull = SDL_GPU_CULLMODE_BACK;
-				if (fx & FX_DOUBLESIDED) cull = SDL_GPU_CULLMODE_NONE;
-				else if (flipped) cull = SDL_GPU_CULLMODE_FRONT;
-				sdlgpu::RenderSceneMesh(gpuFrame, mesh->getGpuMirror(), uniforms, tex, first_vert, vert_cnt, first_tri, tri_cnt, blend, zmode, cull);
+				sdlgpu::MeshDrawParams p;
+				fillGpuDrawParams(p, dev);
+				sdlgpu::RenderSceneMesh(gpuFrame, mesh->getGpuMirror(), uniforms, first_vert, vert_cnt, first_tri, tri_cnt, p);
 				drewGpu = true;
 			}
 		}
@@ -905,8 +904,8 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 	}
 
 	bool extraTex = (n_texs > tex_stages);
-	if (extraTex || wireframe) gpuOnlyFrame = false;
-	mesh->render(first_vert, vert_cnt, first_tri, tri_cnt, drewGpu && !extraTex && !wireframe);
+	if (extraTex) gpuOnlyFrame = false;
+	mesh->render(first_vert, vert_cnt, first_tri, tri_cnt, drewGpu && !extraTex);
 	tris_drawn += tri_cnt;
 	if(n_texs <= tex_stages) return;
 
@@ -1115,7 +1114,72 @@ void gxScene::setSkinShaderConstants() {
 	dev->SetVertexShaderConstantF(231, eye, 1);
 }
 
+void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
+	p.tex = nullptr; p.tex1 = nullptr;
+	p.stage1[0] = p.stage1[1] = p.stage1[2] = p.stage1[3] = 0.0f;
+	p.boneBuf = nullptr;
+	p.blend = blend; p.zMode = zmode;
+	p.cull = SDL_GPU_CULLMODE_BACK;
+	if (fx & FX_DOUBLESIDED) p.cull = SDL_GPU_CULLMODE_NONE;
+	else if (flipped) p.cull = SDL_GPU_CULLMODE_FRONT;
+	if (n_texs > 0 && texstate[0].canvas) {
+		p.tex = sdlgpu::GetCanvasTexture(dev, texstate[0].canvas);
+	}
+	if (n_texs > 1 && texstate[1].canvas && texstate[1].blend &&
+		texstate[1].blend != BLEND_BUMPENVMAP && !texstate[1].mat_valid) {
+		SDL_GPUTexture* t1 = sdlgpu::GetCanvasTexture(dev, texstate[1].canvas);
+		if (t1) {
+			p.tex1 = t1;
+			p.stage1[0] = (float)texstate[1].blend;
+			p.stage1[1] = (texstate[1].flags & TEX_COORDS2) ? 1.0f : 0.0f;
+			p.stage1[2] = 1.0f;
+			p.stage1[3] = (texstate[1].canvas->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) ? 1.0f : 0.0f;
+		}
+	}
+}
+
+void gxScene::computeGpuSkinnedUniforms(sdlgpu::MeshUniforms& u) const {
+	computeGpuMeshUniforms(u);
+	D3DXMATRIX vp;
+	D3DXMatrixMultiply(&vp, &currentView, &currentProj);
+	memcpy(u.mvp, &vp, 64);
+	D3DXMATRIX ident;
+	D3DXMatrixIdentity(&ident);
+	memcpy(u.world, &ident, 64);
+}
+
 void gxScene::renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* bone_data, int bone_cnt) {
+	bool drewGpu = false;
+	if (!currentEffect && gpuFrame.ready() && mesh && mesh->isSkinned() && mesh->getGpuMirror() && bone_data && bone_cnt > 0) {
+		bool skipGpu = false;
+		if (graphics && graphics->runtime && graphics->runtime->sdlWindow) {
+			SDL_Window* sdlWin = graphics->runtime->sdlWindow;
+			SDL_WindowFlags wf = SDL_GetWindowFlags(sdlWin);
+			if (wf & SDL_WINDOW_MINIMIZED) skipGpu = true;
+			if (wf & SDL_WINDOW_HIDDEN) skipGpu = true;
+		}
+		if (gpuFrame.dev && SDL_GetGPUShaderFormats(gpuFrame.dev) == SDL_GPU_SHADERFORMAT_INVALID) skipGpu = true;
+		if (!skipGpu && !gpuFrame.active()) {
+			if (!sdlgpu::BeginScenePass(gpuFrame, (int)viewport.X, (int)viewport.Y,
+				(int)viewport.Width, (int)viewport.Height, 0, 0, 0, false, false)) skipGpu = true;
+		}
+		if (!skipGpu) {
+			SDL_GPUDevice* dev = gpuFrame.dev ? gpuFrame.dev : (graphics && graphics->runtime ? (SDL_GPUDevice*)graphics->runtime->sdlGpu : nullptr);
+			SDL_GPUBuffer* bones = nullptr;
+			if (dev && sdlgpu::UploadBones(dev, bone_data, (unsigned)bone_cnt))
+				bones = sdlgpu::EnsureBoneBuffer(dev);
+			if (bones) {
+				sdlgpu::MeshUniforms uniforms;
+				computeGpuSkinnedUniforms(uniforms);
+				sdlgpu::MeshDrawParams p;
+				fillGpuDrawParams(p, dev);
+				p.boneBuf = bones;
+				sdlgpu::RenderSceneMesh(gpuFrame, mesh->getGpuMirror(), uniforms, first_vert, vert_cnt, first_tri, tri_cnt, p);
+				drewGpu = true;
+			}
+		}
+	}
+	if (drewGpu) { tris_drawn += tri_cnt; return; }
 	gpuOnlyFrame = false;
 	setSkinShaderConstants();
 	mesh->renderSkinned(first_vert, vert_cnt, first_tri, tri_cnt, bone_data, bone_cnt);

@@ -201,6 +201,8 @@ private:
 	void computeGpuMVP(float out[16]) const;
 	void computeGpuWorld(float out[16]) const;
 	void computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const;
+	void computeGpuSkinnedUniforms(sdlgpu::MeshUniforms& u) const;
+	void fillGpuDrawParams(struct sdlgpu::MeshDrawParams& p, struct SDL_GPUDevice* dev);
 };
 
 #endif
