@@ -4,7 +4,10 @@ cbuffer VSParams : register(b0, space1)
 	float4x4 world;
 	float4 ambient;
 	float4 matDiffuse;
+	float4 matAmbient;
+	float4 matEmissive;
 	float4 matSpec;
+	float4 matSrc;
 	float4 fogColor;
 	float4 fogParams;
 	float4 eyePos;
@@ -13,6 +16,8 @@ cbuffer VSParams : register(b0, space1)
 	float3 lightPad;
 	float4 lightPos[8];
 	float4 lightColor[8];
+	float4 lightSpec[8];
+	float4 lightAmb[8];
 	float4 lightAtten[8];
 	float4 lightSpotDir[8];
 	float4 lightSpotPrm[8];
@@ -42,16 +47,19 @@ VSOut VSMain(VSIn i)
 	o.pos = mul(mvp, float4(i.pos, 1.0));
 
 	float4 vcol = i.color.bgra;
-	float3 baseRgb = (flags.x > 0.5) ? vcol.rgb : matDiffuse.rgb;
+	float3 matD = (matSrc.x > 0.5) ? vcol.rgb : matDiffuse.rgb;
+	float3 matA = (matSrc.y > 0.5) ? vcol.rgb : matAmbient.rgb;
+	float3 matE = (matSrc.z > 0.5) ? vcol.rgb : matEmissive.rgb;
 	float baseA = vcol.a * matDiffuse.a;
 
 	float4 worldPos = mul(world, float4(i.pos, 1.0));
 	float3 nW = normalize(mul(world, float4(i.normal, 0.0)).xyz);
 	float3 V = normalize(eyePos.xyz - worldPos.xyz);
 
-	float3 dif = float3(0.0, 0.0, 0.0);
-	float specAcc = 0.0;
-	bool doSpec = (flags.y < 0.5) && (matSpec.x + matSpec.y + matSpec.z) > 0.0 && matSpec.w > 0.0;
+	float3 difAcc = float3(0.0, 0.0, 0.0);
+	float3 ambAcc = matA * ambient.rgb;
+	float3 specAcc = float3(0.0, 0.0, 0.0);
+	bool doSpec = (matSpec.x + matSpec.y + matSpec.z) > 0.0 && matSpec.w > 0.0;
 	for (uint li = 0; li < 8; li++) {
 		if ((int)li >= lightCount)
 			break;
@@ -78,15 +86,21 @@ VSOut VSMain(VSIn i)
 			}
 		}
 		float ndl = clamp(dot(nW, hitDir), 0.0, 1.0);
-		dif += lightColor[li].rgb * (ndl * atten);
+		ambAcc += matA * lightAmb[li].rgb * atten;
+		difAcc += matD * lightColor[li].rgb * (ndl * atten);
 		if (doSpec && ndl > 0.0) {
 			float3 H = normalize(hitDir + V);
-			specAcc += pow(clamp(dot(nW, H), 0.0, 1.0), max(matSpec.w, 1.0)) * atten;
+			specAcc += lightSpec[li].rgb * (pow(clamp(dot(nW, H), 0.0, 1.0), max(matSpec.w, 1.0)) * atten);
 		}
 	}
-	float3 lighting = (flags.y > 0.5) ? float3(1.0, 1.0, 1.0) : (ambient.rgb + dif);
+	float3 finalRgb;
+	if (flags.y > 0.5) {
+		finalRgb = matD;
+	} else {
+		finalRgb = clamp(matE + ambAcc + difAcc, 0.0, 1.0) + matSpec.rgb * clamp(specAcc, 0.0, 1.0);
+	}
 
-	o.color = float4(baseRgb * lighting + matSpec.rgb * specAcc, baseA);
+	o.color = float4(finalRgb, baseA);
 	o.uv = i.uv;
 
 	float dist = distance(worldPos.xyz, eyePos.xyz);

@@ -20,7 +20,10 @@ struct MeshUniforms {
 	float world[16];
 	float ambient[4];
 	float matDiffuse[4];
+	float matAmbient[4];
+	float matEmissive[4];
 	float matSpec[4];
+	float matSrc[4];
 	float fogColor[4];
 	float fogParams[4];
 	float eyePos[4];
@@ -29,6 +32,8 @@ struct MeshUniforms {
 	float lightPad[3];
 	float lightPos[kGpuMaxLights][4];
 	float lightColor[kGpuMaxLights][4];
+	float lightSpec[kGpuMaxLights][4];
+	float lightAmb[kGpuMaxLights][4];
 	float lightAtten[kGpuMaxLights][4];
 	float lightSpotDir[kGpuMaxLights][4];
 	float lightSpotPrm[kGpuMaxLights][4];

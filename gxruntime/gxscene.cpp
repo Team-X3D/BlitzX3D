@@ -948,8 +948,16 @@ void gxScene::computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const {
 
 	u.matDiffuse[0] = material.Diffuse.r; u.matDiffuse[1] = material.Diffuse.g;
 	u.matDiffuse[2] = material.Diffuse.b; u.matDiffuse[3] = material.Diffuse.a;
+	u.matAmbient[0] = material.Ambient.r; u.matAmbient[1] = material.Ambient.g;
+	u.matAmbient[2] = material.Ambient.b; u.matAmbient[3] = 1.0f;
+	u.matEmissive[0] = material.Emissive.r; u.matEmissive[1] = material.Emissive.g;
+	u.matEmissive[2] = material.Emissive.b; u.matEmissive[3] = 1.0f;
 	u.matSpec[0] = material.Specular.r; u.matSpec[1] = material.Specular.g;
 	u.matSpec[2] = material.Specular.b; u.matSpec[3] = material.Power;
+	u.matSrc[0] = (fx & FX_VERTEXCOLOR) ? 1.0f : 0.0f;
+	u.matSrc[1] = (fx & FX_VERTEXCOLOR) ? 1.0f : 0.0f;
+	u.matSrc[2] = (fx & FX_EMISSIVE) ? 1.0f : 0.0f;
+	u.matSrc[3] = 0.0f;
 
 	u.fogColor[0] = ((fogcolor >> 16) & 0xff) / 255.0f;
 	u.fogColor[1] = ((fogcolor >> 8) & 0xff) / 255.0f;
@@ -962,7 +970,7 @@ void gxScene::computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const {
 	u.eyePos[3] = 0.0f;
 
 	u.flags[0] = (fx & FX_VERTEXCOLOR) ? 1.0f : 0.0f;
-	u.flags[1] = (fx & (FX_FULLBRIGHT | FX_EMISSIVE)) ? 1.0f : 0.0f;
+	u.flags[1] = (fx & FX_FULLBRIGHT) ? 1.0f : 0.0f;
 	u.flags[2] = 0.0f; u.flags[3] = 0.5f;
 
 	u.lightCount = 0;
@@ -993,10 +1001,14 @@ void gxScene::computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const {
 				u.lightSpotPrm[i][0] = L.Theta; u.lightSpotPrm[i][1] = L.Phi;
 				u.lightSpotPrm[i][2] = 0.0f; u.lightSpotPrm[i][3] = 0.0f;
 			}
-			u.lightPos[i][3] = (float)L.Type;
-			u.lightColor[i][0] = L.Diffuse.r; u.lightColor[i][1] = L.Diffuse.g; u.lightColor[i][2] = L.Diffuse.b;
-			u.lightColor[i][3] = 1.0f;
-			++u.lightCount;
+		u.lightPos[i][3] = (float)L.Type;
+		u.lightColor[i][0] = L.Diffuse.r; u.lightColor[i][1] = L.Diffuse.g; u.lightColor[i][2] = L.Diffuse.b;
+		u.lightColor[i][3] = 1.0f;
+		u.lightSpec[i][0] = L.Specular.r; u.lightSpec[i][1] = L.Specular.g; u.lightSpec[i][2] = L.Specular.b;
+		u.lightSpec[i][3] = 1.0f;
+		u.lightAmb[i][0] = L.Ambient.r; u.lightAmb[i][1] = L.Ambient.g; u.lightAmb[i][2] = L.Ambient.b;
+		u.lightAmb[i][3] = 1.0f;
+		++u.lightCount;
 		}
 	}
 	if (!(fx & FX_NOFOG) && fogmode != FOG_NONE) u.fogParams[3] = (float)fogmode;
