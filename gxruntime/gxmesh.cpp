@@ -13,6 +13,8 @@ gxMesh::gxMesh(gxGraphics* g, IDirect3DVertexBuffer9* vs, IDirect3DIndexBuffer9*
     locked_verts(nullptr), locked_skin_verts(nullptr), locked_indices(nullptr),
     gpu_dirty_vmin(-1), gpu_dirty_vmax(-1), gpu_dirty_tmin(-1), gpu_dirty_tmax(-1), gpu_uploaded(false),
     max_verts(max_vs), max_tris(max_ts), mesh_dirty(false), skinned(false) {
+    cpu_verts = max_vs > 0 ? new dxVertex[max_vs] : nullptr;
+    cpu_indices = (max_ts > 0) ? new WORD[(size_t)max_ts * 3] : nullptr;
     if (g && g->runtime && g->runtime->sdlGpu) {
         gpuMirror = sdlgpu::CreateMesh(g->runtime->sdlGpu, sizeof(dxVertex), max_vs, max_ts);
     }
@@ -24,6 +26,8 @@ gxMesh::gxMesh(gxGraphics* g, IDirect3DVertexBuffer9* vs, IDirect3DIndexBuffer9*
     locked_verts(nullptr), locked_skin_verts(nullptr), locked_indices(nullptr),
     gpu_dirty_vmin(-1), gpu_dirty_vmax(-1), gpu_dirty_tmin(-1), gpu_dirty_tmax(-1), gpu_uploaded(false),
     max_verts(max_vs), max_tris(max_ts), mesh_dirty(false), skinned(true) {
+    cpu_skin_verts = max_vs > 0 ? new dxSkinVertex[max_vs] : nullptr;
+    cpu_indices = (max_ts > 0) ? new WORD[(size_t)max_ts * 3] : nullptr;
     if (g && g->runtime && g->runtime->sdlGpu) {
         gpuMirror = sdlgpu::CreateMesh(g->runtime->sdlGpu, sizeof(dxSkinVertex), max_vs, max_ts);
     }
@@ -37,49 +41,60 @@ gxMesh::~gxMesh() {
     }
     if (vertex_buff) { vertex_buff->Release(); vertex_buff = nullptr; }
     if (index_buff) { index_buff->Release();  index_buff = nullptr; }
+    delete[] cpu_verts; cpu_verts = nullptr;
+    delete[] cpu_skin_verts; cpu_skin_verts = nullptr;
+    delete[] cpu_indices; cpu_indices = nullptr;
 }
 
 bool gxMesh::lock(bool all) {
     if ((locked_verts || locked_skin_verts) && locked_indices) return true;
 
-    // lock vert buffer
     if (skinned) {
-        if (!locked_skin_verts) {
-            DWORD vflags = D3DLOCK_NOSYSLOCK | (all ? D3DLOCK_DISCARD : D3DLOCK_NOOVERWRITE);
-            void* ptr = nullptr;
-            if (FAILED(vertex_buff->Lock(0, 0, &ptr, vflags))) {
-                return false;
-            }
-            locked_skin_verts = reinterpret_cast<dxSkinVertex*>(ptr);
-        }
+        if (!cpu_skin_verts || !cpu_indices) return false;
+        locked_skin_verts = cpu_skin_verts;
     }
-    else if (!locked_verts) {
-        DWORD vflags = D3DLOCK_NOSYSLOCK | (all ? D3DLOCK_DISCARD : D3DLOCK_NOOVERWRITE);
-        void* ptr = nullptr;
-        if (FAILED(vertex_buff->Lock(0, 0, &ptr, vflags))) {
-            return false;
-        }
-        locked_verts = reinterpret_cast<dxVertex*>(ptr);
+    else {
+        if (!cpu_verts || !cpu_indices) return false;
+        locked_verts = cpu_verts;
     }
-
-    // lock index buffer
-    if (!locked_indices) {
-        DWORD iflags = D3DLOCK_NOSYSLOCK | (all ? D3DLOCK_DISCARD : D3DLOCK_NOOVERWRITE);
-        void* ptr = nullptr;
-        if (FAILED(index_buff->Lock(0, 0, &ptr, iflags))) {
-            if (locked_verts) { vertex_buff->Unlock(); locked_verts = nullptr; }
-            if (locked_skin_verts) { vertex_buff->Unlock(); locked_skin_verts = nullptr; }
-            return false;
-        }
-        locked_indices = reinterpret_cast<WORD*>(ptr);
-    }
+    locked_indices = cpu_indices;
 
     if (all) markGpuFullDirty();
     mesh_dirty = false;
     return true;
 }
 
+static void mirrorToD3D(IDirect3DVertexBuffer9* vb, IDirect3DIndexBuffer9* ib,
+    const void* verts, unsigned stride, int vmin, int vmax,
+    const WORD* indices, int tmin, int tmax) {
+    if (vb && verts && vmax >= vmin && vmin >= 0) {
+        void* ptr = nullptr;
+        unsigned off = (unsigned)vmin * stride;
+        unsigned bytes = (unsigned)(vmax - vmin + 1) * stride;
+        if (SUCCEEDED(vb->Lock(off, bytes, &ptr, 0))) {
+            memcpy(ptr, (const char*)verts + off, bytes);
+            vb->Unlock();
+        }
+    }
+    if (ib && indices && tmax >= tmin && tmin >= 0) {
+        void* ptr = nullptr;
+        unsigned off = (unsigned)tmin * 3 * (unsigned)sizeof(WORD);
+        unsigned bytes = (unsigned)(tmax - tmin + 1) * 3 * (unsigned)sizeof(WORD);
+        if (SUCCEEDED(ib->Lock(off, bytes, &ptr, 0))) {
+            memcpy(ptr, (const char*)indices + off, bytes);
+            ib->Unlock();
+        }
+    }
+}
+
 void gxMesh::unlock() {
+    const void* mirrorVerts = skinned ? (const void*)locked_skin_verts : (const void*)locked_verts;
+    const WORD* mirrorIndices = locked_indices;
+    unsigned mirrorStride = skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex);
+    int mirrorVmin = gpu_uploaded ? gpu_dirty_vmin : 0;
+    int mirrorVmax = gpu_uploaded ? gpu_dirty_vmax : max_verts - 1;
+    int mirrorTmin = gpu_uploaded ? gpu_dirty_tmin : 0;
+    int mirrorTmax = gpu_uploaded ? gpu_dirty_tmax : max_tris - 1;
     if (gpuMirror && graphics && graphics->runtime && graphics->runtime->sdlGpu) {
         const void* verts = skinned ? (const void*)locked_skin_verts : (const void*)locked_verts;
         unsigned stride = skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex);
@@ -112,18 +127,13 @@ void gxMesh::unlock() {
             }
         }
     }
-    if (locked_verts) {
-        vertex_buff->Unlock();
-        locked_verts = nullptr;
+    if (mirrorVerts && mirrorIndices) {
+        mirrorToD3D(vertex_buff, index_buff, mirrorVerts, mirrorStride,
+            mirrorVmin, mirrorVmax, mirrorIndices, mirrorTmin, mirrorTmax);
     }
-    if (locked_skin_verts) {
-        vertex_buff->Unlock();
-        locked_skin_verts = nullptr;
-    }
-    if (locked_indices) {
-        index_buff->Unlock();
-        locked_indices = nullptr;
-    }
+    locked_verts = nullptr;
+    locked_skin_verts = nullptr;
+    locked_indices = nullptr;
 }
 
 void gxMesh::backup() {

@@ -61,6 +61,9 @@ private:
     dxVertex* locked_verts;
     dxSkinVertex* locked_skin_verts;
     WORD* locked_indices;
+    dxVertex* cpu_verts = nullptr;
+    dxSkinVertex* cpu_skin_verts = nullptr;
+    WORD* cpu_indices = nullptr;
 
     int gpu_dirty_vmin, gpu_dirty_vmax;
     int gpu_dirty_tmin, gpu_dirty_tmax;
