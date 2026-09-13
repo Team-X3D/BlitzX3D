@@ -115,6 +115,7 @@ public:
 
 	//rendering
 	bool begin(const std::vector<gxLight*>& lights);
+	void invalidateD3DCaches();
 	void clear(const float rgb[3], float alpha, float z, bool clear_argb, bool clear_z);
 	void render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt);
 	void renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* bone_data, int bone_cnt);

@@ -533,6 +533,14 @@ void gxCanvas::damageImpl(const RECT& r, bool cpuSource) const {
     if (cm_mask) updateBitMask(r);
 }
 
+bool gxCanvas::pushAllD3D() const {
+    if (!cpu_bits || cpu_w <= 0 || cpu_h <= 0) return false;
+    RECT full = { 0, 0, cpu_w, cpu_h };
+    if (!pushRectD3D(full)) return false;
+    d3d_dirty = false;
+    return true;
+}
+
 void gxCanvas::damage(const RECT& r) const {
     damageImpl(r, true);
 }

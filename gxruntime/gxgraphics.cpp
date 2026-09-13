@@ -155,6 +155,20 @@ void gxGraphics::getGamma(int r, int g, int b, float* dr, float* dg, float* db) 
 	//bruh
 }
 
+bool gxGraphics::ensureD3DBegun() {
+	if (d3dSceneOpen) return true;
+	if (!dir3dDev) return false;
+	if (dir3dDev->BeginScene() != D3D_OK) return false;
+	d3dSceneOpen = true;
+	return true;
+}
+
+void gxGraphics::endD3DScene() {
+	if (!d3dSceneOpen) return;
+	d3dSceneOpen = false;
+	if (dir3dDev) dir3dDev->EndScene();
+}
+
 bool gxGraphics::restore() {
 	if (!dir3dDev) return false;
 
@@ -209,6 +223,12 @@ bool gxGraphics::restore() {
 		for (auto it = mesh_set.begin(); it != mesh_set.end(); ++it) {
 			(*it)->restore();
 		}
+
+		d3dSceneOpen = false;
+		for (auto scene : scene_set) scene->invalidateD3DCaches();
+		for (auto it = canvas_set.begin(); it != canvas_set.end(); ++it) (*it)->pushAllD3D();
+		if (back_canvas) back_canvas->pushAllD3D();
+		if (front_canvas && front_canvas != back_canvas) front_canvas->pushAllD3D();
 
 		for (auto font : font_set) {
 			for (auto atlas : font->atlases) {

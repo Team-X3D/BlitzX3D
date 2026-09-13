@@ -11,6 +11,7 @@
 
 static bool can_wb;
 static int  hw_tex_stages, tex_stages;
+static gxScene* t_lastD3DScene = nullptr;
 static float BLACK[] = { 0,0,0 };
 static float WHITE[] = { 1,1,1 };
 static float GRAY[] = { .5f,.5f,.5f };
@@ -226,6 +227,7 @@ gxScene::gxScene(gxGraphics* g, gxCanvas* t) :
 }
 
 gxScene::~gxScene() {
+	if (t_lastD3DScene == this) t_lastD3DScene = nullptr;
 	while(_allLights.size()) freeLight(*_allLights.begin());
 	if (graphics && graphics->runtime && graphics->runtime->sdlGpu) {
 		sdlgpu::ReleaseSceneTargets(graphics->runtime->sdlGpu, gpuFrame);
@@ -763,15 +765,24 @@ void gxScene::setRenderState(const RenderState& rs) {
 	lastRenderStateValid = true;
 }
 
-bool gxScene::begin(const std::vector<gxLight*>& lights) {
-
-	if(dir3dDev->BeginScene() != D3D_OK) return false;
-
-	lastRenderStateValid = false;
+void gxScene::invalidateD3DCaches() {
 	memset(d3d_rs, 0x55, sizeof(d3d_rs));
 	memset(d3d_tss, 0x55, sizeof(d3d_tss));
 	memset(d3d_samp, 0x55, sizeof(d3d_samp));
 	memset(d3d_tex, 0x55, sizeof(d3d_tex));
+}
+
+bool gxScene::begin(const std::vector<gxLight*>& lights) {
+	bool sdl = graphics && graphics->runtime && graphics->runtime->sdlGpu;
+	if (sdl) {
+		if (t_lastD3DScene != this) { invalidateD3DCaches(); t_lastD3DScene = this; }
+	}
+	else {
+		if (!graphics->ensureD3DBegun()) return false;
+		invalidateD3DCaches();
+	}
+
+	lastRenderStateValid = false;
 	blend = fx = ~0;
 	shininess = -1;
 
@@ -1123,7 +1134,7 @@ void gxScene::end() {
 	}
 	n_texs = n_texs > 1 ? 1 : n_texs;
 	lastRenderStateValid = false;
-	dir3dDev->EndScene();
+	if (graphics) graphics->endD3DScene();
 	RECT r = { (LONG)viewport.X, (LONG)viewport.Y, (LONG)(viewport.X + viewport.Width), (LONG)(viewport.Y + viewport.Height) };
 	if (graphics && graphics->runtime && graphics->runtime->sdlGpu && gpuOnlyFrame && gpuFrame.drew3D) target->damageScene(r);
 	else target->damageD3D(r);

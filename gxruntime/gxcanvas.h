@@ -60,6 +60,7 @@ public:
 	void damage(const RECT& r)  const;
 	void damageD3D(const RECT& r) const;
 	void damageScene(const RECT& r) const;
+	bool pushAllD3D() const;
 
 	void set2DEffect(gxEffect* effect);
 	gxEffect* get2DEffect() const;

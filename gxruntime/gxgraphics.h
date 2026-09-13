@@ -40,6 +40,9 @@ public:
 	bool restore();
 
 	gxRuntime* runtime;
+	bool d3dSceneOpen = false;
+	bool ensureD3DBegun();
+	void endD3DScene();
 	//std::set<std::set<std::any>*> custom_set;
 
 private:

@@ -147,6 +147,7 @@ void gxMesh::restore() {
 void gxMesh::render(int first_vert, int vert_cnt, int first_tri, int tri_cnt, bool skipDxDraw) {
     unlock();
     if (skipDxDraw) return;
+    if (!graphics->ensureD3DBegun()) return;
 
     IDirect3DDevice9* dev = graphics->dir3dDev;
 
@@ -167,6 +168,7 @@ void gxMesh::render(int first_vert, int vert_cnt, int first_tri, int tri_cnt, bo
 void gxMesh::renderSkinned(int first_vert, int vert_cnt, int first_tri, int tri_cnt,
     const float* bone_data, int bone_cnt) {
     unlock();
+    if (!graphics->ensureD3DBegun()) return;
 
     IDirect3DDevice9* dev = graphics->dir3dDev;
     IDirect3DVertexShader9* shader = graphics->getSkinningShader();
