@@ -234,8 +234,7 @@ bool MeshModel::render(const RenderContext& rc) {
 	const Box& b = rep->getCullBox();
 	if(b.empty()) return false;
 
-	static Frustum model_frustum;
-	new(&model_frustum) Frustum(rc.getWorldFrustum(), -getRenderTform());
+	Frustum model_frustum(rc.getWorldFrustum(), -getRenderTform());
 	if(!model_frustum.cull(b)) return false;
 
 	if(brush_changes != rep->brush_changes) {

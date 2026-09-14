@@ -123,7 +123,7 @@ bool Sprite::render(const RenderContext& rc) {
 
 	t.m = t.m * rollMatrix(r_rot) * scaleMatrix(r_xscale, r_yscale, 1);
 
-	static Vector verts[4];
+	Vector verts[4];
 	verts[0] = t * Vector(-1 - xhandle, 1 - yhandle, 0);
 	verts[1] = t * Vector(1 - xhandle, 1 - yhandle, 0);
 	verts[2] = t * Vector(1 - xhandle, -1 - yhandle, 0);

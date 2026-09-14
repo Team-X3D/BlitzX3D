@@ -1179,10 +1179,11 @@ void gxScene::renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int firs
 		if (!skipGpu) {
 			SDL_GPUDevice* dev = gpuFrame.dev ? gpuFrame.dev : (graphics && graphics->runtime ? (SDL_GPUDevice*)graphics->runtime->sdlGpu : nullptr);
 			SDL_GPUBuffer* bones = nullptr;
-			if (dev && !gpuFrame.active() && gpuFrame.cmds && sdlgpu::UploadBonesBatched(dev, gpuFrame.cmds, bone_data, (unsigned)bone_cnt))
-				bones = sdlgpu::EnsureBoneBuffer(dev);
-			else if (dev && sdlgpu::UploadBones(dev, bone_data, (unsigned)bone_cnt))
-				bones = sdlgpu::EnsureBoneBuffer(dev);
+			if (dev && gpuFrame.ready()) {
+				if (gpuFrame.active()) sdlgpu::EndSceneFrame(gpuFrame);
+				if (gpuFrame.cmds && sdlgpu::UploadBonesBatched(dev, gpuFrame.cmds, bone_data, (unsigned)bone_cnt))
+					bones = sdlgpu::EnsureBoneBuffer(dev);
+			}
 			if (!bones) skipGpu = true;
 		}
 		if (!skipGpu && !gpuFrame.active()) {

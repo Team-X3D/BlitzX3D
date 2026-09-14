@@ -1,5 +1,9 @@
 #include "std.h"
+#include <algorithm>
 #include <queue>
+#include <thread>
+#include <utility>
+#include <vector>
 #include "world.h"
 
 //0=tris compared for collision
@@ -333,6 +337,37 @@ struct TransComp {
 	}
 };
 
+namespace {
+
+constexpr size_t kParThreshold = 256;
+
+template<typename Fn>
+void parallel_for(size_t n, Fn&& fn) {
+	if(!n) return;
+	unsigned hc = std::thread::hardware_concurrency();
+	if(hc <= 1 || n < kParThreshold) {
+		for(size_t i = 0; i < n; ++i) fn(i);
+		return;
+	}
+	size_t num_threads = hc > n ? n : hc;
+	size_t chunk = (n + num_threads - 1) / num_threads;
+	std::vector<std::thread> workers;
+	workers.reserve(num_threads - 1);
+	for(size_t t = 1; t < num_threads; ++t) {
+		size_t begin = t * chunk;
+		size_t end = begin + chunk > n ? n : begin + chunk;
+		if(begin >= end) break;
+		workers.emplace_back([&, begin, end] {
+			for(size_t i = begin; i < end; ++i) fn(i);
+		});
+	}
+	size_t end0 = chunk > n ? n : chunk;
+	for(size_t i = 0; i < end0; ++i) fn(i);
+	for(auto& w : workers) w.join();
+}
+
+}
+
 static std::vector<Model*> ord_mods, unord_mods;
 
 static std::priority_queue<Model*, std::vector<Model*>, OrderComp> ord_que;
@@ -425,13 +460,17 @@ void World::render(Camera* cam, Mirror* mirror) {
 	}
 
 	gx_scene->setZMode(gxScene::ZMODE_NORMAL);
+	std::vector<char> fadeOk(unord_mods.size());
+	parallel_for(unord_mods.size(), [&](size_t i) {
+		fadeOk[i] = unord_mods[i]->doAutoFade(cam_tform.v);
+	});
 	std::map<Brush, std::vector<Model*>> buckets;
-	for (Model* mod : unord_mods) {
-		buckets[mod->getBrush()].push_back(mod);
+	for (size_t i = 0; i < unord_mods.size(); ++i) {
+		if(!fadeOk[i]) continue;
+		buckets[unord_mods[i]->getBrush()].push_back(unord_mods[i]);
 	}
 	for (auto& bucket : buckets) {
 		for (Model* mod : bucket.second) {
-			if (!mod->doAutoFade(cam_tform.v)) continue;
 			render(mod, rc);
 		}
 	}
@@ -533,13 +572,19 @@ void World::renderEntity(Camera* cam, Entity* target, float tween) {
 }
 
 void World::flushTransparent() {
-	std::sort(transparents.begin(), transparents.end(), [](const Model* a, const Model* b) {
-			float da = cam_tform.v.distance(a->getRenderTform().v);
-			float db = cam_tform.v.distance(b->getRenderTform().v);
-			return da > db; 
-		});
+	size_t n = transparents.size();
+	if(!n) return;
+	std::vector<std::pair<float, Model*>> items(n);
+	parallel_for(n, [&](size_t i) {
+		Model* mod = transparents[i];
+		items[i] = { cam_tform.v.distance(mod->getRenderTform().v), mod };
+	});
+	std::sort(items.begin(), items.end(), [](const auto& a, const auto& b) {
+		return a.first > b.first;
+	});
 	bool local = true;
-	for (auto mod : transparents) {
+	for (auto& it : items) {
+		Model* mod = it.second;
 		if (mod->getRenderSpace() == Model::RENDER_SPACE_LOCAL) {
 			gx_scene->setWorldMatrix((gxScene::Matrix*)&mod->getRenderTform());
 			local = true;
