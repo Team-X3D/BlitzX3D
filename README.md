@@ -36,7 +36,7 @@ Need help, have a question, or found a problem?
 * [**SCP – Terror Hunt**](https://www.moddb.com/mods/scp-terror-hunt-mod)
 * [**SCP – Containment Breach Amended**](https://www.moddb.com/mods/scp-amended1)
 * [**SCP – Treachery**](https://www.moddb.com/mods/treachery)
-* **YOU ARE NOT IMPORTANT** (ModDB TBD)
+* [**YOU ARE NOT IMPORTANT**](https://www.moddb.com/mods/you-are-not-important)
 
 <table>
   <tr>
@@ -110,7 +110,7 @@ well as third-party components. Those portions remain licensed under their
 respective original licenses and are not relicensed by BlitzX3D.
 
 Original contributions to BlitzX3D by Chris A. (krimbopple) are licensed under
-the GNU General Public License, version 3 (GPLv3).
+the MIT License (see LICENSE).
 
 
 ---

@@ -522,6 +522,7 @@ void App::menuBar() {
 			ImGui::EndMenu();
 		}
 		if (ImGui::MenuItem("Project...")) openProjectWindow();
+		if (ImGui::MenuItem("Open User libs folder")) SDL_OpenURL((prefs.homeDir + "/userlibs").c_str());
 		ImGui::Separator();
 		if (ImGui::MenuItem("Exit", "Alt+F4")) requestQuit();
 		ImGui::EndMenu();
