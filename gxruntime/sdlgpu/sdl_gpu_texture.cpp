@@ -1,4 +1,5 @@
 #include "sdl_gpu_texture.h"
+#include "sdl_gpu_lock.h"
 
 #include "../std.h"
 #include "../gxcanvas.h"
@@ -30,6 +31,7 @@ static void RetireTexture(SDL_GPUDevice* dev, SDL_GPUTexture* tex) {
 }
 
 void TeardownTexturePools(SDL_GPUDevice* dev) {
+	GpuLock lock;
 	for (auto it = g_canvasTexMap.begin(); it != g_canvasTexMap.end(); ) {
 		if (!dev || it->second.dev == dev) {
 			if (it->second.tex) SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
@@ -45,6 +47,7 @@ void TeardownTexturePools(SDL_GPUDevice* dev) {
 }
 
 void InvalidateCanvasTextures(::gxCanvas* canvas) {
+	GpuLock lock;
 	if (!canvas) return;
 	auto it = g_canvasTexMap.find(canvas);
 	if (it != g_canvasTexMap.end()) {
@@ -59,6 +62,7 @@ void InvalidateCanvasTextures(::gxCanvas* canvas) {
 }
 
 SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
+	GpuLock lock;
 	if (!dev || !canvas) return nullptr;
 	unsigned w = (unsigned)canvas->getWidth();
 	unsigned h = (unsigned)canvas->getHeight();
@@ -110,6 +114,7 @@ SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 }
 
 SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
+	GpuLock lock;
 	if (!dev || !canvas) return nullptr;
 	unsigned w = (unsigned)canvas->getWidth();
 	unsigned h = (unsigned)canvas->getHeight();
@@ -157,6 +162,7 @@ SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) 
 }
 
 SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUCommandBuffer* cmds, bool* didUpload) {
+	GpuLock lock;
 	if (didUpload) *didUpload = false;
 	if (!dev || !canvas) return nullptr;
 	unsigned w = (unsigned)canvas->getWidth();

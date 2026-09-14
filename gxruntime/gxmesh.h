@@ -6,7 +6,7 @@
 
 class gxGraphics;
 
-namespace sdlgpu { struct GpuMesh; }
+namespace sdlgpu { struct GpuMesh; struct UploadHandle; }
 
 class gxMesh {
 public:
@@ -93,13 +93,16 @@ private:
     }
 
     sdlgpu::GpuMesh* gpuMirror = nullptr;
+    sdlgpu::UploadHandle* gpuUpload = nullptr;
+
+    void syncGpuUpload();
 
     /***** GX INTERFACE *****/
 public:
     bool lock(bool all);
     void unlock();
 
-    sdlgpu::GpuMesh* getGpuMirror() const { return gpuMirror; }
+    sdlgpu::GpuMesh* getGpuMirror();
 
     void setVertex(int n, const void* v) {
         memcpy(locked_verts + n, v, sizeof(dxVertex));

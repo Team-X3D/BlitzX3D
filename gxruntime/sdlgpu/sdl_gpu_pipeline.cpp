@@ -1,5 +1,7 @@
 #include "sdl_gpu_pipeline.h"
+#include "sdl_gpu_lock.h"
 #include "sdl_gpu_mesh.h"
+#include "sdl_gpu_upload.h"
 
 #include "../std.h"
 
@@ -43,6 +45,7 @@ namespace sdlgpu {
 	}
 
 	static void TeardownBlit() {
+		GpuLock lock;
 		if (g_blitTex && g_blitDev) SDL_ReleaseGPUTexture(g_blitDev, g_blitTex);
 		g_blitTex = nullptr;
 		g_blitDev = nullptr;
@@ -51,6 +54,7 @@ namespace sdlgpu {
 	}
 
 	static bool EnsureBlitTexture(SDL_GPUDevice* dev, unsigned w, unsigned h) {
+		GpuLock lock;
 		if (g_blitTex && g_blitDev == dev && g_blitW == w && g_blitH == h) return true;
 		if (g_blitTex) {
 			SDL_ReleaseGPUTexture(g_blitDev, g_blitTex);
@@ -77,6 +81,7 @@ namespace sdlgpu {
 	}
 
 	bool PresentBlit(SDL_GPUDevice* dev, SDL_Window* win, float r, float g, float b, unsigned w, unsigned h, const void* px) {
+		GpuLock lock;
 		if (!dev || !win || !w || !h) return false;
 		if (!EnsureBlitTexture(dev, w, h)) return false;
 
@@ -198,6 +203,7 @@ namespace sdlgpu {
 	}
 
 	static void TeardownMeshPipe() {
+		GpuLock lock;
 		for (auto& e : g_meshPipes) if (e.pipe && g_meshDev) SDL_ReleaseGPUGraphicsPipeline(g_meshDev, e.pipe);
 		g_meshPipes.clear();
 		for (auto& e : g_meshSamps) if (e.samp && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, e.samp);
@@ -210,6 +216,7 @@ namespace sdlgpu {
 	}
 
 	static SDL_GPUSampler* EnsureMeshSampler(SDL_GPUDevice* dev, bool wrapU, bool wrapV, bool point) {
+		GpuLock lock;
 		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
 		MeshSampKey key{ wrapU, wrapV, point };
 		for (auto& e : g_meshSamps) {
@@ -228,6 +235,7 @@ namespace sdlgpu {
 	}
 
 	static void TeardownCanvas() {
+		GpuLock lock;
 		if (g_canvasVB && g_canvasDev) SDL_ReleaseGPUBuffer(g_canvasDev, g_canvasVB);
 		if (g_canvasPipe && g_canvasDev) SDL_ReleaseGPUGraphicsPipeline(g_canvasDev, g_canvasPipe);
 		if (g_canvasSamp && g_canvasDev) SDL_ReleaseGPUSampler(g_canvasDev, g_canvasSamp);
@@ -241,12 +249,14 @@ namespace sdlgpu {
 	static bool EnsureCanvasVertices(SDL_GPUDevice* dev);
 
 	static void TeardownWhiteTexture() {
+		GpuLock lock;
 		if (g_whiteTex && g_whiteDev) SDL_ReleaseGPUTexture(g_whiteDev, g_whiteTex);
 		g_whiteTex = nullptr;
 		g_whiteDev = nullptr;
 	}
 
 	static SDL_GPUTextureFormat PickMeshDepthFormat(SDL_GPUDevice* dev) {
+		GpuLock lock;
 		if (dev && dev == g_depthFmtDev && g_depthFmt != SDL_GPU_TEXTUREFORMAT_INVALID)
 			return g_depthFmt;
 		SDL_GPUTextureFormat picked = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
@@ -279,6 +289,7 @@ namespace sdlgpu {
 	}
 
 	static SDL_GPUTexture* EnsureWhiteTexture(SDL_GPUDevice* dev) {
+		GpuLock lock;
 		if (g_whiteTex && g_whiteDev == dev) return g_whiteTex;
 		TeardownWhiteTexture();
 		SDL_GPUTextureCreateInfo info{};
@@ -325,6 +336,7 @@ namespace sdlgpu {
 	}
 
 	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, bool skinned, bool twoTex, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode, bool wireframe) {
+		GpuLock lock;
 		SDL_GPUTextureFormat fmt = colorFormatOverride ? (SDL_GPUTextureFormat)colorFormatOverride : SDL_GetGPUSwapchainTextureFormat(dev, win);
 		SDL_GPUTextureFormat depthFmt = depthFormatOverride ? (SDL_GPUTextureFormat)depthFormatOverride : PickMeshDepthFormat(dev);
 		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
@@ -479,6 +491,7 @@ namespace sdlgpu {
 	}
 
 	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshDrawParams& p) {
+		GpuLock lock;
 		if (!dev || !cmds || !pass || !mesh || !uniforms || !uniformBytes || !indexCount) return;
 		if (!colorFormat && !win) return;
 		if (startIndex + indexCount > mesh->maxTris * 3u) return;
@@ -526,6 +539,7 @@ namespace sdlgpu {
 	}
 
 	static bool EnsureCanvasPipeline(SDL_GPUDevice* dev, SDL_GPUTextureFormat swapFormat) {
+		GpuLock lock;
 		if (g_canvasPipe && g_canvasSamp && g_canvasVB && g_canvasDev == dev && g_canvasFormat == swapFormat) return true;
 		TeardownCanvas();
 		SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
@@ -585,6 +599,7 @@ namespace sdlgpu {
 	}
 
 	static bool EnsureCanvasVertices(SDL_GPUDevice* dev) {
+		GpuLock lock;
 		if (g_canvasVB && g_canvasDev == dev) return true;
 		if (g_canvasVB) { SDL_ReleaseGPUBuffer(g_canvasDev, g_canvasVB); g_canvasVB = nullptr; }
 		struct V { float x, y, u, v; };
@@ -610,6 +625,7 @@ namespace sdlgpu {
 	}
 
 	void DrawCanvasOverlay(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass, SDL_GPUTexture* tex) {
+		GpuLock lock;
 		if (!dev || !pass || !tex) return;
 		SDL_GPUTextureFormat fmt = win ? SDL_GetGPUSwapchainTextureFormat(dev, win) : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
 		if (!EnsureCanvasPipeline(dev, fmt)) return;
@@ -623,6 +639,8 @@ namespace sdlgpu {
 	}
 
 	void TeardownPipelines() {
+		GpuLock lock;
+		ShutdownUploads();
 		TeardownBlit();
 		TeardownMeshPipe();
 		TeardownCanvas();
@@ -643,6 +661,7 @@ namespace sdlgpu {
 	}
 
 	void ClearTransferPool(SDL_GPUDevice* dev) {
+		GpuLock lock;
 		for (auto it = g_transferPool.begin(); it != g_transferPool.end(); ) {
 			if (!dev || it->dev == dev) {
 				SDL_ReleaseGPUTransferBuffer(it->dev, it->buf);
@@ -657,6 +676,7 @@ namespace sdlgpu {
 	}
 
 	SDL_GPUTransferBuffer* AcquireUploadTransferBuffer(SDL_GPUDevice* dev, Uint32 size) {
+		GpuLock lock;
 		if (!dev || !size) return nullptr;
 		for (auto it = g_transferPool.begin(); it != g_transferPool.end(); ++it) {
 			if (it->dev == dev && it->size >= size) {
@@ -673,6 +693,7 @@ namespace sdlgpu {
 		return buf;
 	}
 	void ReleaseUploadTransferBuffer(SDL_GPUDevice* dev, SDL_GPUTransferBuffer* buf) {
+		GpuLock lock;
 		if (!dev || !buf) return;
 		auto sit = g_transferSizes.find(buf);
 		Uint32 size = (sit != g_transferSizes.end() && sit->second.dev == dev) ? sit->second.size : 0;

@@ -85,14 +85,17 @@
     <ClCompile Include="sdl_gpu_pipeline.cpp" />
     <ClCompile Include="sdl_gpu_scene.cpp" />
     <ClCompile Include="sdl_gpu_text.cpp" />
+    <ClCompile Include="sdl_gpu_upload.cpp" />
     <ClCompile Include="sdl_gpu_texture.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="sdl_gpu_context.h" />
+    <ClInclude Include="sdl_gpu_lock.h" />
     <ClInclude Include="sdl_gpu_mesh.h" />
     <ClInclude Include="sdl_gpu_pipeline.h" />
     <ClInclude Include="sdl_gpu_scene.h" />
     <ClInclude Include="sdl_gpu_text.h" />
+    <ClInclude Include="sdl_gpu_upload.h" />
     <ClInclude Include="sdl_gpu_texture.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

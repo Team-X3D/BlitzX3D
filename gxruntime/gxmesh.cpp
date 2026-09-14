@@ -4,6 +4,9 @@
 
 #include "gxruntime.h"
 #include "sdlgpu/sdl_gpu_mesh.h"
+#include "sdlgpu/sdl_gpu_upload.h"
+
+#include <vector>
 
 extern gxRuntime* gx_runtime;
 
@@ -35,6 +38,7 @@ gxMesh::gxMesh(gxGraphics* g, IDirect3DVertexBuffer9* vs, IDirect3DIndexBuffer9*
 
 gxMesh::~gxMesh() {
     unlock();
+    syncGpuUpload();
     if (graphics && graphics->runtime && gpuMirror) {
         sdlgpu::ReleaseMesh(graphics->runtime->sdlGpu, gpuMirror);
         gpuMirror = nullptr;
@@ -87,7 +91,51 @@ static void mirrorToD3D(IDirect3DVertexBuffer9* vb, IDirect3DIndexBuffer9* ib,
     }
 }
 
+struct MeshUploadJob {
+    SDL_GPUDevice* dev = nullptr;
+    sdlgpu::GpuMesh* mirror = nullptr;
+    std::vector<char> verts;
+    std::vector<char> indices;
+    unsigned vOff = 0;
+    unsigned iOff = 0;
+    bool full = false;
+};
+
+static bool RecordMeshUpload(void* ctx) {
+    MeshUploadJob* job = (MeshUploadJob*)ctx;
+    bool ok;
+    if (job->full) {
+        ok = sdlgpu::UploadMesh(job->dev, job->mirror,
+            job->verts.data(), (unsigned)job->verts.size(),
+            job->indices.data(), (unsigned)job->indices.size());
+    } else {
+        ok = sdlgpu::UploadMeshRange(job->dev, job->mirror,
+            job->verts.empty() ? nullptr : job->verts.data(), job->vOff, (unsigned)job->verts.size(),
+            job->indices.empty() ? nullptr : job->indices.data(), job->iOff, (unsigned)job->indices.size());
+    }
+    delete job;
+    return ok;
+}
+
+void gxMesh::syncGpuUpload() {
+    if (!gpuUpload) return;
+    sdlgpu::UploadHandle* h = gpuUpload;
+    gpuUpload = nullptr;
+    if (sdlgpu::WaitUpload(h)) {
+        gpu_dirty_vmin = gpu_dirty_vmax = gpu_dirty_tmin = gpu_dirty_tmax = -1;
+        gpu_uploaded = true;
+    } else {
+        markGpuFullDirty();
+    }
+}
+
+sdlgpu::GpuMesh* gxMesh::getGpuMirror() {
+    syncGpuUpload();
+    return gpuMirror;
+}
+
 void gxMesh::unlock() {
+    syncGpuUpload();
     const void* mirrorVerts = skinned ? (const void*)locked_skin_verts : (const void*)locked_verts;
     const WORD* mirrorIndices = locked_indices;
     unsigned mirrorStride = skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex);
@@ -100,11 +148,14 @@ void gxMesh::unlock() {
         unsigned stride = skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex);
         if (verts && locked_indices) {
             SDL_GPUDevice* dev = (SDL_GPUDevice*)graphics->runtime->sdlGpu;
-            bool ok = true;
+            MeshUploadJob* job = nullptr;
             if (!gpu_uploaded) {
-                ok = sdlgpu::UploadMesh(dev, gpuMirror,
-                    verts, stride * (unsigned)max_verts,
-                    locked_indices, (unsigned)sizeof(WORD) * (unsigned)max_tris * 3);
+                job = new MeshUploadJob;
+                job->dev = dev;
+                job->mirror = gpuMirror;
+                job->full = true;
+                job->verts.assign((const char*)verts, (const char*)verts + stride * (unsigned)max_verts);
+                job->indices.assign((const char*)locked_indices, (const char*)locked_indices + (unsigned)sizeof(WORD) * (unsigned)max_tris * 3);
             } else if (gpu_dirty_vmin >= 0 || gpu_dirty_tmin >= 0) {
                 unsigned vOff = 0, vBytes = 0, iOff = 0, iBytes = 0;
                 if (gpu_dirty_vmin >= 0) {
@@ -116,15 +167,17 @@ void gxMesh::unlock() {
                     iBytes = (unsigned)(gpu_dirty_tmax - gpu_dirty_tmin + 1) * 3 * (unsigned)sizeof(WORD);
                 }
                 if (vBytes || iBytes) {
-                    const char* vb = (const char*)verts + vOff;
-                    const char* ib = (const char*)locked_indices + iOff;
-                    ok = sdlgpu::UploadMeshRange(dev, gpuMirror, vb, vOff, vBytes, ib, iOff, iBytes);
+                    job = new MeshUploadJob;
+                    job->dev = dev;
+                    job->mirror = gpuMirror;
+                    job->full = false;
+                    job->vOff = vOff;
+                    job->iOff = iOff;
+                    if (vBytes) job->verts.assign((const char*)verts + vOff, (const char*)verts + vOff + vBytes);
+                    if (iBytes) job->indices.assign((const char*)locked_indices + iOff, (const char*)locked_indices + iOff + iBytes);
                 }
             }
-            if (ok) {
-                gpu_dirty_vmin = gpu_dirty_vmax = gpu_dirty_tmin = gpu_dirty_tmax = -1;
-                gpu_uploaded = true;
-            }
+            if (job) gpuUpload = sdlgpu::EnqueueUpload(RecordMeshUpload, job);
         }
     }
     if (mirrorVerts && mirrorIndices) {

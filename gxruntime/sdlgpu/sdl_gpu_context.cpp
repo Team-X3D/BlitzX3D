@@ -1,4 +1,5 @@
 #include "sdl_gpu_context.h"
+#include "sdl_gpu_lock.h"
 
 #include "../std.h"
 
@@ -16,6 +17,7 @@
 #include "../gxinput.h"
 
 #include <unordered_map>
+#include <mutex>
 
 namespace sdlgpu {
 
@@ -121,10 +123,12 @@ void DestroyGPUDevice(SDL_GPUDevice* dev) {
 
 namespace {
 	static std::unordered_map<SDL_Window*, SDL_GPUPresentMode> s_vsyncLastMode;
+	static std::once_flag s_motionFlag;
 }
 
 bool ClaimWindow(SDL_GPUDevice* dev, SDL_Window* win) {
 	if (!dev || !win) return false;
+	GpuLock lock;
 	if (!SDL_ClaimWindowForGPUDevice(dev, win)) return false;
 	if (SDL_SetGPUSwapchainParameters(dev, win, SDL_GPU_SWAPCHAINCOMPOSITION_SDR, SDL_GPU_PRESENTMODE_VSYNC))
 		s_vsyncLastMode[win] = SDL_GPU_PRESENTMODE_VSYNC;
@@ -133,12 +137,14 @@ bool ClaimWindow(SDL_GPUDevice* dev, SDL_Window* win) {
 
 void ReleaseWindow(SDL_GPUDevice* dev, SDL_Window* win) {
 	if (!dev || !win) return;
+	GpuLock lock;
 	s_vsyncLastMode.erase(win);
 	SDL_ReleaseWindowFromGPUDevice(dev, win);
 }
 
 void SetVSync(SDL_GPUDevice* dev, SDL_Window* win, bool vsync) {
 	if (!dev || !win) return;
+	GpuLock lock;
 	SDL_GPUPresentMode want = vsync ? SDL_GPU_PRESENTMODE_VSYNC : SDL_GPU_PRESENTMODE_IMMEDIATE;
 	auto it = s_vsyncLastMode.find(win);
 	SDL_GPUPresentMode cur = (it != s_vsyncLastMode.end()) ? it->second : SDL_GPU_PRESENTMODE_VSYNC;
@@ -320,11 +326,7 @@ static void ForwardMouseMove(SDL_Window* win, gxRuntime* rt, int px, int py) {
 
 void PumpEvents(SDL_Window* win, gxRuntime* rt) {
 	if (!win || !rt) return;
-	static bool s_motionPolled = false;
-	if (!s_motionPolled) {
-		SDL_SetEventEnabled(SDL_EVENT_MOUSE_MOTION, false);
-		s_motionPolled = true;
-	}
+	std::call_once(s_motionFlag, [] { SDL_SetEventEnabled(SDL_EVENT_MOUSE_MOTION, false); });
 	SDL_Event ev;
 	while (SDL_PollEvent(&ev)) {
 		switch (ev.type) {

@@ -1,4 +1,5 @@
 #include "sdl_gpu_mesh.h"
+#include "sdl_gpu_lock.h"
 #include "sdl_gpu_pipeline.h"
 
 #include "../std.h"
@@ -116,6 +117,7 @@ namespace {
 }
 
 SDL_GPUBuffer* EnsureBoneBuffer(SDL_GPUDevice* dev) {
+	GpuLock lock;
 	if (g_boneBuf && g_boneDev == dev) return g_boneBuf;
 	ReleaseBones(g_boneDev);
 	if (!dev) return nullptr;
@@ -130,6 +132,7 @@ SDL_GPUBuffer* EnsureBoneBuffer(SDL_GPUDevice* dev) {
 }
 
 bool UploadBonesBatched(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, const float* boneData, unsigned boneCount) {
+	GpuLock lock;
 	if (!dev || !cmds || !boneData || !boneCount) return false;
 	if (boneCount > kMaxBones) boneCount = kMaxBones;
 	SDL_GPUBuffer* dst = EnsureBoneBuffer(dev);
@@ -156,6 +159,7 @@ bool UploadBonesBatched(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, const fl
 }
 
 bool UploadBones(SDL_GPUDevice* dev, const float* boneData, unsigned boneCount) {
+	GpuLock lock;
 	if (!dev || !boneData || !boneCount) return false;
 	if (boneCount > kMaxBones) boneCount = kMaxBones;
 	if (!EnsureBoneBuffer(dev)) return false;
@@ -183,6 +187,7 @@ bool UploadBones(SDL_GPUDevice* dev, const float* boneData, unsigned boneCount) 
 }
 
 void ReleaseBones(SDL_GPUDevice* dev) {
+	GpuLock lock;
 	if (g_boneBuf && (!dev || g_boneDev == dev)) {
 		SDL_ReleaseGPUBuffer(g_boneDev, g_boneBuf);
 		g_boneBuf = nullptr;
