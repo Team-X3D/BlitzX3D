@@ -419,6 +419,12 @@ void gxRuntime::flip(bool vwait) {
 		if (msg.message == WM_STOP) { if (!suspended) forceSuspend(); continue; }
 		if (msg.message == WM_RUN) { if (suspended) forceResume(); continue; }
 		if (msg.message == WM_END) { debugger = 0; run_flag = false; return; }
+		if (msg.message == WM_MOUSEMOVE) {
+			MSG peek;
+			while (PeekMessage(&peek, msg.hwnd, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE)) {
+				msg = peek;
+			}
+		}
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 		if (!run_flag) {
@@ -720,6 +726,14 @@ bool gxRuntime::idle() {
 		else {
 			if(!PeekMessageW(&msg, 0, 0, 0, PM_REMOVE)) return run_flag;
 		}
+
+		if (msg.message == WM_MOUSEMOVE) {
+			MSG peek;
+			while (PeekMessageW(&peek, msg.hwnd, WM_MOUSEMOVE, WM_MOUSEMOVE, PM_REMOVE)) {
+				msg = peek;
+			}
+		}
+
 		switch(msg.message) {
 			case WM_STOP:
 				if(!suspended) forceSuspend();

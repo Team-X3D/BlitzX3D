@@ -168,6 +168,8 @@ private:
 
 	sdlgpu::GpuSceneFrame gpuFrame;
 	bool gpuOnlyFrame = true;
+	bool gpuWinHidden = false;
+	bool gpuShadersOk = false;
 
 	bool bumpNormalize = false;
 	float bumpUniformScale = 1.0f;

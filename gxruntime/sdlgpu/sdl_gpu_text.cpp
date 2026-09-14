@@ -10,6 +10,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3/SDL_properties.h>
 
 #include "shaders/text_shaders.h"
 
@@ -117,7 +118,7 @@ SDL_GPUTexture* EnsureTextWhite(SDL_GPUDevice* dev) {
 	unsigned char white[4] = { 255, 255, 255, 255 };
 	SDL_GPUTransferBuffer* buf = AcquireUploadTransferBuffer(dev, 4);
 	if (!buf) { SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
-	void* dst = SDL_MapGPUTransferBuffer(dev, buf, false);
+	void* dst = SDL_MapGPUTransferBuffer(dev, buf, true);
 	if (!dst) { ReleaseUploadTransferBuffer(dev, buf); SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	memcpy(dst, white, 4);
 	SDL_UnmapGPUTransferBuffer(dev, buf);
@@ -244,7 +245,12 @@ bool EnsureTextPipe(SDL_GPUDevice* dev, SDL_Window* win) {
 	info.target_info.num_color_targets = 1;
 	info.target_info.color_target_descriptions = &tgt;
 	info.target_info.has_depth_stencil_target = false;
+	SDL_PropertiesID textProps = SDL_CreateProperties();
+	if (textProps) SDL_SetStringProperty(textProps, SDL_PROP_GPU_GRAPHICSPIPELINE_CREATE_NAME_STRING, "b3d_text");
+	info.props = textProps;
 	g_textPipe = SDL_CreateGPUGraphicsPipeline(dev, &info);
+	if (textProps) SDL_DestroyProperties(textProps);
+	info.props = 0;
 	SDL_ReleaseGPUShader(dev, vs);
 	SDL_ReleaseGPUShader(dev, ps);
 	if (!g_textPipe) {

@@ -829,6 +829,8 @@ bool gxScene::begin(const std::vector<gxLight*>& lights) {
 	setRS(D3DRS_MULTISAMPLEANTIALIAS, antialias ? TRUE : FALSE);
 
 	gpuOnlyFrame = true;
+	gpuWinHidden = false;
+	gpuShadersOk = false;
 	if (graphics && graphics->runtime && graphics->runtime->sdlGpu && graphics->runtime->sdlWindow) {
 		if (graphics->runtime->vwaitPending) {
 			graphics->runtime->vwaitPending = false;
@@ -837,6 +839,9 @@ bool gxScene::begin(const std::vector<gxLight*>& lights) {
 		}
 		graphics->runtime->sceneBeganSinceFlip = true;
 		sdlgpu::BeginSceneFrame(gpuFrame, (SDL_GPUDevice*)graphics->runtime->sdlGpu, (SDL_Window*)graphics->runtime->sdlWindow);
+		SDL_WindowFlags wf = SDL_GetWindowFlags((SDL_Window*)graphics->runtime->sdlWindow);
+		gpuWinHidden = (wf & SDL_WINDOW_MINIMIZED) || (wf & SDL_WINDOW_HIDDEN);
+		gpuShadersOk = SDL_GetGPUShaderFormats((SDL_GPUDevice*)graphics->runtime->sdlGpu) != SDL_GPU_SHADERFORMAT_INVALID;
 	}
 
 	return true;
@@ -860,14 +865,7 @@ void gxScene::clear(const float rgb[3], float alpha, float z, bool clear_argb, b
 void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt) {
 	bool drewGpu = false;
 	if (gpuFrame.ready() && mesh && !mesh->isSkinned() && mesh->getGpuMirror()) {
-		bool skipGpu = false;
-		if (graphics && graphics->runtime && graphics->runtime->sdlWindow) {
-			SDL_Window* sdlWin = graphics->runtime->sdlWindow;
-			SDL_WindowFlags wf = SDL_GetWindowFlags(sdlWin);
-			if (wf & SDL_WINDOW_MINIMIZED) skipGpu = true;
-			if (wf & SDL_WINDOW_HIDDEN) skipGpu = true;
-		}
-		if (gpuFrame.dev && SDL_GetGPUShaderFormats(gpuFrame.dev) == SDL_GPU_SHADERFORMAT_INVALID) skipGpu = true;
+		bool skipGpu = gpuWinHidden || !gpuShadersOk;
 		if (!skipGpu && !gpuTexGenOk()) skipGpu = true;
 		if (!skipGpu && !gpuFrame.active()) {
 			if (!sdlgpu::BeginScenePass(gpuFrame, (int)viewport.X, (int)viewport.Y,
@@ -1176,24 +1174,24 @@ void gxScene::computeGpuSkinnedUniforms(sdlgpu::MeshUniforms& u) const {
 void gxScene::renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* bone_data, int bone_cnt) {
 	bool drewGpu = false;
 	if (!currentEffect && gpuFrame.ready() && mesh && mesh->isSkinned() && mesh->getGpuMirror() && bone_data && bone_cnt > 0) {
-		bool skipGpu = false;
-		if (graphics && graphics->runtime && graphics->runtime->sdlWindow) {
-			SDL_Window* sdlWin = graphics->runtime->sdlWindow;
-			SDL_WindowFlags wf = SDL_GetWindowFlags(sdlWin);
-			if (wf & SDL_WINDOW_MINIMIZED) skipGpu = true;
-			if (wf & SDL_WINDOW_HIDDEN) skipGpu = true;
-		}
-		if (gpuFrame.dev && SDL_GetGPUShaderFormats(gpuFrame.dev) == SDL_GPU_SHADERFORMAT_INVALID) skipGpu = true;
+		bool skipGpu = gpuWinHidden || !gpuShadersOk;
 		if (!skipGpu && !gpuTexGenOk()) skipGpu = true;
+		if (!skipGpu) {
+			SDL_GPUDevice* dev = gpuFrame.dev ? gpuFrame.dev : (graphics && graphics->runtime ? (SDL_GPUDevice*)graphics->runtime->sdlGpu : nullptr);
+			SDL_GPUBuffer* bones = nullptr;
+			if (dev && !gpuFrame.active() && gpuFrame.cmds && sdlgpu::UploadBonesBatched(dev, gpuFrame.cmds, bone_data, (unsigned)bone_cnt))
+				bones = sdlgpu::EnsureBoneBuffer(dev);
+			else if (dev && sdlgpu::UploadBones(dev, bone_data, (unsigned)bone_cnt))
+				bones = sdlgpu::EnsureBoneBuffer(dev);
+			if (!bones) skipGpu = true;
+		}
 		if (!skipGpu && !gpuFrame.active()) {
 			if (!sdlgpu::BeginScenePass(gpuFrame, (int)viewport.X, (int)viewport.Y,
 				(int)viewport.Width, (int)viewport.Height, 0, 0, 0, false, false)) skipGpu = true;
 		}
 		if (!skipGpu) {
 			SDL_GPUDevice* dev = gpuFrame.dev ? gpuFrame.dev : (graphics && graphics->runtime ? (SDL_GPUDevice*)graphics->runtime->sdlGpu : nullptr);
-			SDL_GPUBuffer* bones = nullptr;
-			if (dev && sdlgpu::UploadBones(dev, bone_data, (unsigned)bone_cnt))
-				bones = sdlgpu::EnsureBoneBuffer(dev);
+			SDL_GPUBuffer* bones = dev ? sdlgpu::EnsureBoneBuffer(dev) : nullptr;
 			if (bones) {
 				sdlgpu::MeshUniforms uniforms;
 				computeGpuSkinnedUniforms(uniforms);

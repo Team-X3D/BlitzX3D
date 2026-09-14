@@ -11,6 +11,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3/SDL_properties.h>
 
 #include "shaders/mesh_shaders.h"
 #include "shaders/canvas_shaders.h"
@@ -191,6 +192,9 @@ namespace sdlgpu {
 		SDL_GPUBuffer* g_canvasVB = nullptr;
 		SDL_GPUTextureFormat g_canvasFormat = SDL_GPU_TEXTUREFORMAT_INVALID;
 
+		SDL_GPUDevice* g_depthFmtDev = nullptr;
+		SDL_GPUTextureFormat g_depthFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+
 	}
 
 	static void TeardownMeshPipe() {
@@ -201,6 +205,8 @@ namespace sdlgpu {
 		if (g_meshSamp && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, g_meshSamp);
 		g_meshSamp = nullptr;
 		g_meshDev = nullptr;
+		g_depthFmtDev = nullptr;
+		g_depthFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
 	}
 
 	static SDL_GPUSampler* EnsureMeshSampler(SDL_GPUDevice* dev, bool wrapU, bool wrapV, bool point) {
@@ -241,17 +247,27 @@ namespace sdlgpu {
 	}
 
 	static SDL_GPUTextureFormat PickMeshDepthFormat(SDL_GPUDevice* dev) {
-		if (SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_D32_FLOAT, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
-			return SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
-		if (SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_D24_UNORM, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
-			return SDL_GPU_TEXTUREFORMAT_D24_UNORM;
-		if (SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
-			return SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT;
-		if (SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
-			return SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
-		if (SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_D16_UNORM, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
-			return SDL_GPU_TEXTUREFORMAT_D16_UNORM;
-		return SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+		if (dev && dev == g_depthFmtDev && g_depthFmt != SDL_GPU_TEXTUREFORMAT_INVALID)
+			return g_depthFmt;
+		SDL_GPUTextureFormat picked = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+		if (dev) {
+			const SDL_GPUTextureFormat order[] = {
+				SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+				SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+				SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+				SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+				SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
+			};
+			for (SDL_GPUTextureFormat f : order) {
+				if (SDL_GPUTextureSupportsFormat(dev, f, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+					picked = f;
+					break;
+				}
+			}
+			g_depthFmtDev = dev;
+			g_depthFmt = picked;
+		}
+		return picked;
 	}
 
 	int MeshDepthFormat(SDL_GPUDevice* dev) {
@@ -429,7 +445,12 @@ namespace sdlgpu {
 		info.target_info.has_depth_stencil_target = true;
 		info.target_info.depth_stencil_format = depthFmt;
 
+		SDL_PropertiesID pipeProps = SDL_CreateProperties();
+		if (pipeProps) SDL_SetStringProperty(pipeProps, SDL_PROP_GPU_GRAPHICSPIPELINE_CREATE_NAME_STRING, "b3d_mesh");
+		info.props = pipeProps;
 		SDL_GPUGraphicsPipeline* newPipe = SDL_CreateGPUGraphicsPipeline(dev, &info);
+		if (pipeProps) SDL_DestroyProperties(pipeProps);
+		info.props = 0;
 		SDL_ReleaseGPUShader(dev, vs);
 		SDL_ReleaseGPUShader(dev, ps);
 		if (!newPipe) {
@@ -545,7 +566,12 @@ namespace sdlgpu {
 		info.depth_stencil_state.back_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
 		info.depth_stencil_state.front_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
 		info.target_info.num_color_targets = 1; info.target_info.color_target_descriptions = &tgt; info.target_info.has_depth_stencil_target = false;
+		SDL_PropertiesID canvasProps = SDL_CreateProperties();
+		if (canvasProps) SDL_SetStringProperty(canvasProps, SDL_PROP_GPU_GRAPHICSPIPELINE_CREATE_NAME_STRING, "b3d_canvas");
+		info.props = canvasProps;
 		g_canvasPipe = SDL_CreateGPUGraphicsPipeline(dev, &info);
+		if (canvasProps) SDL_DestroyProperties(canvasProps);
+		info.props = 0;
 		SDL_ReleaseGPUShader(dev, vs); SDL_ReleaseGPUShader(dev, ps);
 		if (!g_canvasPipe) {
 			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Canvas pipeline failed: %s", SDL_GetError());

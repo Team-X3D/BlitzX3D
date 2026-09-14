@@ -129,11 +129,36 @@ SDL_GPUBuffer* EnsureBoneBuffer(SDL_GPUDevice* dev) {
 	return g_boneBuf;
 }
 
-bool UploadBones(SDL_GPUDevice* dev, const float* boneData, unsigned boneCount) {
-	if (!dev || !boneData || !boneCount) return false;
+bool UploadBonesBatched(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, const float* boneData, unsigned boneCount) {
+	if (!dev || !cmds || !boneData || !boneCount) return false;
 	if (boneCount > kMaxBones) boneCount = kMaxBones;
 	SDL_GPUBuffer* dst = EnsureBoneBuffer(dev);
 	if (!dst) return false;
+	unsigned bytes = boneCount * 3u * 4u * (unsigned)sizeof(float);
+	SDL_GPUTransferBuffer* buf = AcquireUploadTransferBuffer(dev, bytes);
+	if (!buf) return false;
+	void* mapped = SDL_MapGPUTransferBuffer(dev, buf, true);
+	if (!mapped) { ReleaseUploadTransferBuffer(dev, buf); return false; }
+	memcpy(mapped, boneData, bytes);
+	SDL_UnmapGPUTransferBuffer(dev, buf);
+	SDL_GPUCopyPass* pass = SDL_BeginGPUCopyPass(cmds);
+	if (!pass) { ReleaseUploadTransferBuffer(dev, buf); return false; }
+	SDL_GPUTransferBufferLocation src{};
+	src.transfer_buffer = buf;
+	SDL_GPUBufferRegion region{};
+	region.buffer = dst;
+	region.offset = 0;
+	region.size = bytes;
+	SDL_UploadToGPUBuffer(pass, &src, &region, true);
+	SDL_EndGPUCopyPass(pass);
+	ReleaseUploadTransferBuffer(dev, buf);
+	return true;
+}
+
+bool UploadBones(SDL_GPUDevice* dev, const float* boneData, unsigned boneCount) {
+	if (!dev || !boneData || !boneCount) return false;
+	if (boneCount > kMaxBones) boneCount = kMaxBones;
+	if (!EnsureBoneBuffer(dev)) return false;
 	unsigned bytes = boneCount * 3u * 4u * (unsigned)sizeof(float);
 	SDL_GPUTransferBuffer* buf = AcquireUploadTransferBuffer(dev, bytes);
 	if (!buf) return false;
@@ -147,7 +172,7 @@ bool UploadBones(SDL_GPUDevice* dev, const float* boneData, unsigned boneCount) 
 	SDL_GPUTransferBufferLocation src{};
 	src.transfer_buffer = buf;
 	SDL_GPUBufferRegion region{};
-	region.buffer = dst;
+	region.buffer = EnsureBoneBuffer(dev);
 	region.offset = 0;
 	region.size = bytes;
 	SDL_UploadToGPUBuffer(pass, &src, &region, true);
