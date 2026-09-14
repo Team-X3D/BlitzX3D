@@ -243,6 +243,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
     surf->GetDesc(&desc);
     format.setFormat(desc.Format);
     allocCPUStore(desc.Width, desc.Height);
+    d3d_dirty = true;
 
     clip_rect.left = clip_rect.top = 0;
     clip_rect.right = desc.Width;
@@ -272,6 +273,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
     surf->GetDesc(&desc);
     format.setFormat(desc.Format);
     allocCPUStore(desc.Width, desc.Height);
+    d3d_dirty = true;
 
     clip_rect.left = clip_rect.top = 0;
     clip_rect.right = desc.Width;
@@ -312,6 +314,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     surf->GetDesc(&desc);
     format.setFormat(desc.Format);
     allocCPUStore(desc.Width, desc.Height);
+    d3d_dirty = true;
 
     clip_rect.left = clip_rect.top = 0;
     clip_rect.right = desc.Width;
@@ -534,6 +537,7 @@ void gxCanvas::damageImpl(const RECT& r, bool cpuSource) const {
 }
 
 bool gxCanvas::pushAllD3D() const {
+    if (d3d_dirty) return true;
     if (!cpu_bits || cpu_w <= 0 || cpu_h <= 0) return false;
     RECT full = { 0, 0, cpu_w, cpu_h };
     if (!pushRectD3D(full)) return false;

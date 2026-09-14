@@ -10,6 +10,7 @@ While Not KeyHit(1)
 	UpdateWorld
 	RenderWorld
 	Text 10,30,"Mouse: "+MouseX()+","+MouseY()+" Z:"+MouseZ()
+	Text 10,20,"FPS: "+GetFPS()
 	Flip
 Wend
 End

@@ -868,6 +868,7 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 			if (wf & SDL_WINDOW_HIDDEN) skipGpu = true;
 		}
 		if (gpuFrame.dev && SDL_GetGPUShaderFormats(gpuFrame.dev) == SDL_GPU_SHADERFORMAT_INVALID) skipGpu = true;
+		if (!skipGpu && !gpuTexGenOk()) skipGpu = true;
 		if (!skipGpu && !gpuFrame.active()) {
 			if (!sdlgpu::BeginScenePass(gpuFrame, (int)viewport.X, (int)viewport.Y,
 				(int)viewport.Width, (int)viewport.Height, 0, 0, 0, false, false)) skipGpu = true;
@@ -1042,6 +1043,21 @@ void gxScene::computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const {
 			u.flags[3] = (float)(base * material.Diffuse.a) / 255.0f;
 		}
 	}
+	u.viewX[0] = currentView._11; u.viewX[1] = currentView._12; u.viewX[2] = currentView._13; u.viewX[3] = 0.0f;
+	u.viewY[0] = currentView._21; u.viewY[1] = currentView._22; u.viewY[2] = currentView._23; u.viewY[3] = 0.0f;
+	u.viewZ[0] = currentView._31; u.viewZ[1] = currentView._32; u.viewZ[2] = currentView._33; u.viewZ[3] = 0.0f;
+	u.texGen[0] = (n_texs > 0 && (texstate[0].flags & gxCanvas::CANVAS_TEX_SPHERE)) ? 1.0f : 0.0f;
+	u.texGen[1] = (n_texs > 1 && (texstate[1].flags & gxCanvas::CANVAS_TEX_SPHERE)) ? 1.0f : 0.0f;
+	u.texGen[2] = (n_texs > 0 && (texstate[0].flags & TEX_COORDS2)) ? 1.0f : 0.0f;
+	u.texGen[3] = 0.0f;
+}
+
+bool gxScene::gpuTexGenOk() const {
+	for (int k = 0; k < n_texs && k < 2; ++k) {
+		if (texstate[k].flags & gxCanvas::CANVAS_TEX_CUBE) return false;
+		if (!(texstate[k].flags & gxCanvas::CANVAS_TEX_SPHERE) && texstate[k].mat_valid) return false;
+	}
+	return true;
 }
 
 void gxScene::setSkinShaderConstants() {
@@ -1122,8 +1138,13 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 	p.cull = SDL_GPU_CULLMODE_BACK;
 	if (fx & FX_DOUBLESIDED) p.cull = SDL_GPU_CULLMODE_NONE;
 	else if (flipped) p.cull = SDL_GPU_CULLMODE_FRONT;
+	p.wireframe = wireframe || ((fx & FX_WIREFRAME) != 0);
 	if (n_texs > 0 && texstate[0].canvas) {
 		p.tex = sdlgpu::GetCanvasTexture(dev, texstate[0].canvas);
+		int f0 = texstate[0].canvas->getFlags();
+		p.wrapU0 = (f0 & gxCanvas::CANVAS_TEX_CLAMPU) == 0;
+		p.wrapV0 = (f0 & gxCanvas::CANVAS_TEX_CLAMPV) == 0;
+		p.point0 = (f0 & gxCanvas::CANVAS_TEX_POINT) != 0;
 	}
 	if (n_texs > 1 && texstate[1].canvas && texstate[1].blend &&
 		texstate[1].blend != BLEND_BUMPENVMAP && !texstate[1].mat_valid) {
@@ -1134,6 +1155,10 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 			p.stage1[1] = (texstate[1].flags & TEX_COORDS2) ? 1.0f : 0.0f;
 			p.stage1[2] = 1.0f;
 			p.stage1[3] = (texstate[1].canvas->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) ? 1.0f : 0.0f;
+			int f1 = texstate[1].canvas->getFlags();
+			p.wrapU1 = (f1 & gxCanvas::CANVAS_TEX_CLAMPU) == 0;
+			p.wrapV1 = (f1 & gxCanvas::CANVAS_TEX_CLAMPV) == 0;
+			p.point1 = (f1 & gxCanvas::CANVAS_TEX_POINT) != 0;
 		}
 	}
 }
@@ -1159,6 +1184,7 @@ void gxScene::renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int firs
 			if (wf & SDL_WINDOW_HIDDEN) skipGpu = true;
 		}
 		if (gpuFrame.dev && SDL_GetGPUShaderFormats(gpuFrame.dev) == SDL_GPU_SHADERFORMAT_INVALID) skipGpu = true;
+		if (!skipGpu && !gpuTexGenOk()) skipGpu = true;
 		if (!skipGpu && !gpuFrame.active()) {
 			if (!sdlgpu::BeginScenePass(gpuFrame, (int)viewport.X, (int)viewport.Y,
 				(int)viewport.Width, (int)viewport.Height, 0, 0, 0, false, false)) skipGpu = true;

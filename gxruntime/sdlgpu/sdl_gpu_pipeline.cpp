@@ -176,6 +176,14 @@ namespace sdlgpu {
 		};
 		struct MeshPipeEntry { MeshPipeKey key; SDL_GPUGraphicsPipeline* pipe = nullptr; };
 		std::vector<MeshPipeEntry> g_meshPipes;
+		struct MeshSampKey {
+			bool wrapU = false, wrapV = false, point = false;
+			bool operator==(const MeshSampKey& o) const {
+				return wrapU == o.wrapU && wrapV == o.wrapV && point == o.point;
+			}
+		};
+		struct MeshSampEntry { MeshSampKey key; SDL_GPUSampler* samp = nullptr; };
+		std::vector<MeshSampEntry> g_meshSamps;
 
 		SDL_GPUDevice* g_canvasDev = nullptr;
 		SDL_GPUGraphicsPipeline* g_canvasPipe = nullptr;
@@ -188,9 +196,29 @@ namespace sdlgpu {
 	static void TeardownMeshPipe() {
 		for (auto& e : g_meshPipes) if (e.pipe && g_meshDev) SDL_ReleaseGPUGraphicsPipeline(g_meshDev, e.pipe);
 		g_meshPipes.clear();
+		for (auto& e : g_meshSamps) if (e.samp && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, e.samp);
+		g_meshSamps.clear();
 		if (g_meshSamp && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, g_meshSamp);
 		g_meshSamp = nullptr;
 		g_meshDev = nullptr;
+	}
+
+	static SDL_GPUSampler* EnsureMeshSampler(SDL_GPUDevice* dev, bool wrapU, bool wrapV, bool point) {
+		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
+		MeshSampKey key{ wrapU, wrapV, point };
+		for (auto& e : g_meshSamps) {
+			if (e.key == key) return e.samp;
+		}
+		SDL_GPUSamplerCreateInfo samp{};
+		samp.min_filter = point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
+		samp.mag_filter = point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
+		samp.address_mode_u = wrapU ? SDL_GPU_SAMPLERADDRESSMODE_REPEAT : SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+		samp.address_mode_v = wrapV ? SDL_GPU_SAMPLERADDRESSMODE_REPEAT : SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+		SDL_GPUSampler* s = SDL_CreateGPUSampler(dev, &samp);
+		if (!s) return nullptr;
+		g_meshDev = dev;
+		g_meshSamps.push_back({ key, s });
+		return s;
 	}
 
 	static void TeardownCanvas() {
@@ -378,7 +406,7 @@ namespace sdlgpu {
 		info.fragment_shader = ps;
 		info.vertex_input_state = vin;
 		info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
-		info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
+		info.rasterizer_state.fill_mode = wireframe ? SDL_GPU_FILLMODE_LINE : SDL_GPU_FILLMODE_FILL;
 		info.rasterizer_state.cull_mode = cullMode;
 		info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
 		info.rasterizer_state.enable_depth_clip = true;
@@ -452,16 +480,27 @@ namespace sdlgpu {
 
 		SDL_BindGPUGraphicsPipeline(pass, meshPipe);
 		SDL_PushGPUVertexUniformData(cmds, 0, uniforms, uniformBytes);
+		if (twoTex) SDL_PushGPUFragmentUniformData(cmds, 0, p.stage1, (unsigned)sizeof(p.stage1));
+		if (skinned) SDL_BindGPUVertexStorageBuffers(pass, 0, &p.boneBuf, 1);
 		SDL_GPUBufferBinding vb{};
 		vb.buffer = mesh->verts;
 		SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
 		SDL_GPUBufferBinding ib{};
 		ib.buffer = mesh->indices;
 		SDL_BindGPUIndexBuffer(pass, &ib, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-		SDL_GPUTextureSamplerBinding bind{};
-		bind.texture = boundTex;
-		bind.sampler = g_meshSamp;
-		SDL_BindGPUFragmentSamplers(pass, 0, &bind, 1);
+		SDL_GPUSampler* samp0 = EnsureMeshSampler(dev, p.wrapU0, p.wrapV0, p.point0);
+		SDL_GPUTextureSamplerBinding binds[2]{};
+		binds[0].texture = boundTex;
+		binds[0].sampler = samp0 ? samp0 : g_meshSamp;
+		unsigned samplerCount = 1;
+		if (twoTex) {
+			SDL_GPUSampler* samp1 = EnsureMeshSampler(dev, p.wrapU1, p.wrapV1, p.point1);
+			binds[1].texture = p.tex1;
+			binds[1].sampler = samp1 ? samp1 : binds[0].sampler;
+			samplerCount = 2;
+		}
+		if (!binds[0].sampler) return;
+		SDL_BindGPUFragmentSamplers(pass, 0, binds, samplerCount);
 		SDL_DrawGPUIndexedPrimitives(pass, indexCount, 1, startIndex, firstVertex, 0);
 	}
 

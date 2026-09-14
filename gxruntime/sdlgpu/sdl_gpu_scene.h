@@ -40,6 +40,10 @@ struct MeshUniforms {
 	float lightAtten[kGpuMaxLights][4];
 	float lightSpotDir[kGpuMaxLights][4];
 	float lightSpotPrm[kGpuMaxLights][4];
+	float texGen[4];
+	float viewX[4];
+	float viewY[4];
+	float viewZ[4];
 };
 
 struct GpuSceneFrame {

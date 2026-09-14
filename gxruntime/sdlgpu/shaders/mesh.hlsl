@@ -21,6 +21,10 @@ cbuffer VSParams : register(b0, space1)
 	float4 lightAtten[8];
 	float4 lightSpotDir[8];
 	float4 lightSpotPrm[8];
+	float4 texGen;
+	float4 viewX;
+	float4 viewY;
+	float4 viewZ;
 };
 
 StructuredBuffer<float4> g_bones : register(t0, space0);
@@ -116,8 +120,11 @@ VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 	}
 
 	o.color = float4(finalRgb, baseA);
-	o.uv = uv;
-	o.uv1 = uv1;
+	float3 nV = float3(dot(nW, viewX.xyz), dot(nW, viewY.xyz), dot(nW, viewZ.xyz));
+	float2 sph = float2(nV.x * 0.5 + 0.5, -nV.y * 0.5 + 0.5);
+	float2 baseUv0 = (texGen.z > 0.5) ? uv1 : uv;
+	o.uv = (texGen.x > 0.5) ? sph : baseUv0;
+	o.uv1 = (texGen.y > 0.5) ? sph : uv1;
 
 	float dist = distance(worldPos.xyz, eyePos.xyz);
 	float f = 0.0;
