@@ -184,6 +184,7 @@ private:
 
 	RenderState lastRenderState;
 	bool lastRenderStateValid;
+	int lightModeCache = -1;
 
 	uint64_t lastStateKey;
 

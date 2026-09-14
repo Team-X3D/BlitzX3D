@@ -339,7 +339,7 @@ struct TransComp {
 
 namespace {
 
-constexpr size_t kParThreshold = 256;
+constexpr size_t kParThreshold = 2048;
 
 template<typename Fn>
 void parallel_for(size_t n, Fn&& fn) {
@@ -464,15 +464,16 @@ void World::render(Camera* cam, Mirror* mirror) {
 	parallel_for(unord_mods.size(), [&](size_t i) {
 		fadeOk[i] = unord_mods[i]->doAutoFade(cam_tform.v);
 	});
-	std::map<Brush, std::vector<Model*>> buckets;
+	std::vector<Model*> bucketOrder;
+	bucketOrder.reserve(unord_mods.size());
 	for (size_t i = 0; i < unord_mods.size(); ++i) {
-		if(!fadeOk[i]) continue;
-		buckets[unord_mods[i]->getBrush()].push_back(unord_mods[i]);
+		if(fadeOk[i]) bucketOrder.push_back(unord_mods[i]);
 	}
-	for (auto& bucket : buckets) {
-		for (Model* mod : bucket.second) {
-			render(mod, rc);
-		}
+	std::stable_sort(bucketOrder.begin(), bucketOrder.end(), [](Model* a, Model* b) {
+		return a->getBrush() < b->getBrush();
+	});
+	for (Model* mod : bucketOrder) {
+		render(mod, rc);
 	}
 	gx_scene->setZMode(gxScene::ZMODE_CMPONLY);
 	flushTransparent();

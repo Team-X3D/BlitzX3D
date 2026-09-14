@@ -400,21 +400,24 @@ void gxScene::setZMode() {
 }
 
 void gxScene::setLights() {
-	if(fx & FX_FULLBRIGHT) {
+	int mode = (fx & FX_FULLBRIGHT) ? 0 : ((fx & FX_CONDLIGHT) ? 1 : 2);
+	if(mode == lightModeCache) return;
+	lightModeCache = mode;
+	if(mode == 0) {
 		//no lights on
-		for(int n = 0; n < _curLights.size(); ++n) dir3dDev->LightEnable(n, false);
+		for(size_t n = 0; n < _curLights.size(); ++n) dir3dDev->LightEnable((DWORD)n, false);
 	}
-	else if(fx & FX_CONDLIGHT) {
+	else if(mode == 1) {
 		//some lights on
-		for(int n = 0; n < _curLights.size(); ++n) {
+		for(size_t n = 0; n < _curLights.size(); ++n) {
 			gxLight* light = _curLights[n];
 			bool enable = light->d3d_light.Type != D3DLIGHT_DIRECTIONAL;
-			dir3dDev->LightEnable(n, enable);
+			dir3dDev->LightEnable((DWORD)n, enable);
 		}
 	}
 	else {
 		//all lights on
-		for(int n = 0; n < _curLights.size(); ++n) dir3dDev->LightEnable(n, true);
+		for(size_t n = 0; n < _curLights.size(); ++n) dir3dDev->LightEnable((DWORD)n, true);
 	}
 }
 
@@ -802,6 +805,7 @@ bool gxScene::begin(const std::vector<gxLight*>& lights) {
 
 	//set light states
 	_curLights.clear();
+	lightModeCache = -1;
 	for(n = 0; n < max_lights; ++n) {
 		if(n < lights.size()) {
 			_curLights.push_back(lights[n]);
