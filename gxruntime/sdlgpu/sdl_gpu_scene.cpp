@@ -18,7 +18,10 @@ namespace sdlgpu {
 static void ReleaseTargetsLocked(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 	SDL_GPUDevice* relDev = frame.dev ? frame.dev : dev;
 	if (!relDev) return;
+	if (frame.colorTarget) { SDL_ReleaseGPUTexture(relDev, frame.colorTarget); frame.colorTarget = nullptr; }
 	if (frame.depthTarget) { SDL_ReleaseGPUTexture(relDev, frame.depthTarget); frame.depthTarget = nullptr; }
+	frame.colorW = frame.colorH = 0;
+	frame.colorFormat = 0;
 	frame.depthW = frame.depthH = 0;
 	frame.depthFormat = 0;
 }
@@ -34,63 +37,55 @@ void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 	if (!relDev) return;
 	ReleaseTargetsLocked(relDev, frame);
 	frame.dev = nullptr;
-	frame.swap = nullptr;
-	frame.swapW = frame.swapH = 0;
+	frame.targetW = frame.targetH = 0;
 	frame.skipped = false;
 	frame.drew3D = false;
 }
 
-bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win) {
+bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH) {
 	if (!dev || !win) return false;
 
 	if (frame.cmds) {
 		EndSceneFrame(frame);
 		SDL_GPUCommandBuffer* stale = frame.cmds;
 		frame.cmds = nullptr;
-		frame.swap = nullptr;
 		SDL_CancelGPUCommandBuffer(stale);
 	}
 
 	frame.dev = dev;
 	frame.skipped = false;
 	frame.drew3D = false;
-	frame.swap = nullptr;
-	frame.swapW = frame.swapH = 0;
+	frame.targetW = targetW ? targetW : 1;
+	frame.targetH = targetH ? targetH : 1;
 
 	frame.cmds = SDL_AcquireGPUCommandBuffer(dev);
-	if (!frame.cmds) return false;
-
-	SDL_GPUTexture* swap = nullptr;
-	Uint32 sw = 0, sh = 0;
-	if (!SDL_WaitAndAcquireGPUSwapchainTexture(frame.cmds, win, &swap, &sw, &sh)) {
-		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
-		SDL_CancelGPUCommandBuffer(frame.cmds);
-		frame.cmds = nullptr;
-		return false;
-	}
-	if (!swap) {
-		if (!SDL_SubmitGPUCommandBuffer(frame.cmds)) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Submit minimized frame failed: %s", SDL_GetError());
-		frame.cmds = nullptr;
+	if (!frame.cmds) {
 		frame.skipped = true;
 		return false;
 	}
-	frame.swap = swap;
-	frame.swapW = sw;
-	frame.swapH = sh;
 	return true;
 }
 
-static bool EnsureDepth(GpuSceneFrame& frame) {
-	if (!frame.dev || !frame.swapW || !frame.swapH) return false;
+static bool EnsureTargets(GpuSceneFrame& frame) {
+	if (!frame.dev || !frame.targetW || !frame.targetH) return false;
+	int colorFmt = SceneColorFormat();
+	if (!frame.colorTarget || frame.colorW != frame.targetW || frame.colorH != frame.targetH || frame.colorFormat != colorFmt) {
+		if (frame.colorTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.colorTarget); frame.colorTarget = nullptr; }
+		if (frame.depthTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.depthTarget); frame.depthTarget = nullptr; frame.depthW = frame.depthH = 0; frame.depthFormat = 0; }
+		frame.colorTarget = CreateColorTarget(frame.dev, frame.targetW, frame.targetH);
+		if (!frame.colorTarget) return false;
+		frame.colorW = frame.targetW;
+		frame.colorH = frame.targetH;
+		frame.colorFormat = colorFmt;
+	}
 	int fmt = MeshDepthFormat(frame.dev);
-	if (frame.depthTarget && frame.depthW == frame.swapW && frame.depthH == frame.swapH && frame.depthFormat == fmt)
+	if (frame.depthTarget && frame.depthW == frame.colorW && frame.depthH == frame.colorH && frame.depthFormat == fmt)
 		return true;
-	ReleaseTargetsLocked(frame.dev, frame);
-	frame.depthTarget = CreateDepthTarget(frame.dev, frame.swapW, frame.swapH, fmt, 1.0f, 0);
+	if (frame.depthTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.depthTarget); frame.depthTarget = nullptr; }
+	frame.depthTarget = CreateDepthTarget(frame.dev, frame.colorW, frame.colorH, fmt, 1.0f, 0);
 	if (!frame.depthTarget) return false;
-	frame.dev = frame.dev;
-	frame.depthW = frame.swapW;
-	frame.depthH = frame.swapH;
+	frame.depthW = frame.colorW;
+	frame.depthH = frame.colorH;
 	frame.depthFormat = fmt;
 	return true;
 }
@@ -98,6 +93,7 @@ static bool EnsureDepth(GpuSceneFrame& frame) {
 void SetSceneViewport(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH) {
 	if (!frame.pass) return;
 	if (vpW <= 0 || vpH <= 0) return;
+	frame.vpX = vpX; frame.vpY = vpY; frame.vpW = vpW; frame.vpH = vpH;
 	SDL_GPUViewport vp{};
 	vp.x = (float)vpX; vp.y = (float)vpY; vp.w = (float)vpW; vp.h = (float)vpH;
 	vp.min_depth = 0.0f; vp.max_depth = 1.0f;
@@ -106,8 +102,8 @@ void SetSceneViewport(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH) 
 	sc.x = vpX; sc.y = vpY; sc.w = vpW; sc.h = vpH;
 	if (sc.x < 0) sc.x = 0;
 	if (sc.y < 0) sc.y = 0;
-	if ((Uint32)sc.w > frame.swapW) sc.w = (int)frame.swapW;
-	if ((Uint32)sc.h > frame.swapH) sc.h = (int)frame.swapH;
+	if ((Uint32)sc.w > frame.colorW) sc.w = (int)frame.colorW;
+	if ((Uint32)sc.h > frame.colorH) sc.h = (int)frame.colorH;
 	SDL_SetGPUScissor(frame.pass, &sc);
 }
 
@@ -115,11 +111,11 @@ bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	float clearR, float clearG, float clearB, bool clearColor, bool clearDepth) {
 	if (!frame.ready()) return false;
 	EndSceneFrame(frame);
-	if (!EnsureDepth(frame)) return false;
+	if (!EnsureTargets(frame)) return false;
 
 	bool firstPass = !frame.drew3D;
 	SDL_GPUColorTargetInfo colorInfo{};
-	colorInfo.texture = frame.swap;
+	colorInfo.texture = frame.colorTarget;
 	colorInfo.load_op = (clearColor || firstPass) ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
 	colorInfo.store_op = SDL_GPU_STOREOP_STORE;
 	colorInfo.clear_color = SDL_FColor{ clearR, clearG, clearB, 1.0f };
@@ -153,6 +149,23 @@ void RenderSceneMesh(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& un
 	DrawMesh(frame.dev, nullptr, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), p);
 }
 
+void RenderSceneMeshExtra(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& uniforms, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const MeshDrawParams& base, const MeshExtraStage* extras, int extraCount) {
+	if (!extras || extraCount <= 0 || !mesh || tri_cnt <= 0 || vert_cnt <= 0) return;
+	if (first_vert < 0 || first_tri < 0) return;
+	if ((unsigned)first_vert + (unsigned)vert_cnt > mesh->maxVerts) return;
+	if ((unsigned)first_tri + (unsigned)tri_cnt > mesh->maxTris) return;
+	if (!frame.cmds || !frame.dev) return;
+
+	unsigned indexCount = (unsigned)tri_cnt * 3;
+	unsigned startIndex = (unsigned)first_tri * 3;
+	for (int k = 0; k < extraCount; ++k) {
+		if (!extras[k].tex) continue;
+		EndSceneFrame(frame);
+		if (!BeginScenePass(frame, frame.vpX, frame.vpY, frame.vpW, frame.vpH, 0, 0, 0, false, false)) return;
+		DrawMeshExtraStage(frame.dev, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), extras[k], base);
+	}
+}
+
 void EndSceneFrame(GpuSceneFrame& frame) {
 	if (frame.pass) {
 		SDL_EndGPURenderPass(frame.pass);
@@ -160,13 +173,33 @@ void EndSceneFrame(GpuSceneFrame& frame) {
 	}
 }
 
-static bool SubmitFrame(GpuSceneFrame& frame) {
-	if (frame.pass) return false;
-	SDL_GPUCommandBuffer* cmds = frame.cmds;
-	frame.cmds = nullptr;
-	frame.swap = nullptr;
-	if (!cmds) return false;
-	return SDL_SubmitGPUCommandBuffer(cmds);
+static void BlitSceneToSwap(SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* scene, unsigned sceneW, unsigned sceneH, SDL_GPUTexture* swap, Uint32 swapW, Uint32 swapH) {
+	SDL_GPUBlitInfo blit{};
+	blit.source.texture = scene;
+	blit.source.w = sceneW;
+	blit.source.h = sceneH;
+	blit.destination.texture = swap;
+	blit.destination.w = swapW;
+	blit.destination.h = swapH;
+	blit.load_op = SDL_GPU_LOADOP_CLEAR;
+	blit.clear_color = SDL_FColor{ 0, 0, 0, 1 };
+	blit.flip_mode = SDL_FLIP_NONE;
+	blit.filter = SDL_GPU_FILTER_LINEAR;
+	blit.cycle = false;
+	SDL_BlitGPUTexture(cmds, &blit);
+}
+
+static bool AcquireSwap(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPUTexture** outTex, Uint32* outW, Uint32* outH) {
+	SDL_GPUTexture* swap = nullptr;
+	Uint32 sw = 0, sh = 0;
+	if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmds, win, &swap, &sw, &sh)) {
+		SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
+		return false;
+	}
+	if (outTex) *outTex = swap;
+	if (outW) *outW = sw;
+	if (outH) *outH = sh;
+	return true;
 }
 
 bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame) {
@@ -175,8 +208,48 @@ bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame
 		ClearPendingText();
 		return false;
 	}
-	(void)win;
-	return SubmitFrame(frame);
+	EndSceneFrame(frame);
+
+	SDL_GPUCommandBuffer* cmds = frame.cmds;
+	frame.cmds = nullptr;
+
+	SDL_GPUTexture* swap = nullptr;
+	Uint32 sw = 0, sh = 0;
+	if (!AcquireSwap(dev, win, cmds, &swap, &sw, &sh)) {
+		SDL_CancelGPUCommandBuffer(cmds);
+		ClearPendingText();
+		return false;
+	}
+	if (!swap) {
+		if (!SDL_SubmitGPUCommandBuffer(cmds)) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Submit minimized frame failed: %s", SDL_GetError());
+		ClearPendingText();
+		return true;
+	}
+	BlitSceneToSwap(cmds, frame.colorTarget, frame.colorW, frame.colorH, swap, sw, sh);
+
+	bool textReady = HasPendingText() && PreparePendingText(dev, cmds);
+	if (textReady) {
+		SDL_GPUColorTargetInfo ci{};
+		ci.texture = swap;
+		ci.load_op = SDL_GPU_LOADOP_LOAD;
+		ci.store_op = SDL_GPU_STOREOP_STORE;
+		ci.clear_color = SDL_FColor{ 0, 0, 0, 1 };
+		ci.cycle = false;
+		if (SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &ci, 1, nullptr)) {
+			SDL_GPUViewport vp{};
+			vp.x = 0; vp.y = 0; vp.w = (float)sw; vp.h = (float)sh;
+			vp.min_depth = 0.0f; vp.max_depth = 1.0f;
+			SDL_SetGPUViewport(pass, &vp);
+			SDL_Rect sc{};
+			sc.x = 0; sc.y = 0; sc.w = (int)sw; sc.h = (int)sh;
+			SDL_SetGPUScissor(pass, &sc);
+			DrawPendingText(dev, win, pass);
+			SDL_EndGPURenderPass(pass);
+		}
+	}
+	ClearPendingText();
+
+	return SDL_SubmitGPUCommandBuffer(cmds);
 }
 
 bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, ::gxCanvas* canvas) {
@@ -198,22 +271,20 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 			return false;
 		}
 	}
-	SDL_GPUTexture* swap = frame.swap;
-	frame.swap = nullptr;
-	Uint32 sw = frame.swapW, sh = frame.swapH;
-	if (!swap) {
-		if (!SDL_WaitAndAcquireGPUSwapchainTexture(cmds, win, &swap, &sw, &sh)) {
-			SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_WaitAndAcquireGPUSwapchainTexture failed: %s", SDL_GetError());
-			SDL_CancelGPUCommandBuffer(cmds);
-			ClearPendingText();
-			return false;
-		}
-		if (!swap) {
-			if (!SDL_SubmitGPUCommandBuffer(cmds)) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Submit minimized frame failed: %s", SDL_GetError());
-			ClearPendingText();
-			return true;
-		}
+	SDL_GPUTexture* swap = nullptr;
+	Uint32 sw = 0, sh = 0;
+	if (!AcquireSwap(dev, win, cmds, &swap, &sw, &sh)) {
+		SDL_CancelGPUCommandBuffer(cmds);
+		ClearPendingText();
+		return false;
 	}
+	if (!swap) {
+		if (!SDL_SubmitGPUCommandBuffer(cmds)) SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Submit minimized frame failed: %s", SDL_GetError());
+		ClearPendingText();
+		return true;
+	}
+
+	if (has3D) BlitSceneToSwap(cmds, frame.colorTarget, frame.colorW, frame.colorH, swap, sw, sh);
 
 	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds) : nullptr;
 	bool haveText = HasPendingText();
@@ -223,7 +294,7 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		ci.texture = swap;
 		ci.load_op = has3D ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
 		ci.store_op = SDL_GPU_STOREOP_STORE;
-		ci.clear_color = SDL_FColor{0,0,0,1};
+		ci.clear_color = SDL_FColor{ 0, 0, 0, 1 };
 		ci.cycle = false;
 		SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &ci, 1, nullptr);
 		if (pass) {

@@ -15,6 +15,7 @@ namespace sdlgpu {
 
 struct GpuMesh;
 struct MeshDrawParams;
+struct MeshExtraStage;
 
 static constexpr int kGpuMaxLights = 8;
 
@@ -51,25 +52,31 @@ struct GpuSceneFrame {
 	SDL_GPUCommandBuffer* cmds = nullptr;
 	SDL_GPURenderPass* pass = nullptr;
 
-	SDL_GPUTexture* swap = nullptr;
-	uint32_t swapW = 0, swapH = 0;
+	unsigned targetW = 0, targetH = 0;
+
+	SDL_GPUTexture* colorTarget = nullptr;
+	unsigned colorW = 0, colorH = 0;
+	int colorFormat = 0;
 
 	SDL_GPUTexture* depthTarget = nullptr;
 	unsigned depthW = 0, depthH = 0;
 	int depthFormat = 0;
 
+	int vpX = 0, vpY = 0, vpW = 0, vpH = 0;
+
 	bool skipped = false;
 	bool drew3D = false;
 
 	bool active() const { return pass != nullptr; }
-	bool ready() const { return cmds != nullptr && swap != nullptr && !skipped; }
+	bool ready() const { return cmds != nullptr && !skipped; }
 };
 
-bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win);
+bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH);
 bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	float clearR, float clearG, float clearB, bool clearColor, bool clearDepth);
 void SetSceneViewport(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH);
 void RenderSceneMesh(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& uniforms, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const struct MeshDrawParams& p);
+void RenderSceneMeshExtra(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& uniforms, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const struct MeshDrawParams& base, const MeshExtraStage* extras, int extraCount);
 void EndSceneFrame(GpuSceneFrame& frame);
 bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame);
 bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, ::gxCanvas* canvas);

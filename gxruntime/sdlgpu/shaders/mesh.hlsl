@@ -186,11 +186,24 @@ SamplerState MeshSamp1 : register(s1, space2);
 cbuffer PSParams : register(b0, space3)
 {
 	float4 psStage1;
+	float4 psMat0A;
+	float4 psMat0B;
+	float4 psMat1A;
+	float4 psMat1B;
+	float4 psBump;
 };
+
+float2 xformUV(float2 uv, float4 A, float4 B)
+{
+	if (A.w < 0.5)
+		return uv;
+	return float2(uv.x * A.x + uv.y * A.y + A.z, uv.x * B.x + uv.y * B.y + B.z);
+}
 
 float4 PSMain(VSOut i) : SV_Target0
 {
-	float4 tex = MeshTex.Sample(MeshSamp, i.uv) * i.color;
+	float2 uv = xformUV(i.uv, psMat0A, psMat0B);
+	float4 tex = MeshTex.Sample(MeshSamp, uv) * i.color;
 	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
@@ -199,10 +212,21 @@ float4 PSMain(VSOut i) : SV_Target0
 
 float4 PSMain2Tex(VSOut i) : SV_Target0
 {
-	float4 tex = MeshTex.Sample(MeshSamp, i.uv) * i.color;
-	float2 uv1 = (psStage1.y > 0.5) ? i.uv1 : i.uv;
-	float4 t1 = MeshTex1.Sample(MeshSamp1, uv1);
+	float2 uv = xformUV(i.uv, psMat0A, psMat0B);
+	float2 uv1base = (psStage1.y > 0.5) ? i.uv1 : i.uv;
+	float2 uv1 = xformUV(uv1base, psMat1A, psMat1B);
 	float op = psStage1.x;
+	if (op > 5.5) {
+		float4 bump = MeshTex1.Sample(MeshSamp1, uv1);
+		float2 duv = float2(dot(bump.rg - 0.5, psBump.xy), dot(bump.rg - 0.5, psBump.zw));
+		float4 tex = MeshTex.Sample(MeshSamp, uv + duv) * i.color;
+		if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+			discard;
+		tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
+		return tex;
+	}
+	float4 tex = MeshTex.Sample(MeshSamp, uv) * i.color;
+	float4 t1 = MeshTex1.Sample(MeshSamp1, uv1);
 	if (op < 1.5) {
 		tex.rgb = lerp(tex.rgb, t1.rgb, t1.a);
 	} else if (op < 2.5) {
@@ -220,5 +244,25 @@ float4 PSMain2Tex(VSOut i) : SV_Target0
 	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
+	return tex;
+}
+
+Texture2D ExtraTex : register(t0, space2);
+SamplerState ExtraSamp : register(s0, space2);
+
+cbuffer PSExtraParams : register(b0, space3)
+{
+	float4 psExtra;
+	float4 psExtraMatA;
+	float4 psExtraMatB;
+};
+
+float4 PSMainExtra(VSOut i) : SV_Target0
+{
+	float2 base = (psExtra.x > 0.5) ? i.uv1 : i.uv;
+	float2 uv = xformUV(base, psExtraMatA, psExtraMatB);
+	float4 tex = ExtraTex.Sample(ExtraSamp, uv);
+	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+		discard;
 	return tex;
 }
