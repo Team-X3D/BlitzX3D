@@ -25,13 +25,36 @@ static std::string typeTag(Type* t) {
 DebugTree::DebugTree() :st_nest(0) {
 }
 
+static void* safeDerefPtr(void* var) {
+	__try {
+		if (!var || IsBadReadPtr(var, sizeof(void*))) return 0;
+		return *(void**)var;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		return 0;
+	}
+}
+
+static bool safeCopyStr(void* str, std::string& out) {
+	__try {
+		if (!str || IsBadReadPtr(str, sizeof(BBStr))) return false;
+		if (((BBStr*)str)->size() > 65536) return false;
+		out = *(BBStr*)str;
+		return true;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		return false;
+	}
+}
+
 DebugTree::~DebugTree() {
 }
 
 bool DebugTree::readArray(void* var, Type* t, ArrayInfo& out) {
+	__try {
 	if (VectorType* vt = t->vectorType()) {
-		void* buf = *(void**)var;
-		if (!buf) return false;
+		void* buf = safeDerefPtr(var);
+		if (!buf || IsBadReadPtr(buf, 4)) return false;
 		out.isVector = true;
 		out.buffer = buf;
 		out.elemType = vt->elementType;
@@ -39,8 +62,9 @@ bool DebugTree::readArray(void* var, Type* t, ArrayInfo& out) {
 		return !out.sizes.empty();
 	}
 	if (ArrayType* at = t->arrayType()) {
+		if (!var || IsBadReadPtr(var, sizeof(BBArray))) return false;
 		BBArray* arr = (BBArray*)var;
-		if (!arr || !arr->data || arr->dims <= 0) return false;
+		if (!arr->data || arr->dims <= 0 || arr->dims > 8) return false;
 		out.isVector = false;
 		out.buffer = arr;
 		out.elemType = at->elementType;
@@ -52,6 +76,10 @@ bool DebugTree::readArray(void* var, Type* t, ArrayInfo& out) {
 		return true;
 	}
 	return false;
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER) {
+		return false;
+	}
 }
 
 std::string DebugTree::arrayTag(const ArrayInfo& ai) {
@@ -144,13 +172,13 @@ void DebugTree::buildElementNode(void* var, Type* t, const std::string& id, Node
 		s += "=" + ftoa(*(float*)var);
 	}
 	else if (t->stringType()) {
-		BBStr* str = *(BBStr**)var;
-		if (str) s += "=\"" + *str + '"';
+		std::string val;
+		if (safeCopyStr(safeDerefPtr(var), val)) s += "=\"" + val + '"';
 		else s += "=\"\"";
 	}
 	else if (StructType* st = t->structType()) {
-		void* v = *(void**)var;
-		if (v) v = *(void**)v;
+		void* v = safeDerefPtr(var);
+		if (v) v = safeDerefPtr(v);
 		if (!v) s += " (Null)";
 		else {
 			expandable = true;
@@ -222,13 +250,13 @@ void DebugTree::buildVar(void* var, Decl* d, const std::string& name, std::vecto
 		s += "=" + ftoa(*(float*)var);
 	}
 	else if (d->type->stringType()) {
-		BBStr* str = *(BBStr**)var;
-		if (str) s += "=\"" + *str + '"';
+		std::string val;
+		if (safeCopyStr(safeDerefPtr(var), val)) s += "=\"" + val + '"';
 		else s += "=\"\"";
 	}
 	else if (StructType* st = d->type->structType()) {
-		void* v = *(void**)var;
-		if (v) v = *(void**)v;
+		void* v = safeDerefPtr(var);
+		if (v) v = safeDerefPtr(v);
 		if (!v) s += " (Null)";
 		else {
 			expandable = true;
