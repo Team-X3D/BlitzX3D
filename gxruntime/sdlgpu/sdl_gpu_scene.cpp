@@ -72,7 +72,8 @@ static bool EnsureTargets(GpuSceneFrame& frame) {
 	if (!frame.colorTarget || frame.colorW != frame.targetW || frame.colorH != frame.targetH || frame.colorFormat != colorFmt) {
 		if (frame.colorTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.colorTarget); frame.colorTarget = nullptr; }
 		if (frame.depthTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.depthTarget); frame.depthTarget = nullptr; frame.depthW = frame.depthH = 0; frame.depthFormat = 0; }
-		frame.colorTarget = CreateColorTarget(frame.dev, frame.targetW, frame.targetH);
+		frame.colorTarget = CreateColorTarget(frame.dev, frame.targetW, frame.targetH,
+			frame.colorClearR, frame.colorClearG, frame.colorClearB, 1.0f);
 		if (!frame.colorTarget) return false;
 		frame.colorW = frame.targetW;
 		frame.colorH = frame.targetH;
@@ -111,9 +112,11 @@ bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	float clearR, float clearG, float clearB, bool clearColor, bool clearDepth) {
 	if (!frame.ready()) return false;
 	EndSceneFrame(frame);
-	if (!EnsureTargets(frame)) return false;
 
 	bool firstPass = !frame.drew3D;
+
+	if (!EnsureTargets(frame)) return false;
+
 	SDL_GPUColorTargetInfo colorInfo{};
 	colorInfo.texture = frame.colorTarget;
 	colorInfo.load_op = (clearColor || firstPass) ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
@@ -182,7 +185,7 @@ static void BlitSceneToSwap(SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* scene, u
 	blit.destination.w = swapW;
 	blit.destination.h = swapH;
 	blit.load_op = SDL_GPU_LOADOP_CLEAR;
-	blit.clear_color = SDL_FColor{ 0, 0, 0, 1 };
+	blit.clear_color = SDL_FColor{ 0, 0, 0, 0 };
 	blit.flip_mode = SDL_FLIP_NONE;
 	blit.filter = SDL_GPU_FILTER_LINEAR;
 	blit.cycle = false;
@@ -259,7 +262,9 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		ClearPendingText();
 		return false;
 	}
-	if (frame.pass) return false;
+	if (frame.pass) {
+		EndSceneFrame(frame);
+	}
 
 	SDL_GPUCommandBuffer* cmds = frame.cmds;
 	frame.cmds = nullptr;
@@ -294,7 +299,7 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		ci.texture = swap;
 		ci.load_op = has3D ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
 		ci.store_op = SDL_GPU_STOREOP_STORE;
-		ci.clear_color = SDL_FColor{ 0, 0, 0, 1 };
+		ci.clear_color = SDL_FColor{ 0, 0, 0, 0 };
 		ci.cycle = false;
 		SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &ci, 1, nullptr);
 		if (pass) {

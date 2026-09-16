@@ -22,11 +22,25 @@ gxMovie::gxMovie(gxGraphics* g, const std::string& file) : gfx(g), filename(file
 }
 
 gxMovie::~gxMovie() {
+	releaseAfterPlayback();
+}
+
+void gxMovie::releaseAfterPlayback() {
+	if (released) return;
+	released = true;
+	valid = false;
+	playing = false;
 	quit_requested = true;
-	if (decode_thread.joinable()) { decode_thread.join();}
+	if (decode_thread.joinable()) decode_thread.join();
 	closeStream();
-	if (scratch_front) gfx->freeCanvas(scratch_front);
-	if (scratch_back) gfx->freeCanvas(scratch_back);
+	front_rgba.clear(); front_rgba.shrink_to_fit();
+	back_rgba.clear(); back_rgba.shrink_to_fit();
+	{
+		std::lock_guard<std::mutex> lock(frame_mutex);
+		has_frame = false;
+	}
+	if (scratch_front) { gfx->freeCanvas(scratch_front); scratch_front = nullptr; }
+	if (scratch_back) { gfx->freeCanvas(scratch_back); scratch_back = nullptr; }
 }
 
 bool gxMovie::openStream(const std::string& file) {
@@ -212,10 +226,13 @@ bool gxMovie::draw(gxCanvas* dest, int x, int y, int w, int h) {
 	}
 
 	if (!got_new_frame && eof_reached.load()) {
+		releaseAfterPlayback();
 		return false;
 	}
 	if (!has_frame) {
-		return playing.load();
+		bool p = playing.load();
+		if (!p) releaseAfterPlayback();
+		return p;
 	}
 
 	if (got_new_frame) {
@@ -245,5 +262,7 @@ bool gxMovie::draw(gxCanvas* dest, int x, int y, int w, int h) {
 		RECT r = { x, y, x + w, y + h };
 		dest->damage(r);
 	}
-	return playing.load() || !eof_reached.load();
+	bool stillPlaying = playing.load() || !eof_reached.load();
+	if (!stillPlaying) releaseAfterPlayback();
+	return stillPlaying;
 }

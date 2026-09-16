@@ -1,5 +1,6 @@
 #include "sdl_gpu_texture.h"
 #include "sdl_gpu_lock.h"
+#include "sdl_gpu_text.h"
 
 #include "../std.h"
 #include "../gxcanvas.h"
@@ -27,6 +28,7 @@ static std::unordered_map< ::gxCanvas*, CanvasTexEntry> g_canvasOverlayMap;
 
 static void RetireTexture(SDL_GPUDevice* dev, SDL_GPUTexture* tex) {
 	if (!dev || !tex) return;
+	InvalidatePendingTexture(tex);
 	SDL_ReleaseGPUTexture(dev, tex);
 }
 
@@ -34,13 +36,19 @@ void TeardownTexturePools(SDL_GPUDevice* dev) {
 	GpuLock lock;
 	for (auto it = g_canvasTexMap.begin(); it != g_canvasTexMap.end(); ) {
 		if (!dev || it->second.dev == dev) {
-			if (it->second.tex) SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
+			if (it->second.tex) {
+				InvalidatePendingTexture(it->second.tex);
+				SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
+			}
 			it = g_canvasTexMap.erase(it);
 		} else ++it;
 	}
 	for (auto it = g_canvasOverlayMap.begin(); it != g_canvasOverlayMap.end(); ) {
 		if (!dev || it->second.dev == dev) {
-			if (it->second.tex) SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
+			if (it->second.tex) {
+				InvalidatePendingTexture(it->second.tex);
+				SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
+			}
 			it = g_canvasOverlayMap.erase(it);
 		} else ++it;
 	}
@@ -51,14 +59,36 @@ void InvalidateCanvasTextures(::gxCanvas* canvas) {
 	if (!canvas) return;
 	auto it = g_canvasTexMap.find(canvas);
 	if (it != g_canvasTexMap.end()) {
-		if (it->second.tex) SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
+		if (it->second.tex) RetireTexture(it->second.dev, it->second.tex);
 		g_canvasTexMap.erase(it);
 	}
 	auto jt = g_canvasOverlayMap.find(canvas);
 	if (jt != g_canvasOverlayMap.end()) {
-		if (jt->second.tex) SDL_ReleaseGPUTexture(jt->second.dev, jt->second.tex);
+		if (jt->second.tex) RetireTexture(jt->second.dev, jt->second.tex);
 		g_canvasOverlayMap.erase(jt);
 	}
+}
+
+bool SeedCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas, unsigned w, unsigned h, const void* rgba) {
+	GpuLock lock;
+	if (!dev || !canvas || !w || !h || !rgba) return false;
+	if ((unsigned)canvas->getWidth() != w || (unsigned)canvas->getHeight() != h) return false;
+	auto it = g_canvasTexMap.find(canvas);
+	if (it != g_canvasTexMap.end() && it->second.tex && it->second.dev == dev) return true;
+	SDL_GPUTexture* old = nullptr;
+	SDL_GPUDevice* oldDev = dev;
+	if (it != g_canvasTexMap.end()) { old = it->second.tex; oldDev = it->second.dev; g_canvasTexMap.erase(it); }
+	if (old) RetireTexture(oldDev, old);
+	SDL_GPUTexture* tex = CreateTexture2D(dev, w, h);
+	if (!tex) return false;
+	if (!UploadTextureRGBA(dev, tex, w, h, rgba, false)) {
+		SDL_ReleaseGPUTexture(dev, tex);
+		return false;
+	}
+	CanvasTexEntry e;
+	e.tex = tex; e.dev = dev; e.modCnt = canvas->getModify(); e.w = w; e.h = h;
+	g_canvasTexMap[canvas] = e;
+	return true;
 }
 
 SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
@@ -87,8 +117,10 @@ SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 		isNew = true;
 	}
 
-	std::vector<unsigned char> rgba;
-	rgba.resize((size_t)w * h * 4);
+	static thread_local std::vector<unsigned char> rgba;
+	try {
+		rgba.resize((size_t)w * h * 4);
+	} catch (...) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 
 	if (!canvas->lockRO()) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	for (unsigned y = 0; y < h; ++y) {
@@ -138,8 +170,10 @@ SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) 
 		if (!tex) return nullptr;
 		isNew = true;
 	}
-	std::vector<unsigned char> rgba;
-	rgba.resize((size_t)w * h * 4);
+	static thread_local std::vector<unsigned char> rgba;
+	try {
+		rgba.resize((size_t)w * h * 4);
+	} catch (...) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	if (!canvas->lockRO()) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	unsigned clsRgb = canvas->getClsColor() & 0x00ffffff;
 	for (unsigned y = 0; y < h; ++y) {
@@ -197,7 +231,9 @@ SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* c
 		else { ux = (unsigned)x0; uy = (unsigned)y0; uw = (unsigned)(x1 - x0); uh = (unsigned)(y1 - y0); }
 	}
 	static thread_local std::vector<unsigned char> rgba;
-	rgba.resize((size_t)uw * uh * 4);
+	try {
+		rgba.resize((size_t)uw * uh * 4);
+	} catch (...) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	if (!canvas->lockRO()) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	unsigned clsRgb = canvas->getClsColor() & 0x00ffffff;
 	for (unsigned y = 0; y < uh; ++y) {

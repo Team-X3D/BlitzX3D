@@ -432,7 +432,7 @@ void gxRuntime::flip(bool vwait) {
 		}
 	}
 
-	if (!graphics || !d3dDevice) return;
+	if (!graphics) return;
 
 	if (suspended) {
 		MSG m;
@@ -454,20 +454,22 @@ void gxRuntime::flip(bool vwait) {
 				DispatchMessageW(&m);
 			}
 		}
-		if (!run_flag || !graphics || !d3dDevice) return;
+		if (!run_flag || !graphics) return;
 	}
 
-	gxGraphics::DeviceState state = graphics->getDeviceState();
-	if (state == gxGraphics::DEVICE_LOST) {
-		gfx_lost = true;
-		return;
-	}
-	if (state == gxGraphics::DEVICE_NEEDS_RESET) {
-		if (!graphics->restore()) {
+	if (d3dDevice) {
+		gxGraphics::DeviceState state = graphics->getDeviceState();
+		if (state == gxGraphics::DEVICE_LOST) {
 			gfx_lost = true;
 			return;
 		}
-		gfx_lost = false;
+		if (state == gxGraphics::DEVICE_NEEDS_RESET) {
+			if (!graphics->restore()) {
+				gfx_lost = true;
+				return;
+			}
+			gfx_lost = false;
+		}
 	}
 
 	if (sdlGpu && sdlWindow) {
@@ -1091,6 +1093,14 @@ void gxRuntime::applyAntialiasToParams(D3DPRESENT_PARAMETERS& pp) {
 gxGraphics* gxRuntime::openWindowedGraphics(int w, int h, int d, bool d3d) {
 	if (!d3d) return 0;
 
+	if (sdlGpu) {
+		if (!(timerID = timeSetEvent(100, 10, timerCallback, 0, TIME_PERIODIC))) {
+			DebugMsg("timeSetEvent failed!");
+			timerID = 0;
+		}
+		return new gxGraphics(this, nullptr, nullptr, nullptr, d3d, w, h);
+	}
+
 	ZeroMemory(&d3dpp, sizeof(d3dpp));
 	d3dpp.Windowed = TRUE;
 	d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
@@ -1135,7 +1145,7 @@ gxGraphics* gxRuntime::openWindowedGraphics(int w, int h, int d, bool d3d) {
 		timerID = 0;
 	}
 
-	return new gxGraphics(this, d3dDevice, frontBuffer, backBuffer, d3d);
+	return new gxGraphics(this, d3dDevice, frontBuffer, backBuffer, d3d, w, h);
 }
 
 gxGraphics* gxRuntime::openExclusiveGraphics(int w, int h, int d, bool d3d) {
@@ -1203,7 +1213,7 @@ gxGraphics* gxRuntime::openExclusiveGraphics(int w, int h, int d, bool d3d) {
 	frontBuffer = backBuffer;
 	frontBuffer->AddRef();
 
-	return new gxGraphics(this, d3dDevice, frontBuffer, backBuffer, d3d);
+	return new gxGraphics(this, d3dDevice, frontBuffer, backBuffer, d3d, w, h);
 }
 
 gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) {

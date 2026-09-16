@@ -27,6 +27,7 @@ class App {
 	bool initialized;
 	bool quitting;
 	bool connected;
+	HANDLE gameProc;
 
 	HANDLE shmFile;
 	LPVOID shmView;

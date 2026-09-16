@@ -323,6 +323,15 @@ bool EnsureTextVb(SDL_GPUDevice* dev, unsigned needVerts) {
 
 }
 
+void InvalidatePendingTexture(SDL_GPUTexture* tex) {
+	GpuLock lock;
+	if (!tex) return;
+	for (auto it = g_pending.begin(); it != g_pending.end();) {
+		if (it->tex == tex) it = g_pending.erase(it);
+		else ++it;
+	}
+}
+
 bool QueueTextQuads(SDL_GPUDevice* dev, ::gxCanvas* atlas, bool smooth, unsigned canvasW, unsigned canvasH, const TextQuad* quads, unsigned count) {
 	GpuLock lock;
 	if (!dev || !atlas || !quads || !count || !canvasW || !canvasH) return false;

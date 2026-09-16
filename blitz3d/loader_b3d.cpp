@@ -160,26 +160,23 @@ static int readVertices() {
 	vertex_size += (int)(tc_sets * (long long)tc_size * sizeof(float));
 
 	int remaining = chunk_stack.back() - ftell(in);
+	if (vertex_size <= 0 || remaining < vertex_size) return flags;
 	int num_vertices = remaining / vertex_size;
 
-	char* buffer = new char[remaining];
-	fread(buffer, remaining, 1, in);
-
-	char* ptr = buffer;
 	float tc[4] = { 0 };
 
 	for (int i = 0; i < num_vertices; ++i) {
 		Surface::Vertex t;
 
 		// coords
-		memcpy(t.coords, ptr, 12); ptr += 12;
+		read(t.coords, 12);
 
 		if (flags & 1) {
-			memcpy(t.normal, ptr, 12); ptr += 12;
+			read(t.normal, 12);
 		}
 		if (flags & 2) {
 			float rgba[4];
-			memcpy(rgba, ptr, 16); ptr += 16;
+			read(rgba, 16);
 			float r = rgba[0]; if (r < 0) r = 0; else if (r > 1) r = 1;
 			float g = rgba[1]; if (g < 0) g = 0; else if (g > 1) g = 1;
 			float b = rgba[2]; if (b < 0) b = 0; else if (b > 1) b = 1;
@@ -188,13 +185,13 @@ static int readVertices() {
 		}
 		for (int k = 0; k < tc_sets; ++k) {
 			int tc_copy = tc_size < 4 ? tc_size : 4;
-			memcpy(tc, ptr, tc_copy * sizeof(float)); ptr += tc_size * sizeof(float);
+			read(tc, tc_copy * sizeof(float));
+			if (tc_size > tc_copy) skip((int)((tc_size - tc_copy) * sizeof(float)));
 			if (k < 2) memcpy(t.tex_coords[k], tc, 8);
 		}
 		MeshLoader::addVertex(t);
 	}
 
-	delete[] buffer;
 	return flags;
 }
 

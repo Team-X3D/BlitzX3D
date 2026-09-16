@@ -72,6 +72,8 @@ private:
 	void decodeThreadMain();
 	bool openStream(const std::string& file);
 	void closeStream();
+	void releaseAfterPlayback();
+	bool released = false;
 };
 
 #endif

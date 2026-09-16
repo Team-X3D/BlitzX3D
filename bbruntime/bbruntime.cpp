@@ -11,6 +11,7 @@ int ErrorMessagePool::size = 0;
 bool ErrorMessagePool::hasMacro = false;
 
 void bbEnd() {
+    gx_runtime->debugInfo(MultiLang::program_ended);
     RTEX(0);
 }
 

@@ -7,6 +7,8 @@
 #include <cmath>
 #include "../blitz3d/texture.h"
 #include "../blitz3d/cachedtexture.h"
+#include "../gxruntime/gxruntime.h"
+#include "../gxruntime/asyncimage.h"
 
 gxGraphics* gx_graphics;
 gxCanvas* gx_canvas;
@@ -33,8 +35,6 @@ public:
             origWidth = origW;
             origHeight = origH;
         }
-        saveOrigPixels();
-        savePixels();
     }
     ~bbImage()
     {
@@ -82,7 +82,6 @@ public:
     {
         gx_graphics->freeCanvas(frames[n]);
         frames[n] = c;
-        savePixels();
         drawScaleX = 1.0f;
         drawScaleY = 1.0f;
         resetTForm();
@@ -105,24 +104,24 @@ public:
             c->unlock();
         }
     }
-    void saveOrigPixels()
+    const std::vector<uint32_t>& getOrigPixels(int frame)
     {
-        origPixelData.resize(frames.size());
-        for (int k = 0; k < (int)frames.size(); ++k)
-        {
-            gxCanvas* c = frames[k];
+        static const std::vector<uint32_t> empty;
+        if (frames.empty()) return empty;
+        if ((int)origPixelData.size() != (int)frames.size()) origPixelData.resize(frames.size());
+        if (frame < 0 || frame >= (int)frames.size()) frame = 0;
+        std::vector<uint32_t>& px = origPixelData[frame];
+        if (px.empty()) {
+            gxCanvas* c = frames[frame];
             int w = c->getWidth(), h = c->getHeight();
-            origPixelData[k].resize(w * h);
+            px.resize((size_t)w * h);
             c->lock();
             for (int y = 0; y < h; ++y)
                 for (int x = 0; x < w; ++x)
-                    origPixelData[k][y * w + x] = c->getPixelFast(x, y);
+                    px[(size_t)y * w + x] = c->getPixelFast(x, y);
             c->unlock();
         }
-    }
-    const std::vector<uint32_t>& getOrigPixels(int frame) const
-    {
-        return origPixelData[frame];
+        return px;
     }
     void restoreToDevice()
     {
@@ -144,6 +143,13 @@ public:
             frames[k] = c;
             gx_graphics->adoptCanvas(c);
         }
+    }
+    void releaseSavedPixels()
+    {
+        pixelData.clear();
+        pixelData.shrink_to_fit();
+        widths.clear();
+        heights.clear();
     }
 private:
     std::vector<gxCanvas*> frames;
@@ -729,6 +735,7 @@ void bbBufferDirty(gxCanvas* c)
 }
 
 static void graphics(int w, int h, int d, int flags) {
+    for (bbImage* img : image_set) img->savePixels();
     // MessageBoxA(NULL, "graphics(): entered", "Debug", MB_OK);
     freeGraphics(false);
     // MessageBoxA(NULL, "graphics(): after freeGraphics", "Debug", MB_OK);
@@ -744,6 +751,7 @@ static void graphics(int w, int h, int d, int flags) {
     for (bbImage* img : image_set) {
         img->restoreToDevice();
     }
+    for (bbImage* img : image_set) img->releaseSavedPixels();
 
     curr_clsColor = 0;
     curr_color = 0xffffffff;
@@ -1316,6 +1324,41 @@ bbImage* bbLoadAnimImage(BBStr* s, int w, int h, int first, int cnt) {
     std::string path = *s;
     delete s;
 
+    if (gx_graphics->runtime && gx_graphics->runtime->sdlGpu) {
+        if (w <= 0 || h <= 0 || first < 0 || cnt <= 0) return 0;
+        gxCanvas* pic = gx_graphics->loadCanvas(path, 0);
+        if (!pic) return 0;
+        int srcFlags = pic->getFlags() & gxCanvas::CANVAS_TEX_ALPHA;
+        int fpr = pic->getWidth() / w;
+        int fpp = pic->getHeight() / h * fpr;
+        if (fpr <= 0 || first + cnt > fpp) {
+            gx_graphics->freeCanvas(pic);
+            return 0;
+        }
+        int src_x = first % fpr * w;
+        int src_y = first / fpr * h;
+        std::vector<gxCanvas*> frames;
+        for (int k = 0; k < cnt; ++k) {
+            gxCanvas* c = gx_graphics->createCanvas(w, h, gxCanvas::CANVAS_TEXTURE | srcFlags);
+            if (!c) {
+                for (int i = 0; i < k; ++i) gx_graphics->freeCanvas(frames[i]);
+                gx_graphics->freeCanvas(pic);
+                return 0;
+            }
+            c->setLogicalSize(w, h);
+            gx_graphics->copy(c, 0, 0, w, h, pic, src_x, src_y, w, h);
+            c->backup();
+            if (auto_midhandle) c->setHandle(w / 2, h / 2);
+            frames.push_back(c);
+            src_x += w;
+            if (src_x + w > pic->getWidth()) { src_x = 0; src_y += h; }
+        }
+        gx_graphics->freeCanvas(pic);
+        bbImage* image = new bbImage(frames);
+        image_set.insert(image);
+        return image;
+    }
+
     int srcFlags = ddUtil::hasActualAlpha(path) ? gxCanvas::CANVAS_TEX_ALPHA : 0;
 
     IDirect3DTexture9* picTex = ddUtil::loadTextureSurface(path, srcFlags, gx_graphics, false);
@@ -1374,12 +1417,23 @@ Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int fw, int fh, int first
     }
 
     int imgW = 0, imgH = 0;
-    IDirect3DTexture9* picTex = ddUtil::loadTextureSurface(path, flags, gx_graphics, false, &imgW, &imgH);
-    if (!picTex) {
-        ErrorLog("LoadAnimTextureGrid", "Failed to load image");
-        return nullptr;
+    if (gx_graphics->runtime && gx_graphics->runtime->sdlGpu) {
+        auto probe = DecodeImageFile(path);
+        if (!probe) {
+            ErrorLog("LoadAnimTextureGrid", "Failed to load image");
+            return nullptr;
+        }
+        imgW = probe->w;
+        imgH = probe->h;
     }
-    picTex->Release();
+    else {
+        IDirect3DTexture9* picTex = ddUtil::loadTextureSurface(path, flags, gx_graphics, false, &imgW, &imgH);
+        if (!picTex) {
+            ErrorLog("LoadAnimTextureGrid", "Failed to load image");
+            return nullptr;
+        }
+        picTex->Release();
+    }
 
     int frameW = fw;
     int frameH = fh;

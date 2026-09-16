@@ -28,6 +28,7 @@ public:
 	static void setPath(const std::string& t);
 
 	static void flushAll();
+	static size_t pendingCount();
 
 private:
 	struct Rep;

@@ -47,6 +47,7 @@ static void flameGradient(ImU32 base, ImU32& top, ImU32& bottom, ImU32& border) 
 }
 
 App::App() :window(0), windowW(0), windowH(0), initialized(false), quitting(false), connected(false),
+	gameProc(0),
 	shmFile(0), shmView(0), shm(0), cmdShmFile(0), cmdShmView(0), cmdShm(0),
 	snapEvent(0), cmdEvent(0), lastSnapSeq(0), state(DBG_STATE_STARTING), curRow(0), curCol(0),
 	m_currentFilter(0), logPendingScroll(false), source(0),
@@ -61,6 +62,8 @@ bool App::init(int pid) {
 	if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) return false;
 
 	prefs.open();
+
+	gameProc = OpenProcess(SYNCHRONIZE, FALSE, pid);
 
 	SDL_Rect wa;
 	SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &wa);
@@ -129,6 +132,7 @@ bool App::init(int pid) {
 void App::shutdown() {
 	if (!initialized) return;
 	initialized = false;
+	if (gameProc) { CloseHandle(gameProc); gameProc = 0; }
 	if (shmView) UnmapViewOfFile(shmView);
 	if (shmFile) CloseHandle(shmFile);
 	if (cmdShmView) UnmapViewOfFile(cmdShmView);
@@ -236,6 +240,7 @@ void App::loadSource(const std::string& file, int row, int col) {
 
 void App::run() {
 	while (!quitting) {
+		if (gameProc && WaitForSingleObject(gameProc, 0) == WAIT_OBJECT_0) quitting = true;
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			ImGui_ImplSDL3_ProcessEvent(&event);

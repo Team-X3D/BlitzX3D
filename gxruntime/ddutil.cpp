@@ -62,26 +62,38 @@ void PixelFormat::setFormat(D3DFORMAT fmt) {
     asm_coder.CodePoint(point_code, depth, amask, rmask, gmask, bmask);
 }
 
-static std::vector<uint32_t> expandDecoded(const DecodedImage& img, int flags) {
-    std::vector<uint32_t> out((size_t)img.w * (size_t)img.h);
+// "swizzle" whatever that means
+static void jizzleNPeePee(DecodedImage& img, int flags) {
     bool hasMask = (flags & gxCanvas::CANVAS_TEX_MASK) != 0;
     bool hasAlpha = (flags & gxCanvas::CANVAS_TEX_ALPHA) != 0;
-    const uint8_t* src = img.rgba.data();
-    for (size_t i = 0, n = out.size(); i < n; ++i) {
-        unsigned r = src[i * 4 + 0], g = src[i * 4 + 1], b = src[i * 4 + 2], a = src[i * 4 + 3];
+    uint8_t* px = img.rgba.data();
+    size_t n = (size_t)img.w * (size_t)img.h;
+    bool imgHasAlpha = img.hasAlpha;
+    for (size_t i = 0; i < n; ++i) {
+        unsigned r = px[0], g = px[1], b = px[2], a = px[3];
         if (hasMask) {
-            unsigned rgb = (r << 16) | (g << 8) | b;
-            out[i] = rgb ? (0xff000000u | rgb) : 0u;
+            a = (r | g | b) ? 255 : 0;
         }
         else if (hasAlpha) {
-            if (!img.hasAlpha) a = (r + g + b) / 3;
-            out[i] = (a << 24) | (r << 16) | (g << 8) | b;
+            if (!imgHasAlpha) a = (r + g + b) / 3;
         }
         else {
-            out[i] = 0xff000000u | (r << 16) | (g << 8) | b;
+            a = 255;
         }
+        px[0] = (uint8_t)b; px[1] = (uint8_t)g; px[2] = (uint8_t)r; px[3] = (uint8_t)a;
+        px += 4;
     }
-    return out;
+}
+
+static void blitJizzled(const uint8_t* src, int w, int h, BYTE* bits, int pitch, int adjW, int adjH) {
+	int copyW = w < adjW ? w : adjW;
+	int copyH = h < adjH ? h : adjH;
+	size_t rowBytes = (size_t)copyW * 4;
+	for (int y = 0; y < copyH; ++y) {
+		memcpy(bits + (size_t)y * pitch, src + (size_t)y * w * 4, rowBytes);
+		if (copyW < adjW) memset(bits + (size_t)y * pitch + rowBytes, 0, (size_t)(adjW - copyW) * 4);
+	}
+	for (int y = copyH; y < adjH; ++y) memset(bits + (size_t)y * pitch, 0, (size_t)adjW * 4);
 }
 
 static void adjustTexSize(int* width, int* height, IDirect3DDevice9* dev) {
@@ -262,6 +274,7 @@ void ddUtil::copy(IDirect3DDevice9* dev, IDirect3DSurface9* dest_surf, int dx, i
 }
 
 IDirect3DSurface9* ddUtil::createDisplaySurface(int w, int h, int flags, gxGraphics* gfx) {
+    if (!gfx || !gfx->dir3dDev) return nullptr;
     IDirect3DSurface9* surf = nullptr;
     D3DFORMAT format = (flags & (gxCanvas::CANVAS_TEX_ALPHA | gxCanvas::CANVAS_TEX_MASK))
         ? D3DFMT_A8R8G8B8 : D3DFMT_X8R8G8B8;
@@ -329,6 +342,7 @@ IDirect3DCubeTexture9* ddUtil::createCubeTextureSurface(int size, int flags, gxG
 
 IDirect3DSurface9* ddUtil::loadDisplaySurface(const std::string& file, int flags, gxGraphics* gfx) {
     g_lastImageError.clear();
+    if (!gfx || !gfx->dir3dDev) return nullptr;
 
     std::string decErr;
     auto img = DecodeImageFile(file, &decErr);
@@ -348,15 +362,14 @@ IDirect3DSurface9* ddUtil::loadDisplaySurface(const std::string& file, int flags
         return nullptr;
     }
 
-    std::vector<uint32_t> px = expandDecoded(*img, flags);
-    const uint32_t* src = px.data();
+    jizzleNPeePee(*img, flags);
     BYTE* bits = (BYTE*)lr.pBits;
     if (lr.Pitch == (int)(w * sizeof(uint32_t))) {
-        memcpy(bits, src, (size_t)w * h * sizeof(uint32_t));
+        memcpy(bits, img->rgba.data(), (size_t)w * h * sizeof(uint32_t));
     }
     else {
         for (int y = 0; y < h; ++y) {
-            memcpy(bits + y * lr.Pitch, src + (size_t)y * w, (size_t)w * sizeof(uint32_t));
+            memcpy(bits + y * lr.Pitch, img->rgba.data() + (size_t)y * w * 4, (size_t)w * sizeof(uint32_t));
         }
     }
 
@@ -364,19 +377,7 @@ IDirect3DSurface9* ddUtil::loadDisplaySurface(const std::string& file, int flags
     return surf;
 }
 
-static void blitExpanded(const uint32_t* src, int w, int h, BYTE* bits, int pitch, int adjW, int adjH) {
-	int copyW = w < adjW ? w : adjW;
-	int copyH = h < adjH ? h : adjH;
-	for (int y = 0; y < copyH; ++y) {
-		DWORD* dst = (DWORD*)(bits + y * pitch);
-		memcpy(dst, src + (size_t)y * w, (size_t)copyW * sizeof(DWORD));
-		// zero padding so it never bleeds into bilinear samples
-		if (copyW < adjW) memset(dst + copyW, 0, (size_t)(adjW - copyW) * sizeof(DWORD));
-	}
-	for (int y = copyH; y < adjH; ++y) memset(bits + y * pitch, 0, (size_t)adjW * sizeof(DWORD));
-}
-
-static IDirect3DTexture9* textureFromDecodedUnlocked(const DecodedImage* img, int flags, gxGraphics* gfx, bool renderTarget, int* outW, int* outH) {
+static IDirect3DTexture9* textureFromDecodedUnlocked(DecodedImage* img, int flags, gxGraphics* gfx, bool renderTarget, int* outW, int* outH) {
 	if (!img || !gfx) return nullptr;
 	int w = img->w, h = img->h;
 	int adjW = w, adjH = h;
@@ -416,7 +417,8 @@ static IDirect3DTexture9* textureFromDecodedUnlocked(const DecodedImage* img, in
 	HRESULT hr = dev->CreateTexture(adjW, adjH, mipLevels, usage, fmt, pool, &tex, nullptr);
 	if (FAILED(hr)) return nullptr;
 
-	std::vector<uint32_t> px = expandDecoded(*img, flags);
+	jizzleNPeePee(*img, flags);
+	const uint8_t* src = img->rgba.data();
 
 	if (renderTarget) {
 		IDirect3DSurface9* tempSurf = nullptr;
@@ -434,7 +436,7 @@ static IDirect3DTexture9* textureFromDecodedUnlocked(const DecodedImage* img, in
 			return nullptr;
 		}
 
-		blitExpanded(px.data(), w, h, (BYTE*)lr.pBits, lr.Pitch, adjW, adjH);
+		blitJizzled(src, w, h, (BYTE*)lr.pBits, lr.Pitch, adjW, adjH);
 
 		tempSurf->UnlockRect();
 
@@ -461,7 +463,7 @@ static IDirect3DTexture9* textureFromDecodedUnlocked(const DecodedImage* img, in
 			return nullptr;
 		}
 
-		blitExpanded(px.data(), w, h, (BYTE*)lr.pBits, lr.Pitch, adjW, adjH);
+		blitJizzled(src, w, h, (BYTE*)lr.pBits, lr.Pitch, adjW, adjH);
 
 		tex->UnlockRect(0);
 
@@ -474,7 +476,7 @@ static IDirect3DTexture9* textureFromDecodedUnlocked(const DecodedImage* img, in
 }
 
 IDirect3DTexture9* ddUtil::textureFromDecoded(const DecodedImage* img, int flags, gxGraphics* gfx, bool renderTarget, int* outW, int* outH) {
-	return textureFromDecodedUnlocked(img, flags, gfx, renderTarget, outW, outH);
+	return textureFromDecodedUnlocked(const_cast<DecodedImage*>(img), flags, gfx, renderTarget, outW, outH);
 }
 
 IDirect3DTexture9* ddUtil::loadTextureSurface(const std::string& file, int flags, gxGraphics* gfx) {

@@ -33,6 +33,7 @@ bool PreparePendingText(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds);
 void DrawPendingText(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass);
 void ClearPendingText();
 void InvalidateTextAtlas(::gxCanvas* atlas);
+void InvalidatePendingTexture(SDL_GPUTexture* tex);
 void TeardownText();
 
 }

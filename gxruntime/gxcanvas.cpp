@@ -138,14 +138,19 @@ void gxCanvas::fillRect(const RECT& r, unsigned argb) {
     unlock();
 }
 
-void gxCanvas::allocCPUStore(int w, int h) {
+void gxCanvas::allocCPUStore(int w, int h) const {
+    sizeCPUStore(w, h);
+    if (cpu_pitch <= 0 || cpu_h <= 0) return;
+    cpu_bits = new unsigned char[(size_t)cpu_pitch * (size_t)cpu_h]();
+}
+
+void gxCanvas::sizeCPUStore(int w, int h) const {
     delete[] cpu_bits; cpu_bits = nullptr;
     cpu_w = w; cpu_h = h; cpu_pitch = 0;
     if (w <= 0 || h <= 0) return;
     int bpp = format.getPitch();
     if (bpp <= 0) return;
     cpu_pitch = w * bpp;
-    cpu_bits = new unsigned char[(size_t)cpu_pitch * (size_t)h]();
 }
 
 bool gxCanvas::ensureTemp(int w, int h, int fmt) const {
@@ -163,7 +168,8 @@ bool gxCanvas::ensureTemp(int w, int h, int fmt) const {
 bool gxCanvas::pullD3D() const {
     if (!d3d_dirty) return true;
     d3d_dirty = false;
-    if (!cpu_bits || !surf || !graphics || !graphics->dir3dDev) return false;
+    if (!surf) return true;
+    if (!cpu_bits || !graphics || !graphics->dir3dDev) return false;
     D3DSURFACE_DESC desc;
     if (FAILED(surf->GetDesc(&desc))) return false;
     int w = min<int>(cpu_w, (int)desc.Width), h = min<int>(cpu_h, (int)desc.Height);
@@ -235,14 +241,14 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
     graphics(g), plain_surf(s), tex(nullptr), cube_tex(nullptr), surf(s), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
     t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
-    blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), lock_ro(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
+    blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
 
     D3DSURFACE_DESC desc;
     surf->GetDesc(&desc);
     format.setFormat(desc.Format);
-    allocCPUStore(desc.Width, desc.Height);
+    sizeCPUStore(desc.Width, desc.Height);
     d3d_dirty = true;
 
     clip_rect.left = clip_rect.top = 0;
@@ -263,7 +269,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
     graphics(g), plain_surf(nullptr), tex(t), cube_tex(nullptr), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
     t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
-    blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), lock_ro(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
+    blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
 
@@ -272,7 +278,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
     D3DSURFACE_DESC desc;
     surf->GetDesc(&desc);
     format.setFormat(desc.Format);
-    allocCPUStore(desc.Width, desc.Height);
+    sizeCPUStore(desc.Width, desc.Height);
     d3d_dirty = true;
 
     clip_rect.left = clip_rect.top = 0;
@@ -295,7 +301,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     graphics(g), plain_surf(nullptr), tex(nullptr), cube_tex(ct), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
     t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
-    blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), lock_ro(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
+    blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
 
     D3DCUBEMAP_FACES faceMap[6] = {
@@ -313,7 +319,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     D3DSURFACE_DESC desc;
     surf->GetDesc(&desc);
     format.setFormat(desc.Format);
-    allocCPUStore(desc.Width, desc.Height);
+    sizeCPUStore(desc.Width, desc.Height);
     d3d_dirty = true;
 
     clip_rect.left = clip_rect.top = 0;
@@ -330,12 +336,38 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     setViewport(0, 0, getWidth(), getHeight());
 }
 
+gxCanvas::gxCanvas(gxGraphics* g, int w, int h, int f) :
+    graphics(g), plain_surf(nullptr), tex(nullptr), cube_tex(nullptr), surf(nullptr), z_surf(nullptr),
+    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
+    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
+    blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
+    memset(cube_surfs, 0, sizeof(cube_surfs));
+
+    format.setFormat((f & (CANVAS_TEX_ALPHA | CANVAS_TEX_MASK)) ? D3DFMT_A8R8G8B8 : D3DFMT_X8R8G8B8);
+    sizeCPUStore(w, h);
+    d3d_dirty = false;
+
+    clip_rect.left = clip_rect.top = 0;
+    clip_rect.right = w;
+    clip_rect.bottom = h;
+    logical_w = w;
+    logical_h = h;
+    mipmapNeeded = false;
+    cm_pitch = (clip_rect.right + 31) / 32 + 1;
+    setMask(0); setColor(~0); setClsColor(0);
+    has_mask = false;
+    setOrigin(0, 0); setHandle(0, 0);
+    setFont(graphics->getDefaultFont());
+    setViewport(0, 0, getWidth(), getHeight());
+}
+
 gxCanvas::~gxCanvas() {
     sdlgpu::InvalidateCanvasTextures(this);
     sdlgpu::InvalidateTextAtlas(this);
     delete[] cm_mask;
     delete[] cpu_bits; cpu_bits = nullptr;
-    if (locked_cnt) surf->UnlockRect();
+    if (locked_cnt && surf) surf->UnlockRect();
     if (t_surf) t_surf->Release();
     if (blit_tex) { blit_tex->Release(); blit_tex = nullptr; }
     releaseZBuffer();
@@ -498,6 +530,7 @@ int  gxCanvas::getModify() const { return mod_cnt; }
 
 bool gxCanvas::attachZBuffer() {
     if (z_surf) return true;
+    if (!surf) return false;
     D3DSURFACE_DESC desc;
     surf->GetDesc(&desc);
     IDirect3DDevice9* dev = graphics->dir3dDev;
@@ -1226,6 +1259,7 @@ static void restoreBlitState(IDirect3DDevice9* dev, SavedBlitState& s) {
 }
 
 static bool isRenderTarget(IDirect3DSurface9* s) {
+    if (!s) return false;
     D3DSURFACE_DESC desc;
     return SUCCEEDED(s->GetDesc(&desc)) && (desc.Usage & D3DUSAGE_RENDERTARGET);
 }
@@ -1282,9 +1316,10 @@ void gxCanvas::endBlitBatch() const {
 
 static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const RECT& src_r, bool solid) {
     D3DSURFACE_DESC destDesc;
-    bool destIsSysMem = SUCCEEDED(dest->surf->GetDesc(&destDesc)) && destDesc.Pool == D3DPOOL_SYSTEMMEM;
+    bool destIsSysMem = !dest->surf ||
+        (SUCCEEDED(dest->surf->GetDesc(&destDesc)) && destDesc.Pool == D3DPOOL_SYSTEMMEM);
 
-    if (!destIsSysMem) {
+    if (!destIsSysMem && src->getSurface() && dest->getSurface()) {
         IDirect3DDevice9* dev = dest->graphics->dir3dDev;
         if (dev) {
             RECT srcRect = { src_r.left, src_r.top, src_r.right, src_r.bottom };
@@ -1385,7 +1420,8 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
 
     if (solid) {
         D3DSURFACE_DESC srcDesc, dstDesc;
-        if (SUCCEEDED(src->surf->GetDesc(&srcDesc)) && SUCCEEDED(surf->GetDesc(&dstDesc))) {
+        if (src->surf && surf &&
+            SUCCEEDED(src->surf->GetDesc(&srcDesc)) && SUCCEEDED(surf->GetDesc(&dstDesc))) {
             if ((srcDesc.Usage & D3DUSAGE_RENDERTARGET) && (dstDesc.Usage & D3DUSAGE_RENDERTARGET)) {
                 ddUtil::copy(graphics->dir3dDev, surf, dest_r.left, dest_r.top, dest_r.right - dest_r.left, dest_r.bottom - dest_r.top,
                     src->surf, src_r.left, src_r.top, src_r.right - src_r.left, src_r.bottom - src_r.top);
@@ -1478,7 +1514,8 @@ void gxCanvas::blitstretch(int x, int y, int w, int h,
     bool useMask = src->hasMask();
     if (solid && !useAlpha && !useMask) {
         D3DSURFACE_DESC srcDesc, dstDesc;
-        if (SUCCEEDED(src->surf->GetDesc(&srcDesc)) && SUCCEEDED(surf->GetDesc(&dstDesc))) {
+        if (src->surf && surf &&
+            SUCCEEDED(src->surf->GetDesc(&srcDesc)) && SUCCEEDED(surf->GetDesc(&dstDesc))) {
             bool a32 = (srcDesc.Format == D3DFMT_A8R8G8B8 || srcDesc.Format == D3DFMT_X8R8G8B8);
             bool b32 = (dstDesc.Format == D3DFMT_A8R8G8B8 || dstDesc.Format == D3DFMT_X8R8G8B8);
             if (srcDesc.Format == dstDesc.Format || (a32 && b32)) {
@@ -1789,7 +1826,12 @@ bool gxCanvas::lockImpl(bool ro) const {
     if (locked_cnt == 0) {
         lock_ro = ro;
         lock_is_rt = false;
-        if (!cpu_bits) return false;
+        lock_d3d = false;
+        if (!cpu_bits) {
+            if (ro && surf) return lockD3DRO();
+            allocCPUStore(cpu_w, cpu_h);
+            if (!cpu_bits) return false;
+        }
         if (d3d_dirty && !pullD3D()) return false;
         locked_pitch = cpu_pitch;
         locked_surf = cpu_bits;
@@ -1799,11 +1841,46 @@ bool gxCanvas::lockImpl(bool ro) const {
     return true;
 }
 
+// some kind of.. RO.. D3D..PRO...
+bool gxCanvas::lockD3DRO() const {
+    if (!surf || !graphics || !graphics->dir3dDev) return false;
+    D3DSURFACE_DESC desc;
+    if (FAILED(surf->GetDesc(&desc))) return false;
+    bool isRT = (desc.Usage & D3DUSAGE_RENDERTARGET) != 0;
+    if (isRT) {
+        if (!ensureTemp(desc.Width, desc.Height, (int)desc.Format)) return false;
+        if (FAILED(graphics->dir3dDev->GetRenderTargetData(surf, t_surf))) return false;
+        D3DLOCKED_RECT lr;
+        if (FAILED(t_surf->LockRect(&lr, nullptr, D3DLOCK_READONLY))) return false;
+        locked_pitch = lr.Pitch;
+        locked_surf = (unsigned char*)lr.pBits;
+        lock_is_rt = true;
+    }
+    else {
+        D3DLOCKED_RECT lr;
+        if (FAILED(surf->LockRect(&lr, nullptr, D3DLOCK_READONLY | D3DLOCK_NOSYSLOCK))) return false;
+        locked_pitch = lr.Pitch;
+        locked_surf = (unsigned char*)lr.pBits;
+        lock_is_rt = false;
+    }
+    lock_d3d = true;
+    lock_mod_cnt = mod_cnt;
+    ++locked_cnt;
+    return true;
+}
+
 void gxCanvas::unlock() const {
     if (locked_cnt == 0) return;
 
     if (locked_cnt == 1) {
-        if (lock_mod_cnt != mod_cnt && cm_mask) {
+        if (lock_d3d) {
+            if (lock_is_rt) {
+                if (t_surf) t_surf->UnlockRect();
+            }
+            else if (surf) surf->UnlockRect();
+            lock_d3d = false;
+        }
+        else if (lock_mod_cnt != mod_cnt && cm_mask) {
             updateBitMask(clip_rect);
         }
     }
@@ -1823,7 +1900,7 @@ void gxCanvas::setPixel(int x, int y, unsigned argb) {
 unsigned gxCanvas::getPixel(int x, int y) const {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return format.toARGB(mask_surf);
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return format.toARGB(mask_surf);
-    lock();
+    lockRO();
     unsigned p = getPixelFast(x, y);
     unlock();
     return p;

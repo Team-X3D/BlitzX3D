@@ -768,7 +768,9 @@ namespace sdlgpu {
 		if (!dev || !buf) return;
 		auto sit = g_transferSizes.find(buf);
 		Uint32 size = (sit != g_transferSizes.end() && sit->second.dev == dev) ? sit->second.size : 0;
-		if (!size) {
+		static const Uint32 kMaxPooledBytes = 4u * 1024u * 1024u;
+		if (!size || size > kMaxPooledBytes) {
+			g_transferSizes.erase(buf);
 			SDL_ReleaseGPUTransferBuffer(dev, buf);
 			return;
 		}

@@ -1,6 +1,7 @@
 #include "std.h"
 #include "cachedtexture.h"
 #include "../gxruntime/gxgraphics.h"
+#include "../gxruntime/sdlgpu/sdl_gpu_texture.h"
 
 int active_texs;
 
@@ -124,8 +125,12 @@ struct CachedTexture::Rep {
 
 		if (!(flags & gxCanvas::CANVAS_TEX_CUBE)) {
 			if (w <= 0 || h <= 0 || first < 0 || requested_cnt <= 0) {
-				if (gxCanvas* t = gx_graphics->createCanvasFromImage(img, flags)) {
+				if (gxCanvas* t = gx_graphics->createCanvasFromImage(img, flags, false)) {
 					frames.push_back(t);
+					if (gx_graphics->runtime && gx_graphics->runtime->sdlGpu && img->w > 0 && img->h > 0) {
+						sdlgpu::SeedCanvasTexture(gx_graphics->runtime->sdlGpu, t,
+							(unsigned)img->w, (unsigned)img->h, img->rgba.data());
+					}
 				}
 				if (frames.empty()) failed = true;
 				cancelJob();
@@ -290,6 +295,10 @@ void CachedTexture::flushAll() {
 			++idx;
 		}
 	}
+}
+
+size_t CachedTexture::pendingCount() {
+	return pending_reps.size();
 }
 
 void CachedTexture::setPath(const std::string& t) {

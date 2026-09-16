@@ -239,11 +239,7 @@ static void erase(Entity* e) {
 		erase(p);
 	}
 	if (e->getListener()) listener = 0;
-	auto it = entity_map.find(e);
-	if (it != entity_map.end()) {
-		it->second.alive = false;
-	}
-	//if (debug) entity_set.erase(e);
+	entity_map.erase(e);
 }
 
 static Entity* findChild(Entity* e, const std::string& t) {
@@ -687,6 +683,7 @@ Entity* bbLoadMesh(BBStr* f, Entity* p) {
 	collapseMesh(m, e);
 	Entity* r = insertEntity(m, p);
 	nameEntityFromFile(r, file);
+	CachedTexture::flushAll();
 	return r;
 }
 
@@ -702,6 +699,7 @@ Entity* bbLoadAnimMesh(BBStr* f, Entity* p) {
 	}
 	Entity* r = insertEntity(e, p);
 	nameEntityFromFile(r, file);
+	CachedTexture::flushAll();
 	return r;
 }
 
@@ -855,6 +853,9 @@ void bbMeshCullBox(MeshModel* m, float x, float y, float z, float width, float h
 
 gxEffect* bbLoadEffect(BBStr* filename) {
 	debug3d("LoadEffect");
+	delete filename;
+	return nullptr;
+	/*
 	std::string f = *filename;
 	delete filename;
 	gxEffect* e = gx_graphics->createEffect(f);
@@ -863,6 +864,7 @@ gxEffect* bbLoadEffect(BBStr* filename) {
 		return nullptr;
 	}
 	return e;
+	*/
 }
 
 void bbFreeEffect(gxEffect* effect) {
@@ -1500,9 +1502,10 @@ static Vector terrainVector(Terrain* t, float x, float y, float z) {
 
 Entity* bbCreateTerrain(int n, Entity* p) {
 	debugParent(p, "CreateTerrain");
+	if (n < 1 || n > 4096) { ErrorLog("CreateTerrain", MultiLang::illegal_terrain_size); return 0; }
 	int shift = 0;
 	while ((1 << shift) < n) ++shift;
-	if ((1 << shift) != n) ErrorLog("CreateTerrain", MultiLang::illegal_terrain_size);
+	if ((1 << shift) != n) { ErrorLog("CreateTerrain", MultiLang::illegal_terrain_size); return 0; }
 	Terrain* t = new Terrain(shift);
 	return insertEntity(t, p);
 }
@@ -1510,12 +1513,12 @@ Entity* bbCreateTerrain(int n, Entity* p) {
 Entity* bbLoadTerrain(BBStr* file, Entity* p) {
 	debugParent(p, "LoadTerrain");
 	gxCanvas* c = gx_graphics->loadCanvas(*file, gxCanvas::CANVAS_HIGHCOLOR);
-	if (!c) ErrorLog("LoadTerrain", MultiLang::unable_load_heightmap);
+	if (!c) { ErrorLog("LoadTerrain", MultiLang::unable_load_heightmap); return 0; }
 	int w = c->getWidth(), h = c->getHeight();
-	if (w != h) ErrorLog("LoadTerrain", MultiLang::terrain_must_be_square);
+	if (w != h) { gx_graphics->freeCanvas(c); ErrorLog("LoadTerrain", MultiLang::terrain_must_be_square); return 0; }
 	int shift = 0;
 	while ((1 << shift) < w) ++shift;
-	if ((1 << shift) != w) ErrorLog("LoadTerrain", MultiLang::illegal_terrain_size);
+	if ((1 << shift) != w || shift > 12) { gx_graphics->freeCanvas(c); ErrorLog("LoadTerrain", MultiLang::illegal_terrain_size); return 0; }
 	Terrain* t = new Terrain(shift);
 	c->lock();
 	for (int y = 0; y < h; ++y) {
@@ -2200,7 +2203,8 @@ void  bbClearWorld(int e, int b, int t, int fx) {
 			next = ent->successor();
 			if (ent->pinned()) continue;
 			if (current == 0 || ent->getScene() == current) {
-				bbFreeEntity(ent);
+				if (entity_map.find(ent) != entity_map.end()) bbFreeEntity(ent);
+				else delete ent;
 			}
 		}
 	}

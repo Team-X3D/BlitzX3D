@@ -57,6 +57,7 @@ struct GpuSceneFrame {
 	SDL_GPUTexture* colorTarget = nullptr;
 	unsigned colorW = 0, colorH = 0;
 	int colorFormat = 0;
+	float colorClearR = 0.0f, colorClearG = 0.0f, colorClearB = 0.0f;
 
 	SDL_GPUTexture* depthTarget = nullptr;
 	unsigned depthW = 0, depthH = 0;

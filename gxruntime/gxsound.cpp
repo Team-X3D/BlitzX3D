@@ -25,7 +25,6 @@ gxSound::~gxSound() {
 		BASS_SampleFree(sample);
 		sample = 0;
 	}
-	sampleData.reset();
 }
 
 void gxSound::cancelJob() {
@@ -85,7 +84,6 @@ bool gxSound::materialize(bool blocking) {
 			materialized = true;
 			return false;
 		}
-		sampleData = data;
 		cancelJob();
 		BASS_SAMPLE info;
 		BASS_SampleGetInfo(sample, &info);

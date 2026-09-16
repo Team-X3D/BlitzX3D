@@ -3,6 +3,9 @@
 #include "gxeffect.h"
 #include "gxruntime.h"
 #include "gxshadercompat.h"
+#include "asyncimage.h"
+#include "sdlgpu/sdl_gpu_texture.h"
+#include "sdlgpu/sdl_gpu_context.h"
 #include "../gxruntime/gxutf8.h"
 #include <cstring>
 #pragma comment (lib, "Dwmapi")
@@ -11,7 +14,7 @@
 extern gxRuntime* gx_runtime;
 static Debugger* debugger;
 
-gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9* front, IDirect3DSurface9* back, bool d3d) : runtime(rt), dir3dDev(dev), frontBuffer(front), backBuffer(back), gfx_lost(false), dummy_mesh(0), skin_vshader(nullptr), skin_decl(nullptr), skin_shader_load_failed(false), skin_caps_checked(-1) {
+gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9* front, IDirect3DSurface9* back, bool d3d, int w, int h) : runtime(rt), dir3dDev(dev), frontBuffer(front), backBuffer(back), gfx_lost(false), dummy_mesh(0), skin_vshader(nullptr), skin_decl(nullptr), skin_shader_load_failed(false), skin_caps_checked(-1) {
 
 	if (dir3dDev) dir3dDev->AddRef();
 	if (frontBuffer) frontBuffer->AddRef();
@@ -21,24 +24,8 @@ gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9
 	if (dir3d) dir3d->AddRef();
 	present_params = rt->d3dpp;
 
-	front_canvas = new gxCanvas(this, frontBuffer, 0);
-	// MessageBoxA(NULL, "front_canvas created", "Debug", MB_OK);
-
-	if (!backBuffer) {
-		// MessageBoxA(NULL, "backBuffer is NULL!", "Error", MB_OK);
-		return;
-	}
-
-	D3DSURFACE_DESC testDesc;
-	HRESULT hr = backBuffer->GetDesc(&testDesc);
-	if (FAILED(hr)) {
-		char buf[256];
-		sprintf(buf, "backBuffer->GetDesc failed: 0x%08X", hr);
-		// MessageBoxA(NULL, buf, "Error", MB_OK);
-	}
-
-	back_canvas = new gxCanvas(this, backBuffer, 0);
-	// MessageBoxA(NULL, "back_canvas created", "Debug", MB_OK);
+	front_canvas = frontBuffer ? new gxCanvas(this, frontBuffer, 0) : new gxCanvas(this, w, h, 0);
+	back_canvas = backBuffer ? new gxCanvas(this, backBuffer, 0) : new gxCanvas(this, w, h, 0);
 
 	front_canvas->cls();
 	back_canvas->cls();
@@ -97,22 +84,26 @@ gxGraphics::~gxGraphics() {
 }
 
 gxEffect* gxGraphics::createEffect(const std::string& filename) {
+	(void)filename;
+	lastEffectError = "Effects are not supported on the SDL-GPU renderer";
+	return nullptr;
+
+	/*
 	ID3DXEffect* effect = nullptr;
 	ID3DXBuffer* errors = nullptr;
 
 	// BlitzPro shader support
-	/*
-	std::string converted;
-	HRESULT hr = E_FAIL;
-	if (convertShaderSource(dir3dDev, filename, converted)) {
-		hr = D3DXCreateEffect(dir3dDev, converted.data(), (UINT)converted.size(),
-			nullptr, nullptr, 0, nullptr, &effect, &errors);
-	}
-	if (FAILED(hr)) {
-		if (errors) { errors->Release(); errors = nullptr; }
-		hr = D3DXCreateEffectFromFile(dir3dDev, filename.c_str(), nullptr, nullptr, 0, nullptr, &effect, &errors);
-	}
-	*/
+	//
+	// std::string converted;
+	// HRESULT hr = E_FAIL;
+	// if (convertShaderSource(dir3dDev, filename, converted)) {
+	// 	hr = D3DXCreateEffect(dir3dDev, converted.data(), (UINT)converted.size(),
+	// 		nullptr, nullptr, 0, nullptr, &effect, &errors);
+	// }
+	// if (FAILED(hr)) {
+	// 	if (errors) { errors->Release(); errors = nullptr; }
+	// 	hr = D3DXCreateEffectFromFile(dir3dDev, filename.c_str(), nullptr, nullptr, 0, nullptr, &effect, &errors);
+	// }
 
 	HRESULT hr = D3DXCreateEffectFromFile(dir3dDev, filename.c_str(), nullptr, nullptr, 0, nullptr, &effect, &errors);
 	if (FAILED(hr)) {
@@ -129,6 +120,7 @@ gxEffect* gxGraphics::createEffect(const std::string& filename) {
 	gxEffect* e = new gxEffect(this, effect);
 	effect_set.insert(e);
 	return e;
+	*/
 }
 
 gxEffect* gxGraphics::verifyEffect(gxEffect* e) {
@@ -170,7 +162,7 @@ void gxGraphics::endD3DScene() {
 }
 
 bool gxGraphics::restore() {
-	if (!dir3dDev) return false;
+	if (!dir3dDev) return true;
 
 	HRESULT hr = dir3dDev->CheckDeviceState(runtime->hwnd);
 	if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) return false;
@@ -245,6 +237,11 @@ bool gxGraphics::restore() {
 }
 
 bool gxGraphics::changeDisplayMode(int width, int height, bool fullscreen, bool borderless) {
+	if (dir3dDev == nullptr && runtime && runtime->sdlWindow) {
+		sdlgpu::SizeWindowForClient((SDL_Window*)runtime->sdlWindow, width, height);
+		sdlgpu::CenterWindow((SDL_Window*)runtime->sdlWindow);
+		return true;
+	}
 	if (!dir3dDev) return false;
 
 	HWND hwnd = runtime->hwnd;
@@ -397,7 +394,7 @@ void gxGraphics::vwait() { // stubby stbu stub
 }
 
 gxGraphics::DeviceState gxGraphics::getDeviceState() {
-	if (!dir3dDev) return DEVICE_LOST;
+	if (!dir3dDev) return DEVICE_OK;
 	HRESULT hr = dir3dDev->CheckDeviceState(runtime->hwnd);
 	if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) return DEVICE_LOST;
 	if (hr == D3DERR_DEVICENOTRESET || hr == S_PRESENT_MODE_CHANGED) return DEVICE_NEEDS_RESET;
@@ -409,9 +406,25 @@ void gxGraphics::flip(bool vwait) {
 }
 
 void gxGraphics::copy(gxCanvas* dest, int dx, int dy, int dw, int dh, gxCanvas* src, int sx, int sy, int sw, int sh) {
-	ddUtil::copy(dir3dDev, dest->getSurface(), dx, dy, dw, dh, src->getSurface(), sx, sy, sw, sh);
+	if (dest->getSurface() && src->getSurface()) {
+		ddUtil::copy(dir3dDev, dest->getSurface(), dx, dy, dw, dh, src->getSurface(), sx, sy, sw, sh);
+		RECT r = { dx, dy, dx + dw, dy + dh };
+		dest->damageD3D(r);
+		return;
+	}
+	if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return;
+	if (!dest->lock() || !src->lockRO()) {
+		if (dest->isLocked()) dest->unlock();
+		if (src->isLocked()) src->unlock();
+		return;
+	}
+	for (int y = 0; y < dh; ++y)
+		for (int x = 0; x < dw; ++x)
+			dest->copyPixelFast(dx + x, dy + y, src, sx + x * sw / dw, sy + y * sh / dh);
+	src->unlock();
+	dest->unlock();
 	RECT r = { dx, dy, dx + dw, dy + dh };
-	dest->damageD3D(r);
+	dest->damage(r);
 }
 
 int gxGraphics::getScanLine() const { return 0; }
@@ -438,7 +451,53 @@ void gxGraphics::closeMovie(gxMovie* m) {
 	if (movie_set.erase(m)) delete m;
 }
 
+static gxCanvas* buildCpuCanvas(gxGraphics* g, const DecodedImage& img, int flags, bool keepPixels) {
+	if (img.w <= 0 || img.h <= 0 || img.rgba.empty()) return nullptr;
+	if ((size_t)img.w * (size_t)img.h * 4 != img.rgba.size()) return nullptr;
+	gxCanvas* c = nullptr;
+	try { c = new gxCanvas(g, img.w, img.h, flags); }
+	catch (...) { return nullptr; }
+
+	bool seeded = false;
+	if (!keepPixels && g->runtime && g->runtime->sdlGpu)
+		seeded = sdlgpu::SeedCanvasTexture((SDL_GPUDevice*)g->runtime->sdlGpu, c,
+			(unsigned)img.w, (unsigned)img.h, img.rgba.data());
+
+	if (keepPixels || !seeded) {
+		if (!c->lock()) { delete c; return nullptr; }
+		bool hasMask = (flags & gxCanvas::CANVAS_TEX_MASK) != 0;
+		bool hasAlpha = (flags & gxCanvas::CANVAS_TEX_ALPHA) != 0;
+		const uint8_t* src = img.rgba.data();
+		unsigned char* dst = c->getLockedSurf();
+		int pitch = c->getLockedPitch();
+		for (int y = 0; y < img.h; ++y) {
+			unsigned char* row = dst + (size_t)y * pitch;
+			for (int x = 0; x < img.w; ++x) {
+				unsigned r = src[0], gg = src[1], b = src[2], a = src[3];
+				if (hasMask) a = (r | gg | b) ? 255 : 0;
+				else if (hasAlpha) { if (!img.hasAlpha) a = (r + gg + b) / 3; }
+				else a = 255;
+				c->format.setPixel(row + (size_t)x * 4, c->format.fromARGB((a << 24) | (r << 16) | (gg << 8) | b));
+				src += 4;
+			}
+		}
+		c->unlock();
+	}
+	return c;
+}
+
 gxCanvas* gxGraphics::createCanvas(int w, int h, int flags) {
+	if (w <= 0 || h <= 0) return nullptr;
+	if (runtime && runtime->sdlGpu && !(flags & gxCanvas::CANVAS_TEX_CUBE)) {
+		gxCanvas* c = nullptr;
+		try { c = new gxCanvas(this, w, h, flags); }
+		catch (...) { return nullptr; }
+		if (!c->lock()) { delete c; return nullptr; }
+		c->unlock();
+		canvas_set.insert(c);
+		c->cls();
+		return c;
+	}
 	if (flags & gxCanvas::CANVAS_TEX_CUBE) {
 		int size = w > h ? w : h;
 		IDirect3DCubeTexture9* cubeTex = ddUtil::createCubeTextureSurface(size, flags, this);
@@ -465,6 +524,18 @@ gxCanvas* gxGraphics::createCanvas(int w, int h, int flags) {
 }
 
 gxCanvas* gxGraphics::loadCanvas(const std::string& f, int flags) {
+	if (runtime && runtime->sdlGpu) {
+		auto img = DecodeImageFile(f);
+		if (!img) return nullptr;
+		if (!(flags & gxCanvas::CANVAS_TEXTURE)) {
+			if (img->hasAlpha) flags |= gxCanvas::CANVAS_TEXTURE | gxCanvas::CANVAS_TEX_ALPHA;
+		}
+		if ((flags & gxCanvas::CANVAS_TEX_MASK) && !(flags & gxCanvas::CANVAS_TEX_ALPHA))
+			flags |= gxCanvas::CANVAS_TEX_ALPHA;
+		gxCanvas* c = buildCpuCanvas(this, *img, flags, true);
+		if (c) canvas_set.insert(c);
+		return c;
+	}
 	if (!(flags & gxCanvas::CANVAS_TEXTURE)) {
 		if (ddUtil::hasActualAlpha(f)) {
 			flags |= gxCanvas::CANVAS_TEXTURE | gxCanvas::CANVAS_TEX_ALPHA;
@@ -486,10 +557,15 @@ gxCanvas* gxGraphics::loadCanvas(const std::string& f, int flags) {
 	return c;
 }
 
-gxCanvas* gxGraphics::createCanvasFromImage(const DecodedImage* img, int flags) {
+gxCanvas* gxGraphics::createCanvasFromImage(const DecodedImage* img, int flags, bool keepPixels) {
 	if (!img) return nullptr;
 	if ((flags & gxCanvas::CANVAS_TEX_MASK) && !(flags & gxCanvas::CANVAS_TEX_ALPHA)) {
 		flags |= gxCanvas::CANVAS_TEX_ALPHA;
+	}
+	if (runtime && runtime->sdlGpu) {
+		gxCanvas* c = buildCpuCanvas(this, *img, flags, keepPixels);
+		if (c) canvas_set.insert(c);
+		return c;
 	}
 	int w = 0, h = 0;
 	IDirect3DTexture9* tex = ddUtil::textureFromDecoded(img, flags, this, true, &w, &h);
@@ -551,20 +627,18 @@ void gxGraphics::freeFont(gxFont* f) {
 
 gxScene* gxGraphics::createScene(int flags) {
 	if (scene_set.size()) return 0;
-	if (!dir3dDev) return 0;
 
-	D3DFORMAT depthFormats[] = { D3DFMT_D24S8, D3DFMT_D24X8, D3DFMT_D16, D3DFMT_D32 };
-	bool zOk = false;
-	for (int i = 0; i < 4; ++i) {
-		zbuffFmt = depthFormats[i];
-		if (back_canvas->attachZBuffer()) {
-			zOk = true;
-			break;
+	if (dir3dDev) {
+		D3DFORMAT depthFormats[] = { D3DFMT_D24S8, D3DFMT_D24X8, D3DFMT_D16, D3DFMT_D32 };
+		bool zOk = false;
+		for (int i = 0; i < 4; ++i) {
+			zbuffFmt = depthFormats[i];
+			if (back_canvas->attachZBuffer()) {
+				zOk = true;
+				break;
+			}
 		}
-	}
-	if (!zOk) {
-		// MessageBoxA(NULL, "createScene: Failed to attach any Z-buffer", "Error", MB_OK);
-		return 0;
+		if (!zOk) return 0;
 	}
 
 	gxScene* scene = new gxScene(this, back_canvas);
@@ -611,44 +685,7 @@ void gxGraphics::adoptCanvas(gxCanvas* c) {
 }
 
 gxMesh* gxGraphics::createMesh(int max_verts, int max_tris, int flags) {
-
-	bool dynamic = (flags & gxMesh::MESH_DYNAMIC) != 0;
-	DWORD usage = D3DUSAGE_WRITEONLY | (dynamic ? D3DUSAGE_DYNAMIC : 0);
-	D3DPOOL pool = D3DPOOL_DEFAULT;
-
-	int safe_verts = max_verts > 0 ? max_verts : 1;
-	int safe_tris = max_tris > 0 ? max_tris : 1;
-
-	if (flags & gxMesh::MESH_SKINNED) {
-		if (!ensureSkinningShader()) return nullptr;
-		IDirect3DVertexBuffer9* vb = nullptr;
-		DWORD skin_usage = D3DUSAGE_WRITEONLY | D3DUSAGE_DYNAMIC;
-		if (FAILED(dir3dDev->CreateVertexBuffer(safe_verts * sizeof(gxMesh::dxSkinVertex), skin_usage, 0, pool, &vb, nullptr)))
-		{
-			return nullptr;
-		}
-		IDirect3DIndexBuffer9* ib = nullptr;
-		if (FAILED(dir3dDev->CreateIndexBuffer(safe_tris * 3 * sizeof(WORD), skin_usage, D3DFMT_INDEX16, pool, &ib, nullptr))) {
-			vb->Release();
-			return nullptr;
-		}
-		gxMesh* mesh = new gxMesh(this, vb, ib, skin_decl, max_verts, max_tris);
-		mesh_set.insert(mesh);
-		return mesh;
-	}
-
-	static const DWORD VTXFMT = D3DFVF_XYZ | D3DFVF_NORMAL | D3DFVF_DIFFUSE | D3DFVF_TEX2 |
-		D3DFVF_TEXCOORDSIZE2(0) | D3DFVF_TEXCOORDSIZE2(1);
-
-	IDirect3DVertexBuffer9* vb = nullptr;
-	if (FAILED(dir3dDev->CreateVertexBuffer(safe_verts * sizeof(gxMesh::dxVertex), usage, VTXFMT, pool, &vb, nullptr)))
-		return nullptr;
-	IDirect3DIndexBuffer9* ib = nullptr;
-	if (FAILED(dir3dDev->CreateIndexBuffer(safe_tris * 3 * sizeof(WORD), usage, D3DFMT_INDEX16, pool, &ib, nullptr))) {
-		vb->Release();
-		return nullptr;
-	}
-	gxMesh* mesh = new gxMesh(this, vb, ib, max_verts, max_tris);
+	gxMesh* mesh = new gxMesh(this, max_verts, max_tris, flags);
 	mesh_set.insert(mesh);
 	return mesh;
 }
@@ -788,6 +825,7 @@ bool gxGraphics::ensureSkinningShader() {
 	}
 
 	if (!skin_decl) {
+		if (!dir3dDev) return false;
 		static const D3DVERTEXELEMENT9 decl[] = {
 			{0, 0,  D3DDECLTYPE_FLOAT3, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0},
 			{0, 12, D3DDECLTYPE_FLOAT3, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_NORMAL,   0},

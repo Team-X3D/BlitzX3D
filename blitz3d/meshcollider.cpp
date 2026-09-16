@@ -44,6 +44,8 @@ MeshCollider::MeshCollider(const std::vector<Vertex>& verts, const std::vector<T
 		ts.push_back(k);
 	}
 	tree = createNode(ts);
+	tri_centres.clear();
+	tri_centres.shrink_to_fit();
 }
 
 MeshCollider::~MeshCollider() {

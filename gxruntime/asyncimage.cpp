@@ -22,24 +22,42 @@ std::unique_ptr<DecodedImage> DecodeImageFile(const std::string& file, std::stri
 
 	SDL_Surface* surf = IMG_Load(file.c_str());
 	if (!surf) return fail("Load failed");
-
-	SDL_Surface* cvt = SDL_ConvertSurface(surf, SDL_PIXELFORMAT_RGBA32);
-	if (!cvt) {
-		SDL_DestroySurface(surf);
-		return fail("Convert failed");
-	}
-
-	int w = cvt->w, h = cvt->h;
-	if (w <= 0 || h <= 0) {
-		SDL_DestroySurface(cvt);
+	if (surf->w <= 0 || surf->h <= 0 || !surf->pixels) {
 		SDL_DestroySurface(surf);
 		return fail("Empty image");
 	}
+	if (surf->w > 8192 || surf->h > 8192 ||
+		(size_t)surf->w * (size_t)surf->h > (size_t)32 * 1024 * 1024) {
+		SDL_DestroySurface(surf);
+		return fail("Image too large");
+	}
 
 	auto img = std::make_unique<DecodedImage>();
-	img->w = w;
-	img->h = h;
-	img->rgba.resize((size_t)w * (size_t)h * 4);
+	img->w = surf->w;
+	img->h = surf->h;
+	try {
+		img->rgba.resize((size_t)img->w * (size_t)img->h * 4);
+	} catch (const std::bad_alloc&) {
+		SDL_DestroySurface(surf);
+		return fail("Out of memory");
+	}
+
+	bool converted = SDL_ConvertPixels(img->w, img->h, surf->format, surf->pixels, surf->pitch,
+		SDL_PIXELFORMAT_RGBA32, img->rgba.data(), img->w * 4);
+	if (!converted) {
+		SDL_ClearError();
+		SDL_Surface* cvt = SDL_ConvertSurface(surf, SDL_PIXELFORMAT_RGBA32);
+		if (!cvt) {
+			SDL_DestroySurface(surf);
+			return fail("Convert failed");
+		}
+		for (int y = 0; y < img->h; ++y) {
+			memcpy(img->rgba.data() + (size_t)y * img->w * 4,
+				(const Uint8*)cvt->pixels + (size_t)y * cvt->pitch,
+				(size_t)img->w * 4);
+		}
+		SDL_DestroySurface(cvt);
+	}
 
 	Uint8 keyR = 0, keyG = 0, keyB = 0;
 	bool hasKey = false;
@@ -59,25 +77,22 @@ std::unique_ptr<DecodedImage> DecodeImageFile(const std::string& file, std::stri
 			}
 		}
 	}
+	SDL_DestroySurface(surf);
 
 	bool hasAlpha = false;
-	for (int y = 0; y < h; ++y) {
-		const Uint8* src = (const Uint8*)cvt->pixels + (size_t)y * cvt->pitch;
-		Uint8* dst = img->rgba.data() + (size_t)y * w * 4;
-		for (int x = 0; x < w; ++x) {
-			Uint8 r = src[x * 4 + 0], g = src[x * 4 + 1], b = src[x * 4 + 2], a = src[x * 4 + 3];
-			if (hasKey && r == keyR && g == keyG && b == keyB) a = 0;
-			if (a != 255) hasAlpha = true;
-			dst[x * 4 + 0] = r;
-			dst[x * 4 + 1] = g;
-			dst[x * 4 + 2] = b;
-			dst[x * 4 + 3] = a;
-		}
+	Uint8* px = img->rgba.data();
+	for (int i = 0, n = img->w * img->h; i < n; ++i) {
+		Uint8 r = px[0], g = px[1], b = px[2], a = px[3];
+		if (hasKey && r == keyR && g == keyG && b == keyB) a = 0;
+		if (a != 255) hasAlpha = true;
+		px[0] = r;
+		px[1] = g;
+		px[2] = b;
+		px[3] = a;
+		px += 4;
 	}
 	img->hasAlpha = hasAlpha;
 
-	SDL_DestroySurface(cvt);
-	SDL_DestroySurface(surf);
 	return img;
 }
 
@@ -115,13 +130,18 @@ void AsyncImageLoader::worker() {
 			std::unique_lock<std::mutex> lock(mutex);
 			cv.wait(lock, [this]() { return shutdown || !queue.empty(); });
 			if (shutdown && queue.empty()) return;
-			job = queue.back();
-			queue.pop_back();
-			++inFlight;
-			job->state.store(STATE_DECODING);
-		}
+		job = queue.back();
+		queue.pop_back();
+		++inFlight;
+		job->state.store(STATE_DECODING);
+	}
 
-		auto img = DecodeImageFile(job->file);
+	std::unique_ptr<DecodedImage> img;
+	try {
+		img = DecodeImageFile(job->file);
+	} catch (...) {
+		img.reset();
+	}
 
 		std::unique_lock<std::mutex> lock(mutex);
 		if (job->state.load() == STATE_CANCELLED) {
@@ -152,7 +172,12 @@ void AsyncImageLoader::wait(const std::shared_ptr<Job>& job) {
 		job->state.store(STATE_DECODING);
 		lock.unlock();
 
-		auto img = DecodeImageFile(job->file);
+		std::unique_ptr<DecodedImage> img;
+		try {
+			img = DecodeImageFile(job->file);
+		} catch (...) {
+			img.reset();
+		}
 
 		lock.lock();
 		if (img) {

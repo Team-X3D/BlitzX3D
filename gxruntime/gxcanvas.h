@@ -13,7 +13,9 @@ public:
 	gxCanvas(gxGraphics* g, IDirect3DSurface9* surf, int flags);
 	gxCanvas(gxGraphics* g, IDirect3DTexture9* tex, int flags);
 	gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* cube_tex, int flags);
+	gxCanvas(gxGraphics* g, int w, int h, int flags);
 	~gxCanvas();
+	bool isCpuCanvas()const { return !surf && !tex && !cube_tex && !plain_surf; }
 
 	gxGraphics* graphics;
 
@@ -34,6 +36,7 @@ public:
 	mutable unsigned char* locked_surf;
 	mutable bool lock_is_rt;
 	mutable bool lock_ro;
+	mutable bool lock_d3d = false;
 	mutable unsigned char* cpu_bits = nullptr;
 	mutable int cpu_pitch = 0, cpu_w = 0, cpu_h = 0;
 	mutable bool d3d_dirty = false;
@@ -89,7 +92,9 @@ private:
 
 	void updateBitMask(const RECT& r) const;
 	bool lockImpl(bool ro)const;
-	void allocCPUStore(int w, int h);
+	bool lockD3DRO() const;
+	void allocCPUStore(int w, int h) const;
+	void sizeCPUStore(int w, int h) const;
 	bool ensureTemp(int w, int h, int fmt) const;
 	bool pullD3D() const;
 	bool pushRectD3D(const RECT& r) const;

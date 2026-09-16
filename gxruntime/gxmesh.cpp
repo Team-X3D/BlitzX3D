@@ -10,29 +10,20 @@
 
 extern gxRuntime* gx_runtime;
 
-gxMesh::gxMesh(gxGraphics* g, IDirect3DVertexBuffer9* vs, IDirect3DIndexBuffer9* is,
-    int max_vs, int max_ts) :
-    graphics(g), vertex_buff(vs), index_buff(is), vertex_decl(nullptr),
+gxMesh::gxMesh(gxGraphics* g, int max_vs, int max_ts, int flags) :
+    graphics(g),
+    max_verts(max_vs > 0 ? max_vs : 1),
+    max_tris(max_ts > 0 ? max_ts : 1),
+    mesh_dirty(false),
+    skinned((flags & MESH_SKINNED) != 0),
+    keep_staging((flags & MESH_DYNAMIC) != 0),
+    staging_full(false),
     locked_verts(nullptr), locked_skin_verts(nullptr), locked_indices(nullptr),
-    gpu_dirty_vmin(-1), gpu_dirty_vmax(-1), gpu_dirty_tmin(-1), gpu_dirty_tmax(-1), gpu_uploaded(false),
-    max_verts(max_vs), max_tris(max_ts), mesh_dirty(false), skinned(false) {
-    cpu_verts = max_vs > 0 ? new dxVertex[max_vs] : nullptr;
-    cpu_indices = (max_ts > 0) ? new WORD[(size_t)max_ts * 3] : nullptr;
+    gpu_dirty_vmin(-1), gpu_dirty_vmax(-1), gpu_dirty_tmin(-1), gpu_dirty_tmax(-1),
+    gpu_uploaded(false) {
     if (g && g->runtime && g->runtime->sdlGpu) {
-        gpuMirror = sdlgpu::CreateMesh(g->runtime->sdlGpu, sizeof(dxVertex), max_vs, max_ts);
-    }
-}
-
-gxMesh::gxMesh(gxGraphics* g, IDirect3DVertexBuffer9* vs, IDirect3DIndexBuffer9* is,
-    IDirect3DVertexDeclaration9* decl, int max_vs, int max_ts) :
-    graphics(g), vertex_buff(vs), index_buff(is), vertex_decl(decl),
-    locked_verts(nullptr), locked_skin_verts(nullptr), locked_indices(nullptr),
-    gpu_dirty_vmin(-1), gpu_dirty_vmax(-1), gpu_dirty_tmin(-1), gpu_dirty_tmax(-1), gpu_uploaded(false),
-    max_verts(max_vs), max_tris(max_ts), mesh_dirty(false), skinned(true) {
-    cpu_skin_verts = max_vs > 0 ? new dxSkinVertex[max_vs] : nullptr;
-    cpu_indices = (max_ts > 0) ? new WORD[(size_t)max_ts * 3] : nullptr;
-    if (g && g->runtime && g->runtime->sdlGpu) {
-        gpuMirror = sdlgpu::CreateMesh(g->runtime->sdlGpu, sizeof(dxSkinVertex), max_vs, max_ts);
+        gpuMirror = sdlgpu::CreateMesh(g->runtime->sdlGpu,
+            skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex), max_verts, max_tris);
     }
 }
 
@@ -42,52 +33,6 @@ gxMesh::~gxMesh() {
     if (graphics && graphics->runtime && gpuMirror) {
         sdlgpu::ReleaseMesh(graphics->runtime->sdlGpu, gpuMirror);
         gpuMirror = nullptr;
-    }
-    if (vertex_buff) { vertex_buff->Release(); vertex_buff = nullptr; }
-    if (index_buff) { index_buff->Release();  index_buff = nullptr; }
-    delete[] cpu_verts; cpu_verts = nullptr;
-    delete[] cpu_skin_verts; cpu_skin_verts = nullptr;
-    delete[] cpu_indices; cpu_indices = nullptr;
-}
-
-bool gxMesh::lock(bool all) {
-    if ((locked_verts || locked_skin_verts) && locked_indices) return true;
-
-    if (skinned) {
-        if (!cpu_skin_verts || !cpu_indices) return false;
-        locked_skin_verts = cpu_skin_verts;
-    }
-    else {
-        if (!cpu_verts || !cpu_indices) return false;
-        locked_verts = cpu_verts;
-    }
-    locked_indices = cpu_indices;
-
-    if (all) markGpuFullDirty();
-    mesh_dirty = false;
-    return true;
-}
-
-static void mirrorToD3D(IDirect3DVertexBuffer9* vb, IDirect3DIndexBuffer9* ib,
-    const void* verts, unsigned stride, int vmin, int vmax,
-    const WORD* indices, int tmin, int tmax) {
-    if (vb && verts && vmax >= vmin && vmin >= 0) {
-        void* ptr = nullptr;
-        unsigned off = (unsigned)vmin * stride;
-        unsigned bytes = (unsigned)(vmax - vmin + 1) * stride;
-        if (SUCCEEDED(vb->Lock(off, bytes, &ptr, 0))) {
-            memcpy(ptr, (const char*)verts + off, bytes);
-            vb->Unlock();
-        }
-    }
-    if (ib && indices && tmax >= tmin && tmin >= 0) {
-        void* ptr = nullptr;
-        unsigned off = (unsigned)tmin * 3 * (unsigned)sizeof(WORD);
-        unsigned bytes = (unsigned)(tmax - tmin + 1) * 3 * (unsigned)sizeof(WORD);
-        if (SUCCEEDED(ib->Lock(off, bytes, &ptr, 0))) {
-            memcpy(ptr, (const char*)indices + off, bytes);
-            ib->Unlock();
-        }
     }
 }
 
@@ -134,109 +79,123 @@ sdlgpu::GpuMesh* gxMesh::getGpuMirror() {
     return gpuMirror;
 }
 
+bool gxMesh::lock(bool all) {
+    if (locked_verts || locked_skin_verts || locked_indices) return true;
+
+    size_t vbytes = (size_t)(skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex)) * (size_t)max_verts;
+    size_t ibytes = (size_t)max_tris * 3 * sizeof(WORD);
+    if (staging_v.size() != vbytes) staging_v.assign(vbytes, 0);
+    if (staging_i.size() != ibytes) staging_i.assign(ibytes, 0);
+
+    if (skinned) locked_skin_verts = (dxSkinVertex*)staging_v.data();
+    else locked_verts = (dxVertex*)staging_v.data();
+    locked_indices = (WORD*)staging_i.data();
+
+    staging_full = all;
+    if (all) markGpuFullDirty();
+    mesh_dirty = false;
+    return true;
+}
+
 void gxMesh::unlock() {
     syncGpuUpload();
-    const void* mirrorVerts = skinned ? (const void*)locked_skin_verts : (const void*)locked_verts;
-    const WORD* mirrorIndices = locked_indices;
-    unsigned mirrorStride = skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex);
-    int mirrorVmin = gpu_uploaded ? gpu_dirty_vmin : 0;
-    int mirrorVmax = gpu_uploaded ? gpu_dirty_vmax : max_verts - 1;
-    int mirrorTmin = gpu_uploaded ? gpu_dirty_tmin : 0;
-    int mirrorTmax = gpu_uploaded ? gpu_dirty_tmax : max_tris - 1;
-    if (gpuMirror && graphics && graphics->runtime && graphics->runtime->sdlGpu) {
-        const void* verts = skinned ? (const void*)locked_skin_verts : (const void*)locked_verts;
+
+    const void* verts = skinned ? (const void*)locked_skin_verts : (const void*)locked_verts;
+    if (verts && locked_indices && gpuMirror && graphics && graphics->runtime && graphics->runtime->sdlGpu) {
+        SDL_GPUDevice* dev = (SDL_GPUDevice*)graphics->runtime->sdlGpu;
         unsigned stride = skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex);
-        if (verts && locked_indices) {
-            SDL_GPUDevice* dev = (SDL_GPUDevice*)graphics->runtime->sdlGpu;
-            MeshUploadJob* job = nullptr;
-            if (!gpu_uploaded) {
-                job = new MeshUploadJob;
-                job->dev = dev;
-                job->mirror = gpuMirror;
-                job->full = true;
-                job->verts.assign((const char*)verts, (const char*)verts + stride * (unsigned)max_verts);
-                job->indices.assign((const char*)locked_indices, (const char*)locked_indices + (unsigned)sizeof(WORD) * (unsigned)max_tris * 3);
-            } else if (gpu_dirty_vmin >= 0 || gpu_dirty_tmin >= 0) {
-                unsigned vOff = 0, vBytes = 0, iOff = 0, iBytes = 0;
-                if (gpu_dirty_vmin >= 0) {
-                    vOff = (unsigned)gpu_dirty_vmin * stride;
-                    vBytes = (unsigned)(gpu_dirty_vmax - gpu_dirty_vmin + 1) * stride;
-                }
-                if (gpu_dirty_tmin >= 0) {
-                    iOff = (unsigned)gpu_dirty_tmin * 3 * (unsigned)sizeof(WORD);
-                    iBytes = (unsigned)(gpu_dirty_tmax - gpu_dirty_tmin + 1) * 3 * (unsigned)sizeof(WORD);
-                }
-                if (vBytes || iBytes) {
-                    job = new MeshUploadJob;
-                    job->dev = dev;
-                    job->mirror = gpuMirror;
-                    job->full = false;
-                    job->vOff = vOff;
-                    job->iOff = iOff;
-                    if (vBytes) job->verts.assign((const char*)verts + vOff, (const char*)verts + vOff + vBytes);
-                    if (iBytes) job->indices.assign((const char*)locked_indices + iOff, (const char*)locked_indices + iOff + iBytes);
-                }
+        MeshUploadJob* job = nullptr;
+        if (!gpu_uploaded) {
+            job = new MeshUploadJob;
+            job->dev = dev;
+            job->mirror = gpuMirror;
+            job->full = true;
+            job->verts.assign((const char*)verts, (const char*)verts + (size_t)stride * max_verts);
+            job->indices.assign((const char*)locked_indices, (const char*)locked_indices + (size_t)sizeof(WORD) * 3 * max_tris);
+        } else if (gpu_dirty_vmin >= 0 || gpu_dirty_tmin >= 0) {
+            job = new MeshUploadJob;
+            job->dev = dev;
+            job->mirror = gpuMirror;
+            job->full = false;
+            if (gpu_dirty_vmin >= 0) {
+                job->vOff = (unsigned)gpu_dirty_vmin * stride;
+                job->verts.assign((const char*)verts + job->vOff,
+                    (const char*)verts + job->vOff + (size_t)(gpu_dirty_vmax - gpu_dirty_vmin + 1) * stride);
             }
-            if (job) gpuUpload = sdlgpu::EnqueueUpload(RecordMeshUpload, job);
+            if (gpu_dirty_tmin >= 0) {
+                job->iOff = (unsigned)gpu_dirty_tmin * 3 * sizeof(WORD);
+                job->indices.assign((const char*)locked_indices + job->iOff,
+                    (const char*)locked_indices + job->iOff + (size_t)(gpu_dirty_tmax - gpu_dirty_tmin + 1) * 3 * sizeof(WORD));
+            }
+        }
+        if (job) {
+            gpuUpload = sdlgpu::EnqueueUpload(RecordMeshUpload, job);
+            gpu_uploaded = true;
         }
     }
-    if (mirrorVerts && mirrorIndices) {
-        mirrorToD3D(vertex_buff, index_buff, mirrorVerts, mirrorStride,
-            mirrorVmin, mirrorVmax, mirrorIndices, mirrorTmin, mirrorTmax);
-    }
+
     locked_verts = nullptr;
     locked_skin_verts = nullptr;
     locked_indices = nullptr;
+
+    if (staging_full && !keep_staging) {
+        staging_v.clear(); staging_v.shrink_to_fit();
+        staging_i.clear(); staging_i.shrink_to_fit();
+    }
+    staging_full = false;
+}
+
+void gxMesh::uploadFrom(int firstVert, const void* verts, int vertCount, int srcStride,
+                        int firstTri, const void* tris, int triCount) {
+    if (!gpuMirror || !graphics || !graphics->runtime || !graphics->runtime->sdlGpu) return;
+
+    syncGpuUpload();
+
+    unsigned stride = skinned ? sizeof(dxSkinVertex) : sizeof(dxVertex);
+
+    if (firstVert < 0) vertCount = 0;
+    if (firstVert + vertCount > max_verts) vertCount = max_verts - firstVert;
+    if (vertCount < 0) vertCount = 0;
+    if (firstTri < 0) triCount = 0;
+    if (firstTri + triCount > max_tris) triCount = max_tris - firstTri;
+    if (triCount < 0) triCount = 0;
+
+    MeshUploadJob* job = new MeshUploadJob;
+    job->dev = (SDL_GPUDevice*)graphics->runtime->sdlGpu;
+    job->mirror = gpuMirror;
+    job->full = false;
+
+    if (verts && vertCount > 0) {
+        job->vOff = (unsigned)firstVert * stride;
+        job->verts.resize((size_t)stride * vertCount);
+        for (int i = 0; i < vertCount; ++i)
+            memcpy(job->verts.data() + (size_t)i * stride, (const char*)verts + (size_t)i * srcStride, stride);
+        if (gpu_dirty_vmin < 0) { gpu_dirty_vmin = firstVert; gpu_dirty_vmax = firstVert + vertCount - 1; }
+        else {
+            if (firstVert < gpu_dirty_vmin) gpu_dirty_vmin = firstVert;
+            if (firstVert + vertCount - 1 > gpu_dirty_vmax) gpu_dirty_vmax = firstVert + vertCount - 1;
+        }
+    }
+    if (tris && triCount > 0) {
+        job->iOff = (unsigned)firstTri * 3 * sizeof(WORD);
+        job->indices.assign((const char*)tris, (const char*)tris + (size_t)triCount * 3 * sizeof(WORD));
+        if (gpu_dirty_tmin < 0) { gpu_dirty_tmin = firstTri; gpu_dirty_tmax = firstTri + triCount - 1; }
+        else {
+            if (firstTri < gpu_dirty_tmin) gpu_dirty_tmin = firstTri;
+            if (firstTri + triCount - 1 > gpu_dirty_tmax) gpu_dirty_tmax = firstTri + triCount - 1;
+        }
+    }
+
+    if (job->verts.empty() && job->indices.empty()) { delete job; return; }
+    gpuUpload = sdlgpu::EnqueueUpload(RecordMeshUpload, job);
+    gpu_uploaded = true;
+    mesh_dirty = false;
 }
 
 void gxMesh::backup() {
-	unlock();
+    unlock();
 }
 
 void gxMesh::restore() {
-	mesh_dirty = true;
-}
-
-void gxMesh::render(int first_vert, int vert_cnt, int first_tri, int tri_cnt, bool skipDxDraw) {
-    unlock();
-    if (skipDxDraw) return;
-    if (!graphics->ensureD3DBegun()) return;
-
-    IDirect3DDevice9* dev = graphics->dir3dDev;
-
-    if (skinned) {
-        dev->SetVertexDeclaration(vertex_decl);
-        dev->SetStreamSource(0, vertex_buff, 0, sizeof(dxSkinVertex));
-        dev->SetIndices(index_buff);
-        dev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, first_vert, 0, vert_cnt, first_tri * 3, tri_cnt);
-        return;
-    }
-
-    dev->SetStreamSource(0, vertex_buff, 0, sizeof(dxVertex));
-    dev->SetFVF(VTXFMT);
-    dev->SetIndices(index_buff);
-    dev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, first_vert, 0, vert_cnt, first_tri * 3, tri_cnt);
-}
-
-void gxMesh::renderSkinned(int first_vert, int vert_cnt, int first_tri, int tri_cnt,
-    const float* bone_data, int bone_cnt) {
-    unlock();
-    if (!graphics->ensureD3DBegun()) return;
-
-    IDirect3DDevice9* dev = graphics->dir3dDev;
-    IDirect3DVertexShader9* shader = graphics->getSkinningShader();
-    if (!shader || !vertex_decl) return;
-
-    if (bone_cnt > MAX_SKIN_BONES) bone_cnt = MAX_SKIN_BONES;
-
-    dev->SetVertexShaderConstantF(0, bone_data, bone_cnt * 3);
-
-    dev->SetVertexDeclaration(vertex_decl);
-    dev->SetVertexShader(shader);
-    dev->SetStreamSource(0, vertex_buff, 0, sizeof(dxSkinVertex));
-    dev->SetIndices(index_buff);
-    dev->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, first_vert, 0, vert_cnt, first_tri * 3, tri_cnt);
-
-    dev->SetVertexShader(nullptr);
-    dev->SetVertexDeclaration(nullptr);
+    mesh_dirty = true;
 }

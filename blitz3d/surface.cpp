@@ -105,19 +105,17 @@ gxMesh* Surface::getMesh() {
 		mesh = gx_graphics->createMesh(mesh_vs, mesh_ts, 0);
 	}
 
-	if (!mesh || !mesh->lock(true)) {
+	if (!mesh) {
 		valid_vs = start_vs;
 		valid_ts = start_ts;
 		return mesh;
 	}
-	for (; valid_vs < vertices.size(); ++valid_vs) {
-		mesh->setVertex(valid_vs, &vertices[valid_vs]);
-	}
-	for(; valid_ts < triangles.size(); ++valid_ts) {
-		const Triangle& t = triangles[valid_ts];
-		mesh->setTriangle(valid_ts, t.verts[0], t.verts[1], t.verts[2]);
-	}
-	mesh->unlock();
+
+	mesh->uploadFrom(0, vertices.data(), (int)vertices.size(), (int)sizeof(Vertex),
+		0, triangles.data(), (int)triangles.size());
+
+	valid_vs = (int)vertices.size();
+	valid_ts = (int)triangles.size();
 	return mesh;
 }
 

@@ -92,6 +92,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\Blitz3D.exe</OutputFile>
+      <LargeAddressAware>true</LargeAddressAware>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
       <AdditionalDependencies>dxguid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
@@ -152,6 +153,7 @@
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\BlitzX3D.exe</OutputFile>
+      <LargeAddressAware>true</LargeAddressAware>
       <AdditionalDependencies>dxguid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
     </Link>
