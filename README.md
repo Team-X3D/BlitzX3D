@@ -124,11 +124,11 @@ the MIT License (see LICENSE).
   - C++ MFC for latest v143 build tools (x86 & x64)
   - C++ ATL for latest v143 build tools (x86 & x64)
   - ASP.NET and web development
-- This repo vendors [SDL3](https://github.com/libsdl-org/SDL) and [SDL_image](https://github.com/libsdl-org/SDL_image) as **git submodules**. After cloning, initialize them before building:
+- This repo vendors [SDL3](https://github.com/libsdl-org/SDL), [SDL_image](https://github.com/libsdl-org/SDL_image) and [SDL_ttf](https://github.com/libsdl-org/SDL_ttf) as **git submodules**. After cloning, initialize them before building:
   ```sh
   git submodule update --init
   ```
-  (Or clone with `git clone --recurse-submodules`.) Both are linked statically, so no `SDL3.dll` / `SDL_image.dll` needs to be shipped alongside the builds.
+  (Or clone with `git clone --recurse-submodules`.) Both are linked statically, so no `SDL3.dll` / `SDL3_image.dll` / `SDL3_ttf.dll` needs to be shipped alongside the builds.
 
 ### Before building `linker` or `bbruntime_dll`:
 
