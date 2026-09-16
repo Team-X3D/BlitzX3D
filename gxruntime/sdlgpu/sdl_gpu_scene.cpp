@@ -396,6 +396,7 @@ bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, ::gxCanvas* des
 	info.filter = SDL_GPU_FILTER_LINEAR;
 	info.cycle = false;
 	SDL_BlitGPUTexture(frame.cmds, &info);
+	dest->releaseCPUBitsIfUnused();
 	return true;
 }
 

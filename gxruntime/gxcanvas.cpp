@@ -1845,6 +1845,22 @@ bool gxCanvas::lockRO() const {
     return lockImpl(true);
 }
 
+bool gxCanvas::ensureCPUBits() const {
+    if (cpu_bits) return true;
+    allocCPUStore(cpu_w, cpu_h);
+    if (!cpu_bits) return false;
+    if (graphics && graphics->runtime && graphics->runtime->sdlGpu)
+        sdlgpu::DownloadCanvasTexture((SDL_GPUDevice*)graphics->runtime->sdlGpu, const_cast<gxCanvas*>(this));
+    return true;
+}
+
+void gxCanvas::releaseCPUBitsIfUnused() const {
+    if (!cpu_bits || locked_cnt != 0 || cpu_keep) return;
+    if (!(flags & CANVAS_TEXTURE)) return;
+    delete[] cpu_bits;
+    cpu_bits = nullptr;
+}
+
 bool gxCanvas::lockImpl(bool ro) const {
     if (locked_cnt == 0) {
         lock_ro = ro;
@@ -1852,8 +1868,7 @@ bool gxCanvas::lockImpl(bool ro) const {
         lock_d3d = false;
         if (!cpu_bits) {
             if (ro && surf) return lockD3DRO();
-            allocCPUStore(cpu_w, cpu_h);
-            if (!cpu_bits) return false;
+            if (!ensureCPUBits()) return false;
         }
         if (d3d_dirty && !pullD3D()) return false;
         locked_pitch = cpu_pitch;
@@ -1861,6 +1876,7 @@ bool gxCanvas::lockImpl(bool ro) const {
         if ((flags & CANVAS_TEX_CUBE) && graphics && graphics->runtime && graphics->runtime->sdlGpu)
             locked_surf += (size_t)cube_face * (size_t)cpu_pitch * (size_t)cpu_h;
         lock_mod_cnt = mod_cnt;
+        cpu_keep = true;
     }
     ++locked_cnt;
     return true;

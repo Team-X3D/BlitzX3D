@@ -42,6 +42,7 @@ public:
 	mutable bool d3d_dirty = false;
 	mutable RECT sdlDirtyRect;
 	mutable bool sdlDirtyValid;
+	mutable bool cpu_keep = false;
 
 	PixelFormat format;
 
@@ -170,6 +171,8 @@ public:
 
 	bool lock()const;
 	bool lockRO()const;
+	bool ensureCPUBits()const;
+	void releaseCPUBitsIfUnused()const;
 	bool isLocked()const { return locked_cnt > 0; }
 	bool getSDLDirtyRect(RECT& out)const {
 		if (!sdlDirtyValid) return false;

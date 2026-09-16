@@ -24,6 +24,7 @@ namespace sdlgpu {
 	SDL_GPUTexture* EnsureCanvasRenderTarget(SDL_GPUDevice* dev, ::gxCanvas* canvas);
 	SDL_GPUTexture* EnsureCanvasCubeTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas);
 	SDL_GPUTexture* EnsureCanvasDepthTarget(SDL_GPUDevice* dev, ::gxCanvas* canvas, unsigned w, unsigned h);
+	bool DownloadCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas);
 	bool SeedCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas, unsigned w, unsigned h, const void* rgba);
 	SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas);
 	SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUCommandBuffer* cmds, bool* didUpload = nullptr);

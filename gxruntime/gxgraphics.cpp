@@ -515,6 +515,7 @@ gxCanvas* gxGraphics::createCanvas(int w, int h, int flags) {
 		c->unlock();
 		canvas_set.insert(c);
 		c->cls();
+		c->cpu_keep = false;
 		return c;
 	}
 	if (flags & gxCanvas::CANVAS_TEX_CUBE) {
