@@ -517,6 +517,7 @@ void gxScene::setAmbient2(const float rgb[]) {
 }
 
 void gxScene::setViewport(int x, int y, int w, int h) {
+	if (w <= 0 || h <= 0) { x = 0; y = 0; w = target ? target->getWidth() : 0; h = target ? target->getHeight() : 0; }
 	if (x == (int)viewport.X && y == (int)viewport.Y && w == (int)viewport.Width && h == (int)viewport.Height) return;
 	viewport.X = x; viewport.Y = y; viewport.Width = w; viewport.Height = h;
 	if (dir3dDev) dir3dDev->SetViewport(&viewport);
@@ -843,11 +844,22 @@ bool gxScene::begin(const std::vector<gxLight*>& lights) {
 		graphics->runtime->sceneBeganSinceFlip = true;
 		unsigned tw = target ? (unsigned)target->getWidth() : 0;
 		unsigned th = target ? (unsigned)target->getHeight() : 0;
+		if (viewport.Width > (int)tw) tw = (unsigned)viewport.Width;
+		if (viewport.Height > (int)th) th = (unsigned)viewport.Height;
 		if (depthTarget) {
 			if ((unsigned)depthTarget->getWidth() > tw) tw = (unsigned)depthTarget->getWidth();
 			if ((unsigned)depthTarget->getHeight() > th) th = (unsigned)depthTarget->getHeight();
 		}
 		sdlgpu::BeginSceneFrame(gpuFrame, (SDL_GPUDevice*)graphics->runtime->sdlGpu, (SDL_Window*)graphics->runtime->sdlWindow, tw, th);
+		if (depthTarget) {
+			gpuFrame.externalDepth = sdlgpu::EnsureCanvasDepthTarget((SDL_GPUDevice*)graphics->runtime->sdlGpu, depthTarget, tw, th);
+			gpuFrame.externalDepthW = tw;
+			gpuFrame.externalDepthH = th;
+		}
+		else {
+			gpuFrame.externalDepth = nullptr;
+			gpuFrame.externalDepthW = gpuFrame.externalDepthH = 0;
+		}
 		SDL_WindowFlags wf = SDL_GetWindowFlags((SDL_Window*)graphics->runtime->sdlWindow);
 		gpuWinHidden = (wf & SDL_WINDOW_MINIMIZED) || (wf & SDL_WINDOW_HIDDEN);
 		gpuShadersOk = SDL_GetGPUShaderFormats((SDL_GPUDevice*)graphics->runtime->sdlGpu) != SDL_GPU_SHADERFORMAT_INVALID;
@@ -1055,12 +1067,23 @@ void gxScene::computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const {
 	u.texGen[1] = (n_texs > 1 && (texstate[1].flags & gxCanvas::CANVAS_TEX_SPHERE)) ? 1.0f : 0.0f;
 	u.texGen[2] = (n_texs > 0 && (texstate[0].flags & TEX_COORDS2)) ? 1.0f : 0.0f;
 	u.texGen[3] = 0.0f;
+	auto packCubeMode = [](gxCanvas* c) -> float {
+		if (!c) return 1.0f;
+		int m = c->cubeMode();
+		int mode = m & 3;
+		if (mode < 1 || mode > 3) mode = 1;
+		int space = (m & 4) ? 1 : 0;
+		return (float)(mode + space * 8);
+	};
+	bool cube0 = n_texs > 0 && texstate[0].canvas && (texstate[0].canvas->getFlags() & gxCanvas::CANVAS_TEX_CUBE);
+	bool cube1 = n_texs > 1 && texstate[1].canvas && (texstate[1].canvas->getFlags() & gxCanvas::CANVAS_TEX_CUBE);
+	u.cubeParams[0] = cube0 ? 1.0f : 0.0f;
+	u.cubeParams[1] = cube1 ? 1.0f : 0.0f;
+	u.cubeParams[2] = packCubeMode(texstate[0].canvas);
+	u.cubeParams[3] = packCubeMode(texstate[1].canvas);
 }
 
 bool gxScene::gpuTexGenOk() const {
-	for (int k = 0; k < n_texs && k < MAX_TEXTURES; ++k) {
-		if (texstate[k].canvas && (texstate[k].canvas->getFlags() & gxCanvas::CANVAS_TEX_CUBE)) return false;
-	}
 	return true;
 }
 
@@ -1160,6 +1183,7 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 	if (n_texs > 0 && texstate[0].canvas) {
 		p.tex = sdlgpu::GetCanvasTexture(dev, texstate[0].canvas);
 		int f0 = texstate[0].canvas->getFlags();
+		p.cube0 = (f0 & gxCanvas::CANVAS_TEX_CUBE) != 0;
 		p.wrapU0 = (f0 & gxCanvas::CANVAS_TEX_CLAMPU) == 0;
 		p.wrapV0 = (f0 & gxCanvas::CANVAS_TEX_CLAMPV) == 0;
 		p.point0 = (f0 & gxCanvas::CANVAS_TEX_POINT) != 0;
@@ -1174,6 +1198,7 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 			p.stage1[2] = 1.0f;
 			p.stage1[3] = (texstate[1].canvas->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) ? 1.0f : 0.0f;
 			int f1 = texstate[1].canvas->getFlags();
+			p.cube1 = (f1 & gxCanvas::CANVAS_TEX_CUBE) != 0;
 			p.wrapU1 = (f1 & gxCanvas::CANVAS_TEX_CLAMPU) == 0;
 			p.wrapV1 = (f1 & gxCanvas::CANVAS_TEX_CLAMPV) == 0;
 			p.point1 = (f1 & gxCanvas::CANVAS_TEX_POINT) != 0;
@@ -1301,6 +1326,11 @@ bool gxScene::presentGpuFrame(struct SDL_GPUDevice* dev, struct SDL_Window* win)
 
 bool gxScene::presentGpuFrameWithCanvas(struct SDL_GPUDevice* dev, struct SDL_Window* win, gxCanvas* canvas) {
 	return sdlgpu::PresentSceneWithCanvas((SDL_GPUDevice*)dev, (SDL_Window*)win, gpuFrame, canvas);
+}
+
+bool gxScene::blitFrameToTexture(struct SDL_GPUDevice* dev, gxCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh) {
+	if (!gpuFrame.cmds || !gpuFrame.colorTarget) return false;
+	return sdlgpu::BlitFrameToCanvas((SDL_GPUDevice*)dev, gpuFrame, dest, dx, dy, dw, dh, sx, sy, sw, sh);
 }
 
 gxLight* gxScene::createLight(int flags) {

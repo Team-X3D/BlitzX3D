@@ -72,7 +72,7 @@ public:
 	IDirect3DSurface9* z_surf;           // depth/stencil surf
 
 private:
-	int   flags, cube_mode;
+	int   flags, cube_mode, cube_face;
 
 	IDirect3DSurface9* plain_surf;   // non text offscreen surf
 	IDirect3DTexture9* tex;
@@ -204,6 +204,7 @@ public:
 	int getDepth()const;
 	int getFlags()const { return flags; }
 	int cubeMode()const { return cube_mode; }
+	int getCubeFace()const { return cube_face; }
 	void getOrigin(int* x, int* y)const;
 	void getHandle(int* x, int* y)const;
 	void getViewport(int* x, int* y, int* w, int* h)const;

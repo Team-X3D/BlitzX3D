@@ -19,7 +19,8 @@ static void ReleaseTargetsLocked(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 	SDL_GPUDevice* relDev = frame.dev ? frame.dev : dev;
 	if (!relDev) return;
 	if (frame.colorTarget) { SDL_ReleaseGPUTexture(relDev, frame.colorTarget); frame.colorTarget = nullptr; }
-	if (frame.depthTarget) { SDL_ReleaseGPUTexture(relDev, frame.depthTarget); frame.depthTarget = nullptr; }
+	if (frame.ownedDepth) { SDL_ReleaseGPUTexture(relDev, frame.ownedDepth); frame.ownedDepth = nullptr; }
+	frame.depthTarget = nullptr;
 	frame.colorW = frame.colorH = 0;
 	frame.colorFormat = 0;
 	frame.depthW = frame.depthH = 0;
@@ -45,7 +46,7 @@ void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH) {
 	if (!dev || !win) return false;
 
-	if (frame.cmds) {
+	if (frame.cmds && frame.dev != dev) {
 		EndSceneFrame(frame);
 		SDL_GPUCommandBuffer* stale = frame.cmds;
 		frame.cmds = nullptr;
@@ -55,9 +56,15 @@ bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, 
 	frame.dev = dev;
 	frame.skipped = false;
 	frame.drew3D = false;
+	if (frame.cmds) {
+		EndSceneFrame(frame);
+		if (targetW > frame.targetW) frame.targetW = targetW;
+		if (targetH > frame.targetH) frame.targetH = targetH;
+		return true;
+	}
+
 	frame.targetW = targetW ? targetW : 1;
 	frame.targetH = targetH ? targetH : 1;
-
 	frame.cmds = SDL_AcquireGPUCommandBuffer(dev);
 	if (!frame.cmds) {
 		frame.skipped = true;
@@ -71,7 +78,10 @@ static bool EnsureTargets(GpuSceneFrame& frame) {
 	int colorFmt = SceneColorFormat();
 	if (!frame.colorTarget || frame.colorW != frame.targetW || frame.colorH != frame.targetH || frame.colorFormat != colorFmt) {
 		if (frame.colorTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.colorTarget); frame.colorTarget = nullptr; }
-		if (frame.depthTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.depthTarget); frame.depthTarget = nullptr; frame.depthW = frame.depthH = 0; frame.depthFormat = 0; }
+		if (frame.ownedDepth) { SDL_ReleaseGPUTexture(frame.dev, frame.ownedDepth); frame.ownedDepth = nullptr; }
+		frame.depthTarget = nullptr;
+		frame.depthW = frame.depthH = 0;
+		frame.depthFormat = 0;
 		frame.colorTarget = CreateColorTarget(frame.dev, frame.targetW, frame.targetH,
 			frame.colorClearR, frame.colorClearG, frame.colorClearB, 1.0f);
 		if (!frame.colorTarget) return false;
@@ -80,14 +90,20 @@ static bool EnsureTargets(GpuSceneFrame& frame) {
 		frame.colorFormat = colorFmt;
 	}
 	int fmt = MeshDepthFormat(frame.dev);
-	if (frame.depthTarget && frame.depthW == frame.colorW && frame.depthH == frame.colorH && frame.depthFormat == fmt)
-		return true;
-	if (frame.depthTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.depthTarget); frame.depthTarget = nullptr; }
-	frame.depthTarget = CreateDepthTarget(frame.dev, frame.colorW, frame.colorH, fmt, 1.0f, 0);
-	if (!frame.depthTarget) return false;
+	if (frame.externalDepth && frame.externalDepthW == frame.colorW && frame.externalDepthH == frame.colorH) {
+		frame.depthTarget = frame.externalDepth;
+	}
+	else {
+		if (!frame.ownedDepth || frame.depthW != frame.colorW || frame.depthH != frame.colorH || frame.depthFormat != fmt) {
+			if (frame.ownedDepth) { SDL_ReleaseGPUTexture(frame.dev, frame.ownedDepth); frame.ownedDepth = nullptr; }
+			frame.ownedDepth = CreateDepthTarget(frame.dev, frame.colorW, frame.colorH, fmt, 1.0f, 0);
+			if (!frame.ownedDepth) return false;
+			frame.depthFormat = fmt;
+		}
+		frame.depthTarget = frame.ownedDepth;
+	}
 	frame.depthW = frame.colorW;
 	frame.depthH = frame.colorH;
-	frame.depthFormat = fmt;
 	return true;
 }
 
@@ -176,9 +192,21 @@ void EndSceneFrame(GpuSceneFrame& frame) {
 	}
 }
 
-static void BlitSceneToSwap(SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* scene, unsigned sceneW, unsigned sceneH, SDL_GPUTexture* swap, Uint32 swapW, Uint32 swapH) {
+static void SceneSourceRect(const GpuSceneFrame& frame, int& x, int& y, unsigned& w, unsigned& h) {
+	x = 0; y = 0; w = frame.colorW; h = frame.colorH;
+	if (frame.vpW > 0 && frame.vpH > 0) { x = frame.vpX; y = frame.vpY; w = (unsigned)frame.vpW; h = (unsigned)frame.vpH; }
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+	if ((unsigned)x >= frame.colorW || (unsigned)y >= frame.colorH) { x = 0; y = 0; w = frame.colorW; h = frame.colorH; return; }
+	if ((unsigned)x + w > frame.colorW) w = frame.colorW - x;
+	if ((unsigned)y + h > frame.colorH) h = frame.colorH - y;
+}
+
+static void BlitSceneToSwap(SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* scene, int sceneX, int sceneY, unsigned sceneW, unsigned sceneH, SDL_GPUTexture* swap, Uint32 swapW, Uint32 swapH) {
 	SDL_GPUBlitInfo blit{};
 	blit.source.texture = scene;
+	blit.source.x = (Uint32)sceneX;
+	blit.source.y = (Uint32)sceneY;
 	blit.source.w = sceneW;
 	blit.source.h = sceneH;
 	blit.destination.texture = swap;
@@ -207,6 +235,7 @@ static bool AcquireSwap(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffe
 
 bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame) {
 	if (!dev || !win) return false;
+	FlushPendingTextTargets(dev);
 	if (!frame.drew3D || !frame.cmds) {
 		ClearPendingText();
 		return false;
@@ -228,7 +257,7 @@ bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame
 		ClearPendingText();
 		return true;
 	}
-	BlitSceneToSwap(cmds, frame.colorTarget, frame.colorW, frame.colorH, swap, sw, sh);
+	{ int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, swap, sw, sh); }
 
 	bool textReady = HasPendingText() && PreparePendingText(dev, cmds);
 	if (textReady) {
@@ -257,6 +286,7 @@ bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame
 
 bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, ::gxCanvas* canvas) {
 	if (!dev || !win) return false;
+	FlushPendingTextTargets(dev);
 	bool has3D = frame.drew3D && frame.cmds;
 	if (!has3D && !canvas) {
 		ClearPendingText();
@@ -289,7 +319,7 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		return true;
 	}
 
-	if (has3D) BlitSceneToSwap(cmds, frame.colorTarget, frame.colorW, frame.colorH, swap, sw, sh);
+	if (has3D) { int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, swap, sw, sh); }
 
 	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds) : nullptr;
 	bool haveText = HasPendingText();
@@ -318,6 +348,55 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 	if (haveText) ClearPendingText();
 
 	return SDL_SubmitGPUCommandBuffer(cmds);
+}
+
+bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, ::gxCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh) {
+	if (!dev || !dest || !frame.cmds || !frame.colorTarget) return false;
+	if (dx < 0) { sx -= dx; dw += dx; dx = 0; }
+	if (dy < 0) { sy -= dy; dh += dy; dy = 0; }
+	if (sx < 0) { dx -= sx; dw += sx; sx = 0; }
+	if (sy < 0) { dy -= sy; dh += sy; sy = 0; }
+	if (sx >= (int)frame.colorW) return false;
+	if (sy >= (int)frame.colorH) return false;
+	if (sx + sw > (int)frame.colorW) sw = (int)frame.colorW - sx;
+	if (sy + sh > (int)frame.colorH) sh = (int)frame.colorH - sy;
+	if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return false;
+	EndSceneFrame(frame);
+	bool cube = (dest->getFlags() & ::gxCanvas::CANVAS_TEX_CUBE) != 0;
+	SDL_GPUTexture* destTex = cube ? EnsureCanvasCubeTexture(dev, dest) : EnsureCanvasRenderTarget(dev, dest);
+	if (!destTex) return false;
+	static const Uint32 kCubeLayer[6] = {
+		SDL_GPU_CUBEMAPFACE_NEGATIVEX,
+		SDL_GPU_CUBEMAPFACE_POSITIVEZ,
+		SDL_GPU_CUBEMAPFACE_POSITIVEX,
+		SDL_GPU_CUBEMAPFACE_NEGATIVEZ,
+		SDL_GPU_CUBEMAPFACE_POSITIVEY,
+		SDL_GPU_CUBEMAPFACE_NEGATIVEY
+	};
+	int dstFace = dest->getCubeFace();
+	if (dstFace < 0 || dstFace > 5) dstFace = 0;
+	SDL_GPUBlitInfo info{};
+	info.source.texture = frame.colorTarget;
+	info.source.mip_level = 0;
+	info.source.layer_or_depth_plane = 0;
+	info.source.x = (Uint32)sx;
+	info.source.y = (Uint32)sy;
+	info.source.w = (Uint32)sw;
+	info.source.h = (Uint32)sh;
+	info.destination.texture = destTex;
+	info.destination.mip_level = 0;
+	info.destination.layer_or_depth_plane = cube ? kCubeLayer[dstFace] : 0;
+	info.destination.x = (Uint32)dx;
+	info.destination.y = (Uint32)dy;
+	info.destination.w = (Uint32)dw;
+	info.destination.h = (Uint32)dh;
+	info.load_op = SDL_GPU_LOADOP_LOAD;
+	info.clear_color = SDL_FColor{ 0, 0, 0, 1 };
+	info.flip_mode = SDL_FLIP_NONE;
+	info.filter = SDL_GPU_FILTER_LINEAR;
+	info.cycle = false;
+	SDL_BlitGPUTexture(frame.cmds, &info);
+	return true;
 }
 
 }

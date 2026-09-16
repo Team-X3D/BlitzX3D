@@ -123,6 +123,7 @@ public:
 	bool hasGpuImage() const;
 	bool presentGpuFrame(struct SDL_GPUDevice* dev, struct SDL_Window* win);
 	bool presentGpuFrameWithCanvas(struct SDL_GPUDevice* dev, struct SDL_Window* win, gxCanvas* canvas);
+	bool blitFrameToTexture(struct SDL_GPUDevice* dev, gxCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
 
 	//lighting
 	gxLight* createLight(int flags);

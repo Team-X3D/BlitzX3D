@@ -274,7 +274,10 @@ void gxRuntime::suspend() {
 	suspended = true;
 	busy = false;
 
-	if(gfx_mode == GMODE_EXCLUSIVE) ShowCursor(1);
+	if (gfx_mode == GMODE_EXCLUSIVE) {
+		if (usingSDLWindow()) sdlgpu::SetCursorVisible(true);
+		else ShowCursor(1);
+	}
 
 	if(debugger) debugger->debugStop();
 }
@@ -283,7 +286,10 @@ void gxRuntime::suspend() {
 // RESUME //
 ////////////
 void gxRuntime::resume() {
-	if(gfx_mode == GMODE_EXCLUSIVE) ShowCursor(0);
+	if (gfx_mode == GMODE_EXCLUSIVE) {
+		if (usingSDLWindow()) sdlgpu::SetCursorVisible(false);
+		else ShowCursor(0);
+	}
 	busy = true;
 	acquireInput();
 	restoreGraphics();
@@ -298,7 +304,7 @@ void gxRuntime::resume() {
 // FORCE SUSPEND //
 ///////////////////
 void gxRuntime::forceSuspend() {
-	if (gfx_mode == GMODE_EXCLUSIVE) {
+	if (gfx_mode == GMODE_EXCLUSIVE && !usingSDLWindow()) {
 		ShowWindow(hwnd, SW_MINIMIZE);
 		SetForegroundWindow(GetDesktopWindow());
 	}
@@ -311,7 +317,7 @@ void gxRuntime::forceSuspend() {
 // FORCE RESUME //
 //////////////////
 void gxRuntime::forceResume() {
-	if(gfx_mode == GMODE_EXCLUSIVE) {
+	if (gfx_mode == GMODE_EXCLUSIVE && !usingSDLWindow()) {
 		SetForegroundWindow(hwnd);
 		ShowWindow(hwnd, SW_SHOWMAXIMIZED);
 	}
@@ -717,6 +723,17 @@ void gxRuntime::asyncEnd() {
 //////////
 // IDLE //
 //////////
+void gxRuntime::maybePresentConsole() {
+	if (!run_flag || busy || suspended || !sdlGpu || !sdlWindow || !graphics) return;
+	gxCanvas* f = graphics->getFrontCanvas();
+	if (!f) return;
+	if (f != console_canvas) { console_canvas = f; console_mod = f->getModify(); return; }
+	if (f->getModify() == console_mod) return;
+	if (sceneBeganSinceFlip) return;
+	console_mod = f->getModify();
+	graphics->presentSceneWithCanvas(sdlGpu, sdlWindow, f);
+}
+
 bool gxRuntime::idle() {
 	for(;;) {
 		pumpSDLWindowEvents();
@@ -726,7 +743,10 @@ bool gxRuntime::idle() {
 			success = GetMessageW(&msg, 0, 0, 0);
 		}
 		else {
-			if(!PeekMessageW(&msg, 0, 0, 0, PM_REMOVE)) return run_flag;
+			if(!PeekMessageW(&msg, 0, 0, 0, PM_REMOVE)) {
+				maybePresentConsole();
+				return run_flag;
+			}
 		}
 
 		if (msg.message == WM_MOUSEMOVE) {
@@ -907,6 +927,20 @@ void gxRuntime::destroySDLWindow() {
 	}
 }
 
+void gxRuntime::setFullscreenState(bool fullscreen) {
+	if (!usingSDLWindow()) return;
+	if (fullscreen) {
+		gfx_mode = GMODE_EXCLUSIVE;
+		auto_suspend = true;
+		sdlgpu::SetCursorVisible(false);
+	}
+	else {
+		gfx_mode = GMODE_FIXED;
+		auto_suspend = false;
+		sdlgpu::SetCursorVisible(pointer_visible);
+	}
+}
+
 //////////////////
 // GETMILLISECS //
 //////////////////
@@ -945,7 +979,7 @@ void gxRuntime::setPointerVisible(bool vis) {
 	if(pointer_visible == vis) return;
 
 	pointer_visible = vis;
-	if(gfx_mode == GMODE_EXCLUSIVE) return;
+	if(gfx_mode == GMODE_EXCLUSIVE && !usingSDLWindow()) return;
 
 	if (usingSDLWindow()) {
 		sdlgpu::SetCursorVisible(vis);
@@ -1249,48 +1283,86 @@ gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) 
 
 	curr_driver = drivers[driver];
 
-	if (windowed) {
-		DebugMsg("Attempting openWindowedGraphics...");
-		bool sdlActive = false;
-		if (!sdlWindow) {
-			bool resizable = (flags & gxGraphics::GRAPHICS_SCALED) != 0;
-			bool borderless = (flags & gxGraphics::GRAPHICS_BORDERLESS) != 0;
-			std::string title = app_title.size() ? app_title : " ";
-			SDL_Window* win = sdlgpu::CreateGameWindow(w, h, resizable, borderless, title.c_str());
-			if (win) {
-				HWND sdlHwnd = (HWND)sdlgpu::GetHWND(win);
-				if (sdlHwnd) {
-					savedHwnd = hwnd;
-					ShowWindow(savedHwnd, SW_HIDE);
-					sdlWindow = win;
-					hwnd = sdlHwnd;
-					sdlActive = true;
-					sdlGpu = sdlgpu::CreateGPUDevice();
-					if (!sdlGpu) DebugMsg("SDL GPU device create failed");
-					else if (!sdlgpu::ClaimWindow(sdlGpu, win)) {
-						DebugMsg("SDL GPU claim window failed");
-						sdlgpu::DestroyGPUDevice(sdlGpu);
-						sdlGpu = nullptr;
-					}
-					sdlgpu::SizeWindowForClient(win, w, h);
-					sdlgpu::CenterWindow(win);
-					if (sdlGpu) sdlgpu::PresentSwapchain(sdlGpu, win, 0.0f, 0.0f, 0.0f);
-					sdlgpu::ShowGameWindow(win);
-					sdlgpu::SetCursorVisible(pointer_visible);
+	bool fullscreen = !windowed;
+
+	bool sdlReady = false;
+	if (!sdlWindow) {
+		bool resizable = (flags & gxGraphics::GRAPHICS_SCALED) != 0;
+		bool borderless = (flags & gxGraphics::GRAPHICS_BORDERLESS) != 0;
+		std::string title = app_title.size() ? app_title : " ";
+		SDL_Window* win = sdlgpu::CreateGameWindow(w, h, resizable, borderless, fullscreen, title.c_str());
+		if (win) {
+			HWND sdlHwnd = (HWND)sdlgpu::GetHWND(win);
+			if (sdlHwnd) {
+				savedHwnd = hwnd;
+				ShowWindow(savedHwnd, SW_HIDE);
+				sdlWindow = win;
+				hwnd = sdlHwnd;
+				sdlGpu = sdlgpu::CreateGPUDevice();
+				if (!sdlGpu) DebugMsg("SDL GPU device create failed");
+				else if (!sdlgpu::ClaimWindow(sdlGpu, win)) {
+					DebugMsg("SDL GPU claim window failed");
+					sdlgpu::DestroyGPUDevice(sdlGpu);
+					sdlGpu = nullptr;
 				}
-				else {
-					sdlgpu::DestroyGameWindow(win);
+				if (sdlGpu) {
+					if (!fullscreen) {
+						sdlgpu::SizeWindowForClient(win, w, h);
+						sdlgpu::CenterWindow(win);
+					}
+					sdlgpu::PresentSwapchain(sdlGpu, win, 0.0f, 0.0f, 0.0f);
+					sdlgpu::ShowGameWindow(win);
+					sdlgpu::SetCursorVisible(fullscreen ? false : pointer_visible);
+					sdlReady = true;
 				}
 			}
-			if (!sdlActive) DebugMsg("SDL window create failed");
+			if (!sdlReady) sdlgpu::DestroyGameWindow(win);
 		}
+		if (!sdlReady) DebugMsg("SDL window create failed");
+	}
+	else {
+		sdlReady = (sdlGpu != nullptr);
+	}
+
+	if (sdlReady) {
+		DebugMsg("Attempting openWindowedGraphics (SDL)...");
 		graphics = openWindowedGraphics(w, h, d, d3d);
-		if (sdlActive && !graphics) {
+		if (!graphics) {
 			DebugMsg("openWindowedGraphics failed on SDL");
 			destroySDLWindow();
+			sdlReady = false;
+		}
+	}
+
+	if (!graphics) {
+		if (windowed) {
+			DebugMsg("Attempting openWindowedGraphics...");
 			graphics = openWindowedGraphics(w, h, d, d3d);
 		}
-		if (graphics) {
+		else {
+			DebugMsg("Attempting openExclusiveGraphics...");
+			backupWindowState();
+			SetWindowLong(hwnd, GWL_STYLE, WS_VISIBLE | WS_POPUP);
+			SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+			ShowCursor(0);
+			graphics = openExclusiveGraphics(w, h, d, d3d);
+			if (!graphics) {
+				DebugMsg("openExclusiveGraphics FAILED");
+				ShowCursor(1);
+				restoreWindowState();
+			}
+		}
+	}
+
+	if (graphics) {
+		if (!windowed) {
+			DebugMsg(usingSDLWindow() ? "SDL fullscreen graphics SUCCESS" : "openExclusiveGraphics SUCCESS");
+			gfx_mode = GMODE_EXCLUSIVE;
+			auto_suspend = true;
+			if (!usingSDLWindow()) SetCursorPos(0, 0);
+			acquireInput();
+		}
+		else {
 			DebugMsg("openWindowedGraphics SUCCESS");
 			gfx_mode = (flags & gxGraphics::GRAPHICS_SCALED) ? GMODE_SCALED : GMODE_FIXED;
 			auto_suspend = (flags & gxGraphics::GRAPHICS_AUTOSUSPEND) != 0;
@@ -1325,29 +1397,6 @@ gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) 
 				}
 			}
 		}
-		else {
-			DebugMsg("openWindowedGraphics FAILED");
-		}
-	}
-	else {
-		DebugMsg("Attempting openExclusiveGraphics...");
-		backupWindowState();
-		SetWindowLong(hwnd, GWL_STYLE, WS_VISIBLE | WS_POPUP);
-		SetWindowPos(hwnd, 0, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-		ShowCursor(0);
-		graphics = openExclusiveGraphics(w, h, d, d3d);
-		if (!graphics) {
-			DebugMsg("openExclusiveGraphics FAILED");
-			ShowCursor(1);
-			restoreWindowState();
-		}
-		else {
-			DebugMsg("openExclusiveGraphics SUCCESS");
-			gfx_mode = GMODE_EXCLUSIVE;
-			auto_suspend = true;
-			SetCursorPos(0, 0);
-			acquireInput();
-		}
 	}
 
 	gfx_lost = false;
@@ -1365,6 +1414,7 @@ gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) 
 
 void gxRuntime::closeGraphics(gxGraphics* g) {
 	if (!graphics || graphics != g) return;
+	bool wasSDL = usingSDLWindow();
 	auto_suspend = false;
 	busy = true;
 
@@ -1390,7 +1440,7 @@ void gxRuntime::closeGraphics(gxGraphics* g) {
 	old_graphics->backBuffer = nullptr;
 	delete old_graphics;
 
-	if (gfx_mode == GMODE_EXCLUSIVE) {
+	if (gfx_mode == GMODE_EXCLUSIVE && !wasSDL) {
 		ShowCursor(1);
 		restoreWindowState();
 	}

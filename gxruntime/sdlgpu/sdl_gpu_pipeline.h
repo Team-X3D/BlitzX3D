@@ -40,6 +40,7 @@ struct MeshExtraStage {
 		SDL_GPUBuffer* boneBuf = nullptr;
 		bool wrapU0 = true, wrapV0 = true, point0 = false;
 		bool wrapU1 = true, wrapV1 = true, point1 = false;
+		bool cube0 = false, cube1 = false;
 		int blend = MESH_BLEND_REPLACE;
 		int zMode = MESH_Z_NORMAL;
 		SDL_GPUCullMode cull = SDL_GPU_CULLMODE_BACK;

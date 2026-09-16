@@ -171,6 +171,8 @@ namespace sdlgpu {
 			bool skinned = false;
 			bool twoTex = false;
 			bool extra = false;
+			bool cube0 = false;
+			bool cube1 = false;
 			int blend = MESH_BLEND_REPLACE;
 			int zMode = MESH_Z_NORMAL;
 			SDL_GPUCullMode cullMode = SDL_GPU_CULLMODE_NONE;
@@ -178,6 +180,7 @@ namespace sdlgpu {
 			bool operator==(const MeshPipeKey& o) const {
 				return format == o.format && depthFormat == o.depthFormat && stride == o.stride &&
 					skinned == o.skinned && twoTex == o.twoTex && extra == o.extra &&
+					cube0 == o.cube0 && cube1 == o.cube1 &&
 					blend == o.blend && zMode == o.zMode && cullMode == o.cullMode && wireframe == o.wireframe;
 			}
 		};
@@ -336,15 +339,16 @@ namespace sdlgpu {
 		return g_whiteTex;
 	}
 
-	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, bool skinned, bool twoTex, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode, bool wireframe, bool extra = false) {
+	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, bool skinned, bool twoTex, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode, bool wireframe, bool extra = false, bool cube0 = false, bool cube1 = false) {
 		GpuLock lock;
 		SDL_GPUTextureFormat fmt = colorFormatOverride ? (SDL_GPUTextureFormat)colorFormatOverride : SDL_GetGPUSwapchainTextureFormat(dev, win);
 		SDL_GPUTextureFormat depthFmt = depthFormatOverride ? (SDL_GPUTextureFormat)depthFormatOverride : PickMeshDepthFormat(dev);
 		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
 		if (blendMode < MESH_BLEND_REPLACE || blendMode > MESH_BLEND_EXTRA_MUL) blendMode = MESH_BLEND_ALPHA;
 		if (zMode < MESH_Z_NORMAL || zMode > MESH_Z_CMPONLY) zMode = MESH_Z_NORMAL;
+		if (extra) { cube0 = false; cube1 = false; }
 
-		MeshPipeKey key{ fmt, depthFmt, stride, skinned, twoTex, extra, blendMode, zMode, cullMode, wireframe };
+		MeshPipeKey key{ fmt, depthFmt, stride, skinned, twoTex, extra, cube0, cube1, blendMode, zMode, cullMode, wireframe };
 		for (auto& e : g_meshPipes) {
 			if (e.key == key) return e.pipe;
 		}
@@ -354,14 +358,22 @@ namespace sdlgpu {
 		const uint8_t* psCode = nullptr;
 		size_t vsSize = 0, psSize = 0;
 		const char* vsEntry = skinned ? "VSMainSkinned" : "VSMain";
-		const char* psEntry = extra ? "PSMainExtra" : (twoTex ? "PSMain2Tex" : "PSMain");
+		const char* psEntry = extra ? "PSMainExtra"
+			: (twoTex ? (cube0 ? (cube1 ? "PSMainCubeCube" : "PSMainCubeTex") : (cube1 ? "PSMainTexCube" : "PSMain2Tex"))
+				: (cube0 ? "PSMainCube" : "PSMain"));
 		SDL_GPUShaderFormat useFmt = SDL_GPU_SHADERFORMAT_INVALID;
 		if (supported & SDL_GPU_SHADERFORMAT_SPIRV) {
 			useFmt = SDL_GPU_SHADERFORMAT_SPIRV;
 			if (skinned) { vsCode = kSkinVS_SPIRV; vsSize = kSkinVS_SPIRV_size; }
 			else { vsCode = kMeshVS_SPIRV; vsSize = kMeshVS_SPIRV_size; }
 			if (extra) { psCode = kMeshPSExtra_SPIRV; psSize = kMeshPSExtra_SPIRV_size; }
-			else if (twoTex) { psCode = kMeshPS2_SPIRV; psSize = kMeshPS2_SPIRV_size; }
+			else if (twoTex) {
+				if (cube0 && cube1) { psCode = kMeshPSCubeCube_SPIRV; psSize = kMeshPSCubeCube_SPIRV_size; }
+				else if (cube0) { psCode = kMeshPSCubeTex_SPIRV; psSize = kMeshPSCubeTex_SPIRV_size; }
+				else if (cube1) { psCode = kMeshPSTexCube_SPIRV; psSize = kMeshPSTexCube_SPIRV_size; }
+				else { psCode = kMeshPS2_SPIRV; psSize = kMeshPS2_SPIRV_size; }
+			}
+			else if (cube0) { psCode = kMeshPSCube_SPIRV; psSize = kMeshPSCube_SPIRV_size; }
 			else { psCode = kMeshPS_SPIRV; psSize = kMeshPS_SPIRV_size; }
 		}
 		else if (supported & SDL_GPU_SHADERFORMAT_DXIL) {
@@ -369,7 +381,13 @@ namespace sdlgpu {
 			if (skinned) { vsCode = kSkinVS_DXIL; vsSize = kSkinVS_DXIL_size; }
 			else { vsCode = kMeshVS_DXIL; vsSize = kMeshVS_DXIL_size; }
 			if (extra) { psCode = kMeshPSExtra_DXIL; psSize = kMeshPSExtra_DXIL_size; }
-			else if (twoTex) { psCode = kMeshPS2_DXIL; psSize = kMeshPS2_DXIL_size; }
+			else if (twoTex) {
+				if (cube0 && cube1) { psCode = kMeshPSCubeCube_DXIL; psSize = kMeshPSCubeCube_DXIL_size; }
+				else if (cube0) { psCode = kMeshPSCubeTex_DXIL; psSize = kMeshPSCubeTex_DXIL_size; }
+				else if (cube1) { psCode = kMeshPSTexCube_DXIL; psSize = kMeshPSTexCube_DXIL_size; }
+				else { psCode = kMeshPS2_DXIL; psSize = kMeshPS2_DXIL_size; }
+			}
+			else if (cube0) { psCode = kMeshPSCube_DXIL; psSize = kMeshPSCube_DXIL_size; }
 			else { psCode = kMeshPS_DXIL; psSize = kMeshPS_DXIL_size; }
 		}
 		if (useFmt == SDL_GPU_SHADERFORMAT_INVALID) {
@@ -531,8 +549,10 @@ namespace sdlgpu {
 		if (SDL_GetGPUShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
 		bool skinned = p.boneBuf != nullptr;
 		bool twoTex = p.tex1 != nullptr;
+		bool cube0 = p.cube0 && p.tex != nullptr;
+		bool cube1 = p.cube1 && p.tex1 != nullptr;
 
-		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, skinned, twoTex, colorFormat, depthFormat, p.blend, p.zMode, p.cull, p.wireframe);
+		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, skinned, twoTex, colorFormat, depthFormat, p.blend, p.zMode, p.cull, p.wireframe, false, cube0, cube1);
 		if (!meshPipe) return;
 		if (!g_meshSamp) return;
 

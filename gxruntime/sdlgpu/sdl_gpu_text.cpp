@@ -7,6 +7,7 @@
 #include "../gxcanvas.h"
 
 #include <cstring>
+#include <unordered_map>
 #include <vector>
 
 #include <SDL3/SDL_gpu.h>
@@ -40,6 +41,7 @@ struct PendingQuad {
 };
 
 struct PendingItem {
+	::gxCanvas* target = nullptr;
 	::gxCanvas* atlas = nullptr;
 	SDL_GPUTexture* tex = nullptr;
 	bool smooth = true;
@@ -56,10 +58,9 @@ struct DrawRange {
 };
 
 SDL_GPUDevice* g_textDev = nullptr;
-SDL_GPUGraphicsPipeline* g_textPipe = nullptr;
+std::unordered_map<int, SDL_GPUGraphicsPipeline*> g_textPipes;
 SDL_GPUSampler* g_textLinear = nullptr;
 SDL_GPUSampler* g_textNearest = nullptr;
-SDL_GPUTextureFormat g_textFormat = SDL_GPU_TEXTUREFORMAT_INVALID;
 SDL_GPUDevice* g_textWhiteDev = nullptr;
 SDL_GPUTexture* g_textWhite = nullptr;
 SDL_GPUDevice* g_textVbDev = nullptr;
@@ -69,6 +70,8 @@ unsigned g_textVbCap = 0;
 std::vector<PendingItem> g_pending;
 std::vector<TextVertex> g_staged;
 std::vector<DrawRange> g_ranges;
+
+::gxCanvas* g_activeTarget = nullptr;
 
 unsigned PackTextColor(unsigned argb) {
 	unsigned a = (argb >> 24) & 0xff;
@@ -87,14 +90,15 @@ void TeardownWhite() {
 
 void TeardownPipe() {
 	GpuLock lock;
-	if (g_textPipe && g_textDev) SDL_ReleaseGPUGraphicsPipeline(g_textDev, g_textPipe);
-	if (g_textLinear && g_textDev) SDL_ReleaseGPUSampler(g_textDev, g_textLinear);
-	if (g_textNearest && g_textDev) SDL_ReleaseGPUSampler(g_textDev, g_textNearest);
-	g_textPipe = nullptr;
+	if (g_textDev) {
+		for (auto& kv : g_textPipes) if (kv.second) SDL_ReleaseGPUGraphicsPipeline(g_textDev, kv.second);
+		if (g_textLinear) SDL_ReleaseGPUSampler(g_textDev, g_textLinear);
+		if (g_textNearest) SDL_ReleaseGPUSampler(g_textDev, g_textNearest);
+	}
+	g_textPipes.clear();
 	g_textLinear = nullptr;
 	g_textNearest = nullptr;
 	g_textDev = nullptr;
-	g_textFormat = SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 
 void TeardownVb() {
@@ -161,11 +165,14 @@ SDL_GPUShader* LoadTextShader(SDL_GPUDevice* dev, SDL_GPUShaderFormat fmt, SDL_G
 	return SDL_CreateGPUShader(dev, &info);
 }
 
-bool EnsureTextPipe(SDL_GPUDevice* dev, SDL_Window* win) {
+SDL_GPUGraphicsPipeline* EnsureTextPipeForFormat(SDL_GPUDevice* dev, SDL_GPUTextureFormat fmt) {
 	GpuLock lock;
-	SDL_GPUTextureFormat fmt = win ? SDL_GetGPUSwapchainTextureFormat(dev, win) : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-	if (g_textPipe && g_textLinear && g_textNearest && g_textDev == dev && g_textFormat == fmt) return true;
-	TeardownPipe();
+	if (!dev || fmt == SDL_GPU_TEXTUREFORMAT_INVALID) return nullptr;
+	if (g_textDev != dev) {
+		TeardownPipe();
+	}
+	auto found = g_textPipes.find((int)fmt);
+	if (found != g_textPipes.end() && found->second) return found->second;
 	SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
 	const uint8_t* vsCode = nullptr;
 	const uint8_t* psCode = nullptr;
@@ -187,18 +194,18 @@ bool EnsureTextPipe(SDL_GPUDevice* dev, SDL_Window* win) {
 	}
 	if (use == SDL_GPU_SHADERFORMAT_INVALID) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No supported text shader format: %u", (unsigned)sup);
-		return false;
+		return nullptr;
 	}
 	SDL_GPUShader* vs = LoadTextShader(dev, use, SDL_GPU_SHADERSTAGE_VERTEX, "VSMain", vsCode, vsSize, 0);
 	if (!vs) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Text VS failed: %s", SDL_GetError());
-		return false;
+		return nullptr;
 	}
 	SDL_GPUShader* ps = LoadTextShader(dev, use, SDL_GPU_SHADERSTAGE_FRAGMENT, "PSMain", psCode, psSize, 1);
 	if (!ps) {
 		SDL_ReleaseGPUShader(dev, vs);
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Text PS failed: %s", SDL_GetError());
-		return false;
+		return nullptr;
 	}
 	SDL_GPUVertexBufferDescription vb{};
 	vb.slot = 0;
@@ -254,34 +261,39 @@ bool EnsureTextPipe(SDL_GPUDevice* dev, SDL_Window* win) {
 	SDL_PropertiesID textProps = SDL_CreateProperties();
 	if (textProps) SDL_SetStringProperty(textProps, SDL_PROP_GPU_GRAPHICSPIPELINE_CREATE_NAME_STRING, "b3d_text");
 	info.props = textProps;
-	g_textPipe = SDL_CreateGPUGraphicsPipeline(dev, &info);
+	SDL_GPUGraphicsPipeline* pipe = SDL_CreateGPUGraphicsPipeline(dev, &info);
 	if (textProps) SDL_DestroyProperties(textProps);
 	info.props = 0;
 	SDL_ReleaseGPUShader(dev, vs);
 	SDL_ReleaseGPUShader(dev, ps);
-	if (!g_textPipe) {
+	if (!pipe) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Text pipeline failed: %s", SDL_GetError());
-		return false;
+		return nullptr;
 	}
-	SDL_GPUSamplerCreateInfo lin{};
-	lin.min_filter = SDL_GPU_FILTER_LINEAR;
-	lin.mag_filter = SDL_GPU_FILTER_LINEAR;
-	lin.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-	lin.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-	g_textLinear = SDL_CreateGPUSampler(dev, &lin);
-	SDL_GPUSamplerCreateInfo pint{};
-	pint.min_filter = SDL_GPU_FILTER_NEAREST;
-	pint.mag_filter = SDL_GPU_FILTER_NEAREST;
-	pint.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-	pint.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
-	g_textNearest = SDL_CreateGPUSampler(dev, &pint);
+	if (!g_textLinear) {
+		SDL_GPUSamplerCreateInfo lin{};
+		lin.min_filter = SDL_GPU_FILTER_LINEAR;
+		lin.mag_filter = SDL_GPU_FILTER_LINEAR;
+		lin.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+		lin.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+		g_textLinear = SDL_CreateGPUSampler(dev, &lin);
+	}
+	if (!g_textNearest) {
+		SDL_GPUSamplerCreateInfo pint{};
+		pint.min_filter = SDL_GPU_FILTER_NEAREST;
+		pint.mag_filter = SDL_GPU_FILTER_NEAREST;
+		pint.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+		pint.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+		g_textNearest = SDL_CreateGPUSampler(dev, &pint);
+	}
 	if (!g_textLinear || !g_textNearest) {
+		SDL_ReleaseGPUGraphicsPipeline(dev, pipe);
 		TeardownPipe();
-		return false;
+		return nullptr;
 	}
 	g_textDev = dev;
-	g_textFormat = fmt;
-	return true;
+	g_textPipes[(int)fmt] = pipe;
+	return pipe;
 }
 
 void EmitQuad(std::vector<TextVertex>& out, unsigned canvasW, unsigned canvasH, const PendingQuad& q) {
@@ -332,7 +344,7 @@ void InvalidatePendingTexture(SDL_GPUTexture* tex) {
 	}
 }
 
-bool QueueTextQuads(SDL_GPUDevice* dev, ::gxCanvas* atlas, bool smooth, unsigned canvasW, unsigned canvasH, const TextQuad* quads, unsigned count) {
+bool QueueTextQuads(SDL_GPUDevice* dev, ::gxCanvas* target, ::gxCanvas* atlas, bool smooth, unsigned canvasW, unsigned canvasH, const TextQuad* quads, unsigned count) {
 	GpuLock lock;
 	if (!dev || !atlas || !quads || !count || !canvasW || !canvasH) return false;
 	SDL_GPUTexture* tex = GetCanvasTexture(dev, atlas);
@@ -344,6 +356,7 @@ bool QueueTextQuads(SDL_GPUDevice* dev, ::gxCanvas* atlas, bool smooth, unsigned
 		const TextQuad& q = quads[i];
 		if (q.destW <= 0.0f || q.destH <= 0.0f || q.srcW <= 0.0f || q.srcH <= 0.0f) continue;
 		PendingItem item{};
+		item.target = target;
 		item.atlas = atlas;
 		item.tex = tex;
 		item.smooth = smooth;
@@ -363,12 +376,13 @@ bool QueueTextQuads(SDL_GPUDevice* dev, ::gxCanvas* atlas, bool smooth, unsigned
 	return true;
 }
 
-bool QueueTextSolid(SDL_GPUDevice* dev, unsigned canvasW, unsigned canvasH, float dx, float dy, float dw, float dh, unsigned color) {
+bool QueueTextSolid(SDL_GPUDevice* dev, ::gxCanvas* target, unsigned canvasW, unsigned canvasH, float dx, float dy, float dw, float dh, unsigned color) {
 	GpuLock lock;
 	if (!dev || !canvasW || !canvasH || dw <= 0.0f || dh <= 0.0f) return false;
 	SDL_GPUTexture* tex = EnsureTextWhite(dev);
 	if (!tex) return false;
 	PendingItem item{};
+	item.target = target;
 	item.tex = tex;
 	item.smooth = true;
 	item.canvasW = canvasW;
@@ -386,30 +400,31 @@ bool QueueTextSolid(SDL_GPUDevice* dev, unsigned canvasW, unsigned canvasH, floa
 	return true;
 }
 
-bool QueueRectFilled(SDL_GPUDevice* dev, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
+bool QueueRectFilled(SDL_GPUDevice* dev, ::gxCanvas* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
 	if (w <= 0.0f || h <= 0.0f) return true;
-	return QueueTextSolid(dev, canvasW, canvasH, x, y, w, h, color);
+	return QueueTextSolid(dev, target, canvasW, canvasH, x, y, w, h, color);
 }
 
-bool QueueRectOutline(SDL_GPUDevice* dev, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
+bool QueueRectOutline(SDL_GPUDevice* dev, ::gxCanvas* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
 	GpuLock lock;
 	if (w <= 0.0f || h <= 0.0f) return true;
-	if (!QueueTextSolid(dev, canvasW, canvasH, x, y, w, 1.0f, color)) return false;
+	if (!QueueTextSolid(dev, target, canvasW, canvasH, x, y, w, 1.0f, color)) return false;
 	if (h > 1.0f) {
-		if (!QueueTextSolid(dev, canvasW, canvasH, x, y + h - 1.0f, w, 1.0f, color)) return false;
+		if (!QueueTextSolid(dev, target, canvasW, canvasH, x, y + h - 1.0f, w, 1.0f, color)) return false;
 		if (h > 2.0f) {
-			if (!QueueTextSolid(dev, canvasW, canvasH, x, y + 1.0f, 1.0f, h - 2.0f, color)) return false;
-			if (w > 1.0f && !QueueTextSolid(dev, canvasW, canvasH, x + w - 1.0f, y + 1.0f, 1.0f, h - 2.0f, color)) return false;
+			if (!QueueTextSolid(dev, target, canvasW, canvasH, x, y + 1.0f, 1.0f, h - 2.0f, color)) return false;
+			if (w > 1.0f && !QueueTextSolid(dev, target, canvasW, canvasH, x + w - 1.0f, y + 1.0f, 1.0f, h - 2.0f, color)) return false;
 		}
 	}
 	return true;
 }
 
-bool QueueSpriteQuad(SDL_GPUDevice* dev, SDL_GPUTexture* tex, bool smooth, unsigned canvasW, unsigned canvasH, unsigned texW, unsigned texH, const TextQuad* quad) {
+bool QueueSpriteQuad(SDL_GPUDevice* dev, ::gxCanvas* target, SDL_GPUTexture* tex, bool smooth, unsigned canvasW, unsigned canvasH, unsigned texW, unsigned texH, const TextQuad* quad) {
 	GpuLock lock;
 	if (!dev || !tex || !quad || !canvasW || !canvasH || !texW || !texH) return false;
 	if (quad->destW <= 0.0f || quad->destH <= 0.0f || quad->srcW <= 0.0f || quad->srcH <= 0.0f) return true;
 	PendingItem item{};
+	item.target = target;
 	item.tex = tex;
 	item.smooth = smooth;
 	item.canvasW = canvasW;
@@ -442,6 +457,7 @@ bool PreparePendingText(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds) {
 	if (!EnsureTextVb(dev, total)) return false;
 	g_staged.reserve(total);
 	for (auto& item : g_pending) {
+		if (item.target) continue;
 		if (g_ranges.empty() || g_ranges.back().tex != item.tex || g_ranges.back().smooth != item.smooth) {
 			DrawRange r{};
 			r.tex = item.tex;
@@ -476,18 +492,14 @@ bool PreparePendingText(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds) {
 	return true;
 }
 
-void DrawPendingText(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass) {
-	GpuLock lock;
-	if (!dev || !pass || g_ranges.empty()) return;
-	if (!EnsureTextPipe(dev, win)) return;
-	if (!g_textVb || !g_textPipe) return;
-	SDL_BindGPUGraphicsPipeline(pass, g_textPipe);
+static void DrawRanges(SDL_GPUDevice* dev, SDL_GPURenderPass* pass, SDL_GPUGraphicsPipeline* pipe, const std::vector<DrawRange>& ranges) {
+	if (!dev || !pass || !pipe || !g_textVb || ranges.empty()) return;
+	SDL_BindGPUGraphicsPipeline(pass, pipe);
 	SDL_GPUBufferBinding vb{};
 	vb.buffer = g_textVb;
 	vb.offset = 0;
 	SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
-	unsigned drawn = 0;
-	for (auto& r : g_ranges) {
+	for (auto& r : ranges) {
 		if (!r.tex || !r.count) continue;
 		SDL_GPUTextureSamplerBinding b{};
 		b.texture = r.tex;
@@ -495,8 +507,120 @@ void DrawPendingText(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pas
 		if (!b.sampler) continue;
 		SDL_BindGPUFragmentSamplers(pass, 0, &b, 1);
 		SDL_DrawGPUPrimitives(pass, r.count, 1, r.first, 0);
-		drawn += r.count;
 	}
+}
+
+void DrawPendingText(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass) {
+	GpuLock lock;
+	if (!dev || !pass || g_ranges.empty()) return;
+	SDL_GPUTextureFormat fmt = win ? SDL_GetGPUSwapchainTextureFormat(dev, win) : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+	SDL_GPUGraphicsPipeline* pipe = EnsureTextPipeForFormat(dev, fmt);
+	if (!pipe) return;
+	DrawRanges(dev, pass, pipe, g_ranges);
+}
+
+static bool TakePendingForTarget(::gxCanvas* target, std::vector<DrawRange>& ranges) {
+	std::vector<PendingItem> keep;
+	keep.reserve(g_pending.size());
+	for (auto& item : g_pending) {
+		if (item.target != target) { keep.push_back(item); continue; }
+		if (ranges.empty() || ranges.back().tex != item.tex || ranges.back().smooth != item.smooth) {
+			DrawRange r{};
+			r.tex = item.tex;
+			r.smooth = item.smooth;
+			r.first = (unsigned)g_staged.size();
+			ranges.push_back(r);
+		}
+		EmitQuad(g_staged, item.canvasW, item.canvasH, item.quad);
+		ranges.back().count += 6;
+	}
+	g_pending.swap(keep);
+	return !ranges.empty();
+}
+
+bool FlushPendingTextToCanvas(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
+	GpuLock lock;
+	if (!dev || !canvas) return false;
+	bool has = false;
+	for (auto& item : g_pending) { if (item.target == canvas) { has = true; break; } }
+	if (!has) return true;
+	SDL_GPUTexture* rt = EnsureCanvasRenderTarget(dev, canvas);
+	if (!rt) return false;
+	std::vector<DrawRange> ranges;
+	g_staged.clear();
+	if (!TakePendingForTarget(canvas, ranges)) return true;
+	if (!EnsureTextVb(dev, (unsigned)g_staged.size())) return false;
+	SDL_GPUGraphicsPipeline* pipe = EnsureTextPipeForFormat(dev, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM);
+	if (!pipe) return false;
+
+	unsigned bytes = (unsigned)g_staged.size() * (unsigned)sizeof(TextVertex);
+	SDL_GPUCommandBuffer* cmds = SDL_AcquireGPUCommandBuffer(dev);
+	if (!cmds) return false;
+	SDL_GPUTransferBuffer* tb = AcquireUploadTransferBuffer(dev, bytes);
+	if (!tb) { SDL_CancelGPUCommandBuffer(cmds); return false; }
+	void* dst = SDL_MapGPUTransferBuffer(dev, tb, true);
+	if (!dst) { ReleaseUploadTransferBuffer(dev, tb); SDL_CancelGPUCommandBuffer(cmds); return false; }
+	memcpy(dst, g_staged.data(), bytes);
+	SDL_UnmapGPUTransferBuffer(dev, tb);
+	SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmds);
+	SDL_GPUTransferBufferLocation src{};
+	src.transfer_buffer = tb;
+	SDL_GPUBufferRegion reg{};
+	reg.buffer = g_textVb;
+	reg.offset = 0;
+	reg.size = bytes;
+	SDL_UploadToGPUBuffer(cp, &src, &reg, true);
+	SDL_EndGPUCopyPass(cp);
+	ReleaseUploadTransferBuffer(dev, tb);
+
+	SDL_GPUColorTargetInfo ci{};
+	ci.texture = rt;
+	ci.load_op = SDL_GPU_LOADOP_LOAD;
+	ci.store_op = SDL_GPU_STOREOP_STORE;
+	ci.cycle = false;
+	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &ci, 1, nullptr);
+	if (!pass) { SDL_CancelGPUCommandBuffer(cmds); return false; }
+	SDL_GPUViewport vp{};
+	vp.x = 0; vp.y = 0;
+	vp.w = (float)canvas->getWidth();
+	vp.h = (float)canvas->getHeight();
+	vp.min_depth = 0.0f; vp.max_depth = 1.0f;
+	SDL_SetGPUViewport(pass, &vp);
+	SDL_Rect sc{ 0, 0, canvas->getWidth(), canvas->getHeight() };
+	SDL_SetGPUScissor(pass, &sc);
+	DrawRanges(dev, pass, pipe, ranges);
+	SDL_EndGPURenderPass(pass);
+	return SDL_SubmitGPUCommandBuffer(cmds);
+}
+
+bool FlushPendingTextTargets(SDL_GPUDevice* dev) {
+	GpuLock lock;
+	if (!dev) return false;
+	std::vector<::gxCanvas*> targets;
+	for (auto& item : g_pending) {
+		if (!item.target) continue;
+		bool seen = false;
+		for (auto* t : targets) if (t == item.target) { seen = true; break; }
+		if (!seen) targets.push_back(item.target);
+	}
+	bool ok = true;
+	for (auto* t : targets) {
+		if (!FlushPendingTextToCanvas(dev, t)) ok = false;
+	}
+	return ok;
+}
+
+void SetActiveCanvasTarget(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
+	GpuLock lock;
+	if (g_activeTarget == canvas) return;
+	::gxCanvas* prev = g_activeTarget;
+	g_activeTarget = canvas;
+	if (prev && dev) FlushPendingTextToCanvas(dev, prev);
+}
+
+bool IsActiveCanvasTarget(::gxCanvas* canvas) {
+	GpuLock lock;
+	return canvas && g_activeTarget == canvas;
 }
 
 void ClearPendingText() {
@@ -509,6 +633,7 @@ void ClearPendingText() {
 void InvalidateTextAtlas(::gxCanvas* atlas) {
 	GpuLock lock;
 	if (!atlas) return;
+	if (g_activeTarget == atlas) g_activeTarget = nullptr;
 	for (auto it = g_pending.begin(); it != g_pending.end();) {
 		if (it->atlas == atlas)
 			it = g_pending.erase(it);
@@ -519,6 +644,7 @@ void InvalidateTextAtlas(::gxCanvas* atlas) {
 
 void TeardownText() {
 	GpuLock lock;
+	g_activeTarget = nullptr;
 	ClearPendingText();
 	TeardownPipe();
 	TeardownVb();

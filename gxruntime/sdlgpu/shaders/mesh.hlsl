@@ -25,6 +25,7 @@ cbuffer VSParams : register(b0, space1)
 	float4 viewX;
 	float4 viewY;
 	float4 viewZ;
+	float4 cubeParams;
 };
 
 StructuredBuffer<float4> g_bones : register(t0, space0);
@@ -58,7 +59,29 @@ struct VSOut
 	float fog : TEXCOORD2;
 	float4 fogColor : TEXCOORD3;
 	float2 testParams : TEXCOORD4;
+	float3 refl : TEXCOORD5;
+	float3 refl1 : TEXCOORD6;
 };
+
+float3 cubeVector(float packed, float3 nW, float3 V, float4 worldPos)
+{
+	int code = (int)(packed + 0.5);
+	int mode = code % 8;
+	int space = code / 8;
+	float3 nCam = float3(dot(nW, viewX.xyz), dot(nW, viewY.xyz), dot(nW, viewZ.xyz));
+	float3 vCam = float3(dot(-V, viewX.xyz), dot(-V, viewY.xyz), dot(-V, viewZ.xyz));
+	float3 r;
+	if (mode == 2) {
+		r = nCam;
+	} else if (mode == 3) {
+		float3 d = worldPos.xyz - eyePos.xyz;
+		r = float3(dot(d, viewX.xyz), dot(d, viewY.xyz), dot(d, viewZ.xyz));
+	} else {
+		r = reflect(vCam, nCam);
+	}
+	if (space == 0) r = r.x * viewX.xyz + r.y * viewY.xyz + r.z * viewZ.xyz;
+	return r;
+}
 
 VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 {
@@ -140,6 +163,8 @@ VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 	o.fog = saturate(f);
 	o.fogColor = fogColor;
 	o.testParams = float2(flags.z, flags.w);
+	o.refl = cubeVector(cubeParams.z, nW, V, worldPos);
+	o.refl1 = cubeVector(cubeParams.w, nW, V, worldPos);
 	return o;
 }
 
@@ -241,6 +266,66 @@ float4 PSMain2Tex(VSOut i) : SV_Target0
 	}
 	if (psStage1.w > 0.5)
 		tex.a = saturate(tex.a * t1.a);
+	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+		discard;
+	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
+	return tex;
+}
+
+TextureCube MeshTexCube : register(t0, space2);
+TextureCube MeshTex1Cube : register(t1, space2);
+
+float4 blendStages(float4 tex, float4 t1, float op, float alphaFlag)
+{
+	if (op > 5.5) return tex;
+	if (op < 1.5)      tex.rgb = lerp(tex.rgb, t1.rgb, t1.a);
+	else if (op < 2.5) tex.rgb = saturate(tex.rgb * t1.rgb);
+	else if (op < 3.5) tex.rgb = saturate(tex.rgb + t1.rgb);
+	else if (op < 4.5) { float d = dot(tex.rgb - 0.5, t1.rgb - 0.5) * 4.0; tex.rgb = saturate(d); }
+	else               tex.rgb = saturate(tex.rgb * t1.rgb * 2.0);
+	if (alphaFlag > 0.5) tex.a = saturate(tex.a * t1.a);
+	return tex;
+}
+
+float4 PSMainCube(VSOut i) : SV_Target0
+{
+	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * i.color;
+	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+		discard;
+	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
+	return tex;
+}
+
+float4 PSMainCubeTex(VSOut i) : SV_Target0
+{
+	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * i.color;
+	float2 uv1base = (psStage1.y > 0.5) ? i.uv1 : i.uv;
+	float2 uv1 = xformUV(uv1base, psMat1A, psMat1B);
+	float4 t1 = MeshTex1.Sample(MeshSamp1, uv1);
+	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
+	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+		discard;
+	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
+	return tex;
+}
+
+float4 PSMainTexCube(VSOut i) : SV_Target0
+{
+	float2 uv = xformUV(i.uv, psMat0A, psMat0B);
+	float4 tex = MeshTex.Sample(MeshSamp, uv) * i.color;
+	float4 t1 = MeshTex1Cube.Sample(MeshSamp1, i.refl1);
+	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
+	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+		discard;
+	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
+	return tex;
+}
+
+float4 PSMainCubeCube(VSOut i) : SV_Target0
+{
+	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * i.color;
+	float4 t1 = MeshTex1Cube.Sample(MeshSamp1, i.refl1);
+	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
 	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);

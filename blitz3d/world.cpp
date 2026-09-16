@@ -415,6 +415,21 @@ void World::render(float tween) {
 
 	while (!ord_que.empty()) { ord_mods.push_back(ord_que.top()); ord_que.pop(); }
 
+	if (!cam_que.empty()) {
+		int maxR = 0, maxB = 0;
+		std::priority_queue<Camera*, std::vector<Camera*>, OrderComp> q = cam_que;
+		while (!q.empty()) {
+			Camera* c = q.top(); q.pop();
+			if (!c || !c->getProjMode()) continue;
+			int x, y, w, h;
+			c->getViewport(&x, &y, &w, &h);
+			if (w <= 0 || h <= 0) continue;
+			if (x + w > maxR) maxR = x + w;
+			if (y + h > maxB) maxB = y + h;
+		}
+		if (maxR > 0 && maxB > 0) gx_scene->setViewport(0, 0, maxR, maxB);
+	}
+
 	if (!gx_scene->begin(curr->lights)) return;
 
 	while (!cam_que.empty()) {

@@ -141,7 +141,8 @@ void gxCanvas::fillRect(const RECT& r, unsigned argb) {
 void gxCanvas::allocCPUStore(int w, int h) const {
     sizeCPUStore(w, h);
     if (cpu_pitch <= 0 || cpu_h <= 0) return;
-    cpu_bits = new unsigned char[(size_t)cpu_pitch * (size_t)cpu_h]();
+    size_t planes = (flags & CANVAS_TEX_CUBE) ? 6 : 1;
+    cpu_bits = new unsigned char[(size_t)cpu_pitch * (size_t)cpu_h * planes]();
 }
 
 void gxCanvas::sizeCPUStore(int w, int h) const {
@@ -239,7 +240,7 @@ static const DWORD QUAD_FVF = D3DFVF_XYZRHW | D3DFVF_TEX1;
 
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
     graphics(g), plain_surf(s), tex(nullptr), cube_tex(nullptr), surf(s), z_surf(nullptr),
-    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
+    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD), cube_face(2),
     t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
@@ -267,7 +268,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
 
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
     graphics(g), plain_surf(nullptr), tex(t), cube_tex(nullptr), surf(nullptr), z_surf(nullptr),
-    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
+    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD), cube_face(2),
     t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
@@ -299,7 +300,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
 
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     graphics(g), plain_surf(nullptr), tex(nullptr), cube_tex(ct), surf(nullptr), z_surf(nullptr),
-    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
+    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD), cube_face(2),
     t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
@@ -338,7 +339,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
 
 gxCanvas::gxCanvas(gxGraphics* g, int w, int h, int f) :
     graphics(g), plain_surf(nullptr), tex(nullptr), cube_tex(nullptr), surf(nullptr), z_surf(nullptr),
-    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
+    flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD), cube_face(2),
     t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u),     lock_is_rt(false), lock_ro(false), lock_d3d(false), effect2D(nullptr), has_mask(false), sdlDirtyValid(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
@@ -611,6 +612,7 @@ void gxCanvas::setViewport(int x, int y, int w, int h) {
 
 struct GpuBack {
     struct SDL_GPUDevice* dev = nullptr;
+    ::gxCanvas* target = nullptr;
     int cw = 0, ch = 0, vx = 0, vy = 0, vw = 0, vh = 0;
 };
 
@@ -622,6 +624,25 @@ static bool gpuBackbuffer(gxCanvas* self, GpuBack& out) {
     int cw = self->getWidth(), ch = self->getHeight();
     if (cw <= 0 || ch <= 0) return false;
     out.dev = (struct SDL_GPUDevice*)gfx->runtime->sdlGpu;
+    out.target = nullptr;
+    out.cw = cw;
+    out.ch = ch;
+    self->getViewport(&out.vx, &out.vy, &out.vw, &out.vh);
+    return true;
+}
+
+static bool gpuDrawTarget(gxCanvas* self, GpuBack& out) {
+    if (gpuBackbuffer(self, out)) return true;
+    if (!self || !(self->getFlags() & gxCanvas::CANVAS_TEXTURE)) return false;
+    if (!sdlgpu::IsActiveCanvasTarget(self)) return false;
+    gxGraphics* gfx = self->graphics;
+    if (!gfx || !gfx->runtime || !gfx->runtime->sdlGpu) return false;
+    struct SDL_GPUDevice* dev = (struct SDL_GPUDevice*)gfx->runtime->sdlGpu;
+    if (!sdlgpu::EnsureCanvasRenderTarget(dev, self)) return false;
+    int cw = self->getWidth(), ch = self->getHeight();
+    if (cw <= 0 || ch <= 0) return false;
+    out.dev = dev;
+    out.target = self;
     out.cw = cw;
     out.ch = ch;
     self->getViewport(&out.vx, &out.vy, &out.vw, &out.vh);
@@ -634,14 +655,14 @@ static bool queueAbsRun(const GpuBack& b, int x0, int y0, int x1, int y1, unsign
     if (x1 > b.vx + b.vw) x1 = b.vx + b.vw;
     if (y1 > b.vy + b.vh) y1 = b.vy + b.vh;
     if (x1 <= x0 || y1 <= y0) return true;
-    return sdlgpu::QueueRectFilled(b.dev, (unsigned)b.cw, (unsigned)b.ch,
+    return sdlgpu::QueueRectFilled(b.dev, b.target, (unsigned)b.cw, (unsigned)b.ch,
         (float)x0, (float)y0, (float)(x1 - x0), (float)(y1 - y0), argb);
 }
 
 static bool tryGpuRect(gxCanvas* self, int x, int y, int w, int h, unsigned argb, bool solid) {
     if (!self || w <= 0 || h <= 0) return true;
     GpuBack b;
-    if (!gpuBackbuffer(self, b)) return false;
+    if (!gpuDrawTarget(self, b)) return false;
     int ox = 0, oy = 0;
     self->getOrigin(&ox, &oy);
     auto queueClipped = [&](int rx, int ry, int rw, int rh) -> bool {
@@ -747,9 +768,10 @@ static bool tryGpuSprite(gxCanvas* self, const RECT& dest_r, gxCanvas* src, cons
     if (src_r.right <= src_r.left || src_r.bottom <= src_r.top) return true;
     gxGraphics* gfx = self->graphics;
     if (!gfx || !gfx->runtime || !gfx->runtime->sdlGpu) return false;
-    if (self != gfx->getBackCanvas()) return false;
     if (self->get2DEffect()) return false;
-    struct SDL_GPUDevice* dev = (struct SDL_GPUDevice*)gfx->runtime->sdlGpu;
+    GpuBack b;
+    if (!gpuDrawTarget(self, b)) return false;
+    struct SDL_GPUDevice* dev = b.dev;
     struct SDL_GPUTexture* tex = (struct SDL_GPUTexture*)sdlgpu::GetCanvasTexture(dev, src);
     if (!tex) return false;
     int cw = self->getWidth(), ch = self->getHeight();
@@ -765,7 +787,7 @@ static bool tryGpuSprite(gxCanvas* self, const RECT& dest_r, gxCanvas* src, cons
     q.srcW = (float)(src_r.right - src_r.left);
     q.srcH = (float)(src_r.bottom - src_r.top);
     q.color = tint;
-    return sdlgpu::QueueSpriteQuad(dev, tex, smooth, (unsigned)cw, (unsigned)ch, (unsigned)tw, (unsigned)th, &q);
+    return sdlgpu::QueueSpriteQuad(dev, b.target, tex, smooth, (unsigned)cw, (unsigned)ch, (unsigned)tw, (unsigned)th, &q);
 }
 
 void gxCanvas::rect(int x, int y, int w, int h, bool solid) {
@@ -885,7 +907,7 @@ void gxCanvas::rectBlend(int x, int y, int w, int h, unsigned argb) {
 static bool tryGpuOval(gxCanvas* self, int x1, int y1, int w, int h, unsigned argb, bool solid) {
     if (!self || w <= 0 || h <= 0) return true;
     GpuBack b;
-    if (!gpuBackbuffer(self, b)) return false;
+    if (!gpuDrawTarget(self, b)) return false;
     int ox = 0, oy = 0;
     self->getOrigin(&ox, &oy);
     x1 += ox; y1 += oy;
@@ -1725,7 +1747,8 @@ void gxCanvas::text(int x, int y, const std::string& t) {
         e += UTF8::measureCodepoint(t[e]);
     }
     if (e > b) {
-        bool gpuAttempted = graphics && graphics->runtime && graphics->runtime->sdlGpu && font && this == graphics->getBackCanvas();
+        bool gpuAttempted = graphics && graphics->runtime && graphics->runtime->sdlGpu && font &&
+            (this == graphics->getBackCanvas() || ((flags & CANVAS_TEXTURE) && sdlgpu::IsActiveCanvasTarget(this)));
         bool gpuText = gpuAttempted && font->renderGPU(graphics->runtime->sdlGpu, this, color_argb, x, y, t.substr(b, e - b));
         if (!gpuText) {
             if (gpuAttempted) {
@@ -1835,6 +1858,8 @@ bool gxCanvas::lockImpl(bool ro) const {
         if (d3d_dirty && !pullD3D()) return false;
         locked_pitch = cpu_pitch;
         locked_surf = cpu_bits;
+        if ((flags & CANVAS_TEX_CUBE) && graphics && graphics->runtime && graphics->runtime->sdlGpu)
+            locked_surf += (size_t)cube_face * (size_t)cpu_pitch * (size_t)cpu_h;
         lock_mod_cnt = mod_cnt;
     }
     ++locked_cnt;
@@ -2123,7 +2148,9 @@ void gxCanvas::blitTForm(int x, int y, gxCanvas* src, int src_x, int src_y, int 
 void gxCanvas::setCubeMode(int mode) { cube_mode = mode; }
 
 void gxCanvas::setCubeFace(int face) {
-    if (face >= 0 && face < 6 && cube_surfs[face]) {
+    if (face < 0 || face >= 6) return;
+    cube_face = face;
+    if (cube_surfs[face]) {
         surf = cube_surfs[face];
         d3d_dirty = true;
         ++mod_cnt;

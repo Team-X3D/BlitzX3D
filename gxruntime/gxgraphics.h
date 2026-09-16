@@ -53,6 +53,8 @@ private:
 	gxMesh* dummy_mesh;
 	std::string lastEffectError;
 
+	bool copySceneToTexture(gxCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
+
 	std::set<gxFont*> font_set;
 	std::set<gxCanvas*> canvas_set;
 	std::set<gxMesh*> mesh_set;
@@ -135,6 +137,7 @@ public:
 	void freeScene(gxScene* scene);
 	bool presentSceneSDL(struct SDL_GPUDevice* dev, struct SDL_Window* win);
 	bool presentSceneWithCanvas(struct SDL_GPUDevice* dev, struct SDL_Window* win, gxCanvas* canvas);
+	void setActiveCanvas(gxCanvas* canvas);
 
 	void adoptCanvas(gxCanvas* c);
 

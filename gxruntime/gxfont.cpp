@@ -241,6 +241,8 @@ void gxFont::render(gxCanvas* dest, unsigned color_argb, int x, int y, const std
 
 bool gxFont::renderGPU(SDL_GPUDevice* dev, gxCanvas* dest, unsigned color_argb, int x, int y, const std::string& text) {
 	if (!dev || !dest) return false;
+	gxCanvas* target = dest;
+	if (dest->graphics && dest == dest->graphics->getBackCanvas()) target = nullptr;
 	int cw = dest->getWidth();
 	int ch = dest->getHeight();
 	if (cw <= 0 || ch <= 0) return false;
@@ -316,7 +318,7 @@ bool gxFont::renderGPU(SDL_GPUDevice* dev, gxCanvas* dest, unsigned color_argb, 
 		q.srcW = p.sw;
 		q.srcH = p.sh;
 		q.color = color_argb;
-		if (!sdlgpu::QueueTextQuads(dev, atlases[p.atlas], smooth, (unsigned)cw, (unsigned)ch, &q, 1)) return false;
+		if (!sdlgpu::QueueTextQuads(dev, target, atlases[p.atlas], smooth, (unsigned)cw, (unsigned)ch, &q, 1)) return false;
 	}
 	if (underlined) {
 		int width = stringWidth(text);
@@ -328,7 +330,7 @@ bool gxFont::renderGPU(SDL_GPUDevice* dev, gxCanvas* dest, unsigned color_argb, 
 		float x1 = ux + width > vx + vw ? (float)(vx + vw) : (float)(ux + width);
 		float y1 = uy + uh > vy + vh ? (float)(vy + vh) : (float)(uy + uh);
 		if (x1 > x0 && y1 > y0) {
-			if (!sdlgpu::QueueTextSolid(dev, (unsigned)cw, (unsigned)ch, x0, y0, x1 - x0, y1 - y0, color_argb)) return false;
+			if (!sdlgpu::QueueTextSolid(dev, target, (unsigned)cw, (unsigned)ch, x0, y0, x1 - x0, y1 - y0, color_argb)) return false;
 		}
 	}
 	return true;

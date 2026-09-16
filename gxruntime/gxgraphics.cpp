@@ -5,6 +5,7 @@
 #include "gxshadercompat.h"
 #include "asyncimage.h"
 #include "sdlgpu/sdl_gpu_texture.h"
+#include "sdlgpu/sdl_gpu_text.h"
 #include "sdlgpu/sdl_gpu_context.h"
 #include "../gxruntime/gxutf8.h"
 #include <cstring>
@@ -238,8 +239,13 @@ bool gxGraphics::restore() {
 
 bool gxGraphics::changeDisplayMode(int width, int height, bool fullscreen, bool borderless) {
 	if (dir3dDev == nullptr && runtime && runtime->sdlWindow) {
-		sdlgpu::SizeWindowForClient((SDL_Window*)runtime->sdlWindow, width, height);
-		sdlgpu::CenterWindow((SDL_Window*)runtime->sdlWindow);
+		SDL_Window* win = (SDL_Window*)runtime->sdlWindow;
+		sdlgpu::SetWindowFullscreen(win, fullscreen);
+		if (!fullscreen) {
+			sdlgpu::SizeWindowForClient(win, width, height);
+			sdlgpu::CenterWindow(win);
+		}
+		runtime->setFullscreenState(fullscreen);
 		return true;
 	}
 	if (!dir3dDev) return false;
@@ -405,6 +411,15 @@ void gxGraphics::flip(bool vwait) {
 	if (runtime) runtime->flip(vwait);
 }
 
+bool gxGraphics::copySceneToTexture(gxCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh) {
+	if (!runtime || !runtime->sdlGpu) return false;
+	SDL_GPUDevice* dev = (SDL_GPUDevice*)runtime->sdlGpu;
+	for (gxScene* scene : scene_set) {
+		if (scene && scene->blitFrameToTexture(dev, dest, dx, dy, dw, dh, sx, sy, sw, sh)) return true;
+	}
+	return false;
+}
+
 void gxGraphics::copy(gxCanvas* dest, int dx, int dy, int dw, int dh, gxCanvas* src, int sx, int sy, int sw, int sh) {
 	if (dest->getSurface() && src->getSurface()) {
 		ddUtil::copy(dir3dDev, dest->getSurface(), dx, dy, dw, dh, src->getSurface(), sx, sy, sw, sh);
@@ -413,6 +428,9 @@ void gxGraphics::copy(gxCanvas* dest, int dx, int dy, int dw, int dh, gxCanvas* 
 		return;
 	}
 	if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return;
+	if (runtime && runtime->sdlGpu && src == getBackCanvas() && (dest->getFlags() & gxCanvas::CANVAS_TEXTURE)) {
+		if (copySceneToTexture(dest, dx, dy, dw, dh, sx, sy, sw, sh)) return;
+	}
 	if (!dest->lock() || !src->lockRO()) {
 		if (dest->isLocked()) dest->unlock();
 		if (src->isLocked()) src->unlock();
@@ -488,7 +506,7 @@ static gxCanvas* buildCpuCanvas(gxGraphics* g, const DecodedImage& img, int flag
 
 gxCanvas* gxGraphics::createCanvas(int w, int h, int flags) {
 	if (w <= 0 || h <= 0) return nullptr;
-	if (runtime && runtime->sdlGpu && !(flags & gxCanvas::CANVAS_TEX_CUBE)) {
+	if (runtime && runtime->sdlGpu) {
 		gxCanvas* c = nullptr;
 		try { c = new gxCanvas(this, w, h, flags); }
 		catch (...) { return nullptr; }
@@ -678,6 +696,11 @@ bool gxGraphics::presentSceneWithCanvas(struct SDL_GPUDevice* dev, struct SDL_Wi
 		if (sdlgpu::PresentSceneWithCanvas(dev, win, empty, canvas)) return true;
 	}
 	return false;
+}
+
+void gxGraphics::setActiveCanvas(gxCanvas* canvas) {
+	if (!runtime || !runtime->sdlGpu) return;
+	sdlgpu::SetActiveCanvasTarget((SDL_GPUDevice*)runtime->sdlGpu, canvas);
 }
 
 void gxGraphics::adoptCanvas(gxCanvas* c) {

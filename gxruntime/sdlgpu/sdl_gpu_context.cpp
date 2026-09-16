@@ -26,12 +26,17 @@ static bool EnsureVideoInit() {
 	return SDL_InitSubSystem(SDL_INIT_VIDEO);
 }
 
-SDL_Window* CreateGameWindow(int clientW, int clientH, bool resizable, bool borderless, const char* title) {
+SDL_Window* CreateGameWindow(int clientW, int clientH, bool resizable, bool borderless, bool fullscreen, const char* title) {
 	if (!EnsureVideoInit()) return nullptr;
 
 	SDL_WindowFlags flags = SDL_WINDOW_HIDDEN;
-	if (resizable) flags |= SDL_WINDOW_RESIZABLE;
-	if (borderless) flags |= SDL_WINDOW_BORDERLESS;
+	if (fullscreen) {
+		flags |= SDL_WINDOW_FULLSCREEN;
+	}
+	else {
+		if (resizable) flags |= SDL_WINDOW_RESIZABLE;
+		if (borderless) flags |= SDL_WINDOW_BORDERLESS;
+	}
 
 	SDL_Window* win = SDL_CreateWindow(title ? title : " ", clientW, clientH, flags);
 	if (!win) return nullptr;
@@ -40,9 +45,29 @@ SDL_Window* CreateGameWindow(int clientW, int clientH, bool resizable, bool bord
 		SetClassLongPtrW(hwnd, GCLP_HBRBACKGROUND, (LONG_PTR)GetStockObject(BLACK_BRUSH));
 	}
 
-	CenterWindow(win);
+	if (fullscreen) {
+		SDL_DisplayID disp = SDL_GetDisplayForWindow(win);
+		int count = 0;
+		SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(disp, &count);
+		if (modes) {
+			const SDL_DisplayMode* best = nullptr;
+			for (int i = 0; i < count && modes[i]; ++i) {
+				if ((int)modes[i]->w == clientW && (int)modes[i]->h == clientH) { best = modes[i]; break; }
+			}
+			if (best) SDL_SetWindowFullscreenMode(win, best);
+			SDL_free(modes);
+		}
+	}
+	else {
+		CenterWindow(win);
+	}
 	SDL_StartTextInput(win);
 	return win;
+}
+
+void SetWindowFullscreen(SDL_Window* win, bool fullscreen) {
+	if (!win) return;
+	SDL_SetWindowFullscreen(win, fullscreen);
 }
 
 void* GetHWND(SDL_Window* win) {

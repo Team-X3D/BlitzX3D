@@ -45,6 +45,7 @@ struct MeshUniforms {
 	float viewX[4];
 	float viewY[4];
 	float viewZ[4];
+	float cubeParams[4];
 };
 
 struct GpuSceneFrame {
@@ -60,8 +61,12 @@ struct GpuSceneFrame {
 	float colorClearR = 0.0f, colorClearG = 0.0f, colorClearB = 0.0f;
 
 	SDL_GPUTexture* depthTarget = nullptr;
+	SDL_GPUTexture* ownedDepth = nullptr;
 	unsigned depthW = 0, depthH = 0;
 	int depthFormat = 0;
+
+	SDL_GPUTexture* externalDepth = nullptr;
+	unsigned externalDepthW = 0, externalDepthH = 0;
 
 	int vpX = 0, vpY = 0, vpW = 0, vpH = 0;
 
@@ -81,6 +86,7 @@ void RenderSceneMeshExtra(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniform
 void EndSceneFrame(GpuSceneFrame& frame);
 bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame);
 bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, ::gxCanvas* canvas);
+bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, ::gxCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
 void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame);
 
 }

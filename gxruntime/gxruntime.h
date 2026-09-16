@@ -33,6 +33,7 @@ public:
     bool usingSDLWindow() const { return sdlWindow != nullptr; }
     void pumpSDLWindowEvents();
     void destroySDLWindow();
+    void setFullscreenState(bool fullscreen);
 
     gxAudio* audio;
     gxInput* input;
@@ -68,6 +69,7 @@ private:
     ~gxRuntime();
 
     void paint();
+    void maybePresentConsole();
     void suspend();
     void forceSuspend();
     void resume();
@@ -77,6 +79,8 @@ private:
 
     RECT t_rect;
     int t_style;
+    gxCanvas* console_canvas = nullptr;
+    int console_mod = 0;
     std::string cmd_line;
     bool pointer_visible;
     std::string app_title;

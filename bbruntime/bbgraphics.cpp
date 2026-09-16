@@ -674,6 +674,7 @@ int  bbAvailVidMem()
 
 static void applyCanvasBuffer(gxCanvas* buff)
 {
+    if (gx_graphics) gx_graphics->setActiveCanvas(buff);
     gx_canvas = buff;
     curs_x = curs_y = 0;
     gx_canvas->setOrigin(0, 0);
