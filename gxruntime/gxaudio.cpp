@@ -131,8 +131,9 @@ static gxChannel* allocSoundChannel(HCHANNEL n) {
 gxAudio::gxAudio(gxRuntime* r) :
 	runtime(r) {
 	next_chan = 0;
-	soundChannels.resize(4096);
-	for (int k = 0; k < 4096; ++k) soundChannels[k] = 0;
+	static const size_t kInitialSoundChannels = 32;
+	soundChannels.resize(kInitialSoundChannels);
+	for (size_t k = 0; k < kInitialSoundChannels; ++k) soundChannels[k] = 0;
 }
 
 gxAudio::~gxAudio() {

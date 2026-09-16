@@ -2,8 +2,6 @@
 #define GXFONT_H
 
 #include "std.h"
-#include <ft2build.h>
-#include FT_FREETYPE_H
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -11,12 +9,13 @@
 class gxCanvas;
 class gxGraphics;
 struct SDL_GPUDevice;
+struct TTF_Font;
 
 // typedef IDirectDrawSurface7 ddSurf;
 
 class gxFont {
 public:
-	gxFont(FT_Library ftLibrary, gxGraphics* gfx, const std::string& fn, int h, bool bold = false, bool italic = false, bool underlined = false);
+	gxFont(gxGraphics* gfx, const std::string& fn, int h, bool bold = false, bool italic = false, bool underlined = false);
 	~gxFont();
 
 	void render(gxCanvas* dest, unsigned color_argb, int x, int y, const std::string& t);
@@ -71,7 +70,7 @@ private:
 	int flags;
 
 	int height;
-	FT_Face freeTypeFace;
+	TTF_Font* font;
 	std::unordered_map<int, GlyphData> glyphData;
 	gxGraphics* graphics;
 	std::string filename;

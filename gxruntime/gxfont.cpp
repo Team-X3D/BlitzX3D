@@ -11,11 +11,13 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <cstring>
+#include <vector>
 #include <cmath>
 #include <algorithm>
-#include <freetype/ftsynth.h>
+#include <SDL3_ttf/SDL_ttf.h>
 
-gxFont::gxFont(FT_Library ftLibrary, gxGraphics* gfx, const std::string& fn, int h, bool bold, bool italic, bool underlined) {
+gxFont::gxFont(gxGraphics* gfx, const std::string& fn, int h, bool bold, bool italic, bool underlined) {
 	graphics = gfx;
 	filename = fn;
 	height = h;
@@ -23,20 +25,18 @@ gxFont::gxFont(FT_Library ftLibrary, gxGraphics* gfx, const std::string& fn, int
 	this->italic = italic;
 	this->underlined = underlined;
 	smooth = true;
-
-	if (FT_New_Face(ftLibrary,
-		filename.c_str(),
-		0,
-		&freeTypeFace)) {
-		RTEX(std::format("Failed to load file: {}", fn).c_str());
-	}
-
-	FT_Set_Pixel_Sizes(freeTypeFace,
-		0,
-		height);
+	font = nullptr;
+	maxWidth = 0;
 
 	glyphData.clear();
 	atlases.clear();
+
+	font = TTF_OpenFont(filename.c_str(), (float)height);
+	if (!font) {
+		RTEX(std::format("Failed to load file: {}", fn).c_str());
+	}
+
+	TTF_SetFontStyle(font, (bold ? TTF_STYLE_BOLD : 0) | (italic ? TTF_STYLE_ITALIC : 0));
 
 	glyphHeight = height;
 	renderAtlas('T');
@@ -58,15 +58,14 @@ gxFont::gxFont(FT_Library ftLibrary, gxGraphics* gfx, const std::string& fn, int
 		int boxBot = glyphHeight + glyphRenderOffset;
 		int needBot = boxBot;
 
-		FT_Size_Metrics& m = freeTypeFace->size->metrics;
-		int descentPx = (int)((-m.descender + 63) / 64);
+		int descentPx = TTF_GetFontDescent(font);
 		if (descentPx < 0) descentPx = 0;
 		int need = D + descentPx + (bold ? 1 : 0);
 		if (need > needBot) needBot = need;
 
 		if (underlined) {
-			float upos = -static_cast<float>(FT_MulFix(freeTypeFace->underline_position, m.y_scale)) / 64.0F;
-			float uthick = std::max(1.0F, static_cast<float>(FT_MulFix(freeTypeFace->underline_thickness, m.y_scale)) / 64.0F);
+			float upos = getUnderlinePosition();
+			float uthick = getUnderlineThickness();
 			int needU = D + (int)std::ceil(upos + uthick) + 1;
 			if (needU > needBot) needBot = needU;
 		}
@@ -82,11 +81,8 @@ gxFont::~gxFont() {
 		graphics->freeCanvas(atlases[i]);
 	}
 
-	FT_Done_Face(freeTypeFace);
+	TTF_CloseFont(font);
 }
-
-const int transparentPixel = 0x4A412A;
-const int opaquePixel = 0xffffff;
 
 void gxFont::renderAtlas(int chr) {
 	bool needsNewAtlas = false;
@@ -94,90 +90,82 @@ void gxFont::renderAtlas(int chr) {
 	if (startChr < 0) startChr = 0;
 	int endChr = startChr + 2048;
 
+	TTF_SetFontHinting(font, smooth ? TTF_HINTING_NORMAL : TTF_HINTING_MONO);
+
 	uint8_t* buffer = nullptr;
 	int x = -1, y = -1, maxHeight = -1;
 
 	for (int i = startChr; i < endChr; i++) {
 		auto it = glyphData.find(i);
 		if (it == glyphData.end()) {
-			long glyphIndex = FT_Get_Char_Index(freeTypeFace, i);
-			if (glyphIndex != 0) {
-				int loadFlags = smooth ? FT_LOAD_TARGET_NORMAL : FT_LOAD_TARGET_MONO;
-				FT_Load_Glyph(freeTypeFace, (FT_UInt)glyphIndex, loadFlags);
+			int minx = 0, maxx = 0, miny = 0, maxy = 0, advance = 0;
+			SDL_Surface* surf = nullptr;
+			bool has = TTF_GetGlyphMetrics(font, (Uint32)i, &minx, &maxx, &miny, &maxy, &advance);
+			if (has) surf = TTF_GetGlyphImage(font, (Uint32)i, nullptr);
 
-				if (bold) FT_GlyphSlot_Embolden(freeTypeFace->glyph);
-				if (italic) FT_GlyphSlot_Oblique(freeTypeFace->glyph);
-
-				FT_Render_Mode renderMode = smooth ? FT_RENDER_MODE_NORMAL : FT_RENDER_MODE_MONO;
-				FT_Render_Glyph(freeTypeFace->glyph, renderMode);
-
-				unsigned char* glyphBuffer = freeTypeFace->glyph->bitmap.buffer;
-				int glyphPitch = freeTypeFace->glyph->bitmap.pitch;
-				int glyphWidth = freeTypeFace->glyph->bitmap.width;
-				int glyphHeight = freeTypeFace->glyph->bitmap.rows;
-
-				if (glyphWidth > 0 && glyphHeight > 0) {
-					if (buffer == nullptr) {
-						buffer = new uint8_t[atlasDims * atlasDims];
-						memset(buffer, 0, atlasDims * atlasDims);
-						x = 1; y = 1; maxHeight = 0;
-					}
-
-					if (x + glyphWidth + 1 > atlasDims - 1) {
-						x = 1; y += maxHeight + 1; maxHeight = 0;
-					}
-					if (y + glyphHeight + 1 > atlasDims - 1) {
-						needsNewAtlas = true;
-						break;
-					}
-					if (glyphHeight > maxHeight) maxHeight = glyphHeight;
-
-					if (smooth) {
-						for (int row = 0; row < glyphHeight; ++row) {
-							int destY = y + row;
-							uint8_t* destRow = buffer + destY * atlasDims + x;
-							uint8_t* srcRow = glyphBuffer + row * glyphPitch;
-							memcpy(destRow, srcRow, glyphWidth);
+			int gw = maxx - minx;
+			int gh = maxy - miny;
+			int cw = 0, ch = 0;
+			std::vector<uint8_t> cur;
+			if (surf && gw > 0 && gh > 0) {
+				cw = surf->w;
+				ch = surf->h;
+				cur.assign((size_t)cw * ch, 0);
+				if (SDL_LockSurface(surf)) {
+					const unsigned char* px = (const unsigned char*)surf->pixels;
+					int pitch = surf->pitch;
+					for (int r = 0; r < ch; ++r) {
+						for (int c = 0; c < cw; ++c) {
+							cur[(size_t)r * cw + c] = px[(size_t)r * pitch + c * 4 + 3];
 						}
 					}
-					else {
-						for (int row = 0; row < glyphHeight; ++row) {
-							for (int col = 0; col < glyphWidth; ++col) {
-								int byteIndex = (col / 8) + row * glyphPitch;
-								int bitIndex = 7 - (col % 8);
-								bool on = (glyphBuffer[byteIndex] & (1 << bitIndex)) != 0;
-								buffer[(x + col) + (y + row) * atlasDims] = on ? 255 : 0;
-							}
-						}
-					}
-
-					GlyphData gd;
-					gd.atlasIndex = (int)atlases.size();
-					gd.horizontalAdvance = freeTypeFace->glyph->metrics.horiAdvance >> 6;
-					gd.drawOffset[0] = -freeTypeFace->glyph->bitmap_left;
-					gd.drawOffset[1] = freeTypeFace->glyph->bitmap_top - ((height * 10) / 14);
-					gd.srcRect[0] = x;
-					gd.srcRect[1] = y;
-					gd.srcRect[2] = glyphWidth;
-					gd.srcRect[3] = glyphHeight;
-
-					if (glyphWidth > maxWidth) maxWidth = glyphWidth;
-					x += glyphWidth + 1;
-					glyphData.emplace(i, gd);
-				}
-				else {
-					GlyphData gd;
-					gd.atlasIndex = -1;
-					gd.horizontalAdvance = freeTypeFace->glyph->metrics.horiAdvance >> 6;
-					glyphData.emplace(i, gd);
+					SDL_UnlockSurface(surf);
 				}
 			}
-			else {
-				GlyphData gd;
-				gd.atlasIndex = -1;
-				gd.horizontalAdvance = freeTypeFace->glyph->metrics.horiAdvance >> 6;
+
+			if (cw > 0 && ch > 0) {
+				if (buffer == nullptr) {
+					buffer = new uint8_t[atlasDims * atlasDims];
+					memset(buffer, 0, atlasDims * atlasDims);
+					x = 1; y = 1; maxHeight = 0;
+				}
+
+				if (x + cw + 1 > atlasDims - 1) {
+					x = 1; y += maxHeight + 1; maxHeight = 0;
+				}
+				if (y + ch + 1 > atlasDims - 1) {
+					needsNewAtlas = true;
+					if (surf) SDL_DestroySurface(surf);
+					break;
+				}
+				if (ch > maxHeight) maxHeight = ch;
+
+				for (int r = 0; r < ch; ++r) {
+					memcpy(buffer + (y + r) * atlasDims + x, &cur[(size_t)r * cw], cw);
+				}
+
+				GlyphData gd{};
+				gd.atlasIndex = (int)atlases.size();
+				gd.horizontalAdvance = advance;
+				gd.drawOffset[0] = -minx;
+				gd.drawOffset[1] = maxy - ((height * 10) / 14);
+				gd.srcRect[0] = x;
+				gd.srcRect[1] = y;
+				gd.srcRect[2] = cw;
+				gd.srcRect[3] = ch;
+
+				if (cw > maxWidth) maxWidth = cw;
+				x += cw + 1;
 				glyphData.emplace(i, gd);
 			}
+			else {
+				GlyphData gd{};
+				gd.atlasIndex = -1;
+				gd.horizontalAdvance = has ? advance : 0;
+				glyphData.emplace(i, gd);
+			}
+
+			if (surf) SDL_DestroySurface(surf);
 		}
 	}
 
@@ -401,15 +389,15 @@ bool gxFont::isPrintable(int chr)const {
 
 float gxFont::getBaselinePosition() const
 {
-	return static_cast<float>(freeTypeFace->size->metrics.ascender) / 64.0F;
+	return static_cast<float>(TTF_GetFontAscent(font));
 }
 
 float gxFont::getUnderlinePosition()const
 {
-	return -static_cast<float>(FT_MulFix(freeTypeFace->underline_position, freeTypeFace->size->metrics.y_scale)) / 64.0F;
+	return static_cast<float>(height) * 0.1f;
 }
 
 float gxFont::getUnderlineThickness()const
 {
-	return std::max(1.0F, static_cast<float>(FT_MulFix(freeTypeFace->underline_thickness, freeTypeFace->size->metrics.y_scale)) / 64.0F);
+	return std::max(1.0f, static_cast<float>(height) * 0.05f);
 }

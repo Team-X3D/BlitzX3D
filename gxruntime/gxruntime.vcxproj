@@ -88,7 +88,7 @@
       <MinimalRebuild>false</MinimalRebuild>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_image\include\;..\ffmpeg\include;$(DXSDK_DIR)Include;$(ProjectDir);..\freetype\include;..\bass\include;$(ProjectDir)..\vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_image\include\;$(SolutionDir)vendor\SDL_ttf\include;..\ffmpeg\include;$(DXSDK_DIR)Include;$(ProjectDir);..\bass\include;$(ProjectDir)..\vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile>
@@ -123,7 +123,7 @@
       <ProgramDataBaseFileName>.\Debug\</ProgramDataBaseFileName>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <CallingConvention>StdCall</CallingConvention>
-      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_image\include\;..\ffmpeg\include;$(DXSDK_DIR)Include;$(ProjectDir);..\freetype\include;..\bass\include;$(ProjectDir)..\vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_image\include\;$(SolutionDir)vendor\SDL_ttf\include;..\ffmpeg\include;$(DXSDK_DIR)Include;$(ProjectDir);..\bass\include;$(ProjectDir)..\vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>

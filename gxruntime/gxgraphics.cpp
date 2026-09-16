@@ -9,6 +9,7 @@
 #include "sdlgpu/sdl_gpu_context.h"
 #include "../gxruntime/gxutf8.h"
 #include <cstring>
+#include <SDL3_ttf/SDL_ttf.h>
 #pragma comment (lib, "Dwmapi")
 #include <dwmapi.h>
 
@@ -31,7 +32,7 @@ gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9
 	front_canvas->cls();
 	back_canvas->cls();
 
-	FT_Init_FreeType(&ftLibrary);
+	TTF_Init();
 
 	HMODULE ntdllModule = GetModuleHandleW(L"ntdll.dll");
 	running_on_wine = ntdllModule && GetProcAddress(ntdllModule, "wine_get_version");
@@ -76,7 +77,7 @@ gxGraphics::~gxGraphics() {
 	delete back_canvas;
 	delete front_canvas;
 
-	FT_Done_FreeType(ftLibrary);
+	TTF_Quit();
 
 	if (dir3dDev) dir3dDev->Release();
 	if (dir3d) dir3d->Release();
@@ -626,7 +627,7 @@ gxFont* gxGraphics::loadFont(std::string f, int height, bool bold, bool italic, 
 		t = f;
 	}
 
-	gxFont* newFont = new gxFont(ftLibrary, this, f, height, bold, italic, underlined); // this line crashes in the backported version of UER, investigate !
+	gxFont* newFont = new gxFont(this, f, height, bold, italic, underlined);
 	font_set.emplace(newFont);
 	return newFont;
 }

@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>SDL3_ttf-static</ProjectName>
+    <ProjectGuid>{B8C4DAE2-5F60-4B7C-9D8E-AF102B3C4D5E}</ProjectGuid>
+    <RootNamespace>SDL_ttf</RootNamespace>
+    <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset Condition="'$(VisualStudioVersion)' != '10.0'">$(DefaultPlatformToolset)</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset Condition="'$(VisualStudioVersion)' != '10.0'">$(DefaultPlatformToolset)</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset Condition="'$(VisualStudioVersion)' != '10.0'">$(DefaultPlatformToolset)</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset Condition="'$(VisualStudioVersion)' != '10.0'">$(DefaultPlatformToolset)</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(SolutionDir)obj\SDL3_ttf\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(SolutionDir)obj\SDL3_ttf\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(SolutionDir)obj\SDL3_ttf\$(Platform)\$(Configuration)\</IntDir>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(SolutionDir)obj\SDL3_ttf\$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_ttf\include;$(SolutionDir)vendor\SDL_ttf\external\freetype\include;$(SolutionDir)vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;_DEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;FT2_BUILD_LIBRARY;BUILD_SDL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_ttf\include;$(SolutionDir)vendor\SDL_ttf\external\freetype\include;$(SolutionDir)vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;_DEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;FT2_BUILD_LIBRARY;BUILD_SDL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_ttf\include;$(SolutionDir)vendor\SDL_ttf\external\freetype\include;$(SolutionDir)vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;NDEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;FT2_BUILD_LIBRARY;BUILD_SDL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(SolutionDir)vendor\SDL_ttf\include;$(SolutionDir)vendor\SDL_ttf\external\freetype\include;$(SolutionDir)vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;NDEBUG;_LIB;_CRT_SECURE_NO_WARNINGS;FT2_BUILD_LIBRARY;BUILD_SDL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\src\SDL_ttf.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\src\SDL_hashtable.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\src\SDL_hashtable_ttf.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\autofit\autofit.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftbase.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftbbox.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftbdf.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftbitmap.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftcid.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftdebug.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftfstype.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftgasp.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftglyph.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftgxval.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftinit.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftmm.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftotval.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftpatent.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftpfr.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftstroke.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftsynth.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftsystem.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\fttype1.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\base\ftwinfnt.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\bdf\bdf.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\cache\ftcache.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\cff\cff.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\cid\type1cid.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\gzip\ftgzip.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\lzw\ftlzw.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\pcf\pcf.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\pfr\pfr.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\psaux\psaux.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\pshinter\pshinter.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\psnames\psmodule.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\raster\raster.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\sdf\sdf.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\sfnt\sfnt.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\svg\svg.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\smooth\smooth.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\truetype\truetype.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\type1\type1.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\type42\type42.c" />
+    <ClCompile Include="$(SolutionDir)vendor\SDL_ttf\external\freetype\src\winfonts\winfnt.c" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

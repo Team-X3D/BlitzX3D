@@ -70,7 +70,7 @@
       <ProgramDataBaseFileName>.\Debug\</ProgramDataBaseFileName>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <CallingConvention>StdCall</CallingConvention>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\freetype\include;$(ProjectDir)..\bass\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\bass\include;</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
@@ -137,7 +137,7 @@
       <MinimalRebuild>false</MinimalRebuild>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\freetype\include;$(ProjectDir)..\bass\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\bass\include;</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Midl>
@@ -197,9 +197,6 @@
     <ProjectReference Include="..\blitz3d\blitz3d.vcxproj">
       <Project>{60bb991f-8721-4a17-9f70-79d0ee5507fa}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\freetype\builds\windows\vc2010\freetype.vcxproj">
-      <Project>{78b079bd-9fc7-4b9e-b4a6-96da0f00248b}</Project>
-    </ProjectReference>
     <ProjectReference Include="..\gxruntime\gxruntime.vcxproj">
       <Project>{a124d746-4a3b-401d-ae99-6a838595bc8c}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
@@ -218,6 +215,10 @@
     </ProjectReference>
     <ProjectReference Include="..\sdl_image_static.vcxproj">
       <Project>{a7b3c9d1-4e5f-4a6b-8c7d-9e0f1a2b3c4d}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\sdl_ttf_static.vcxproj">
+      <Project>{b8c4dae2-5f60-4b7c-9d8e-af102b3c4d5e}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>

@@ -773,6 +773,7 @@ namespace sdlgpu {
 			if (it->dev == dev && it->size >= size) {
 				SDL_GPUTransferBuffer* buf = it->buf;
 				g_transferPool.erase(it);
+				g_transferSizes.erase(buf);
 				return buf;
 			}
 		}

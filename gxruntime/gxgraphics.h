@@ -1,9 +1,6 @@
 #ifndef GXGRAPHICS_H
 #define GXGRAPHICS_H
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
 #include <set>
 #include <string>
 #include <d3d9.h>
@@ -30,8 +27,6 @@ public:
 	D3DFORMAT           zbuffFmt;
 	D3DPRESENT_PARAMETERS present_params;
 	
-	FT_Library ftLibrary;
-
 	bool running_on_wine;
 
 	gxGraphics(gxRuntime* runtime, IDirect3DDevice9Ex* device, IDirect3DSurface9* front, IDirect3DSurface9* back, bool d3d, int w = 0, int h = 0);
