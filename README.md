@@ -96,7 +96,7 @@ Need help, have a question, or found a problem?
       <b>SCP – Treachery</b>
     </td>
   </tr>
-</table>
+</table> 
 
 ---
 
