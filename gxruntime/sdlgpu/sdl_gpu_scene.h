@@ -54,6 +54,7 @@ struct GpuSceneFrame {
 	SDL_GPURenderPass* pass = nullptr;
 
 	unsigned targetW = 0, targetH = 0;
+	unsigned displayW = 0, displayH = 0;
 
 	SDL_GPUTexture* colorTarget = nullptr;
 	SDL_GPUTexture* msaaColor = nullptr;
@@ -61,6 +62,8 @@ struct GpuSceneFrame {
 	int colorFormat = 0;
 	int colorSamples = 1;
 	float colorClearR = 0.0f, colorClearG = 0.0f, colorClearB = 0.0f;
+	float createdClearR = 0.0f, createdClearG = 0.0f, createdClearB = 0.0f;
+	bool createdClearValid = false;
 
 	SDL_GPUTexture* depthTarget = nullptr;
 	SDL_GPUTexture* ownedDepth = nullptr;
@@ -83,7 +86,7 @@ struct GpuSceneFrame {
 	bool ready() const { return cmds != nullptr && !skipped; }
 };
 
-bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH, bool antialias);
+bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH, unsigned displayW, unsigned displayH, bool antialias);
 bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	float clearR, float clearG, float clearB, bool clearColor, bool clearDepth);
 void SetSceneViewport(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH);

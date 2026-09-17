@@ -635,12 +635,19 @@ static SDL_GPUSampleCount ToSDLSamples(int n) {
 	}
 }
 
-SDL_GPUTexture* CreateColorTargetMS(SDL_GPUDevice* dev, unsigned w, unsigned h, int sampleCount) {
+SDL_GPUTexture* CreateColorTargetMS(SDL_GPUDevice* dev, unsigned w, unsigned h, int sampleCount, float r, float g, float b) {
 	if (!dev || !w || !h) return nullptr;
 	SDL_GPUSampleCount sc = ToSDLSamples(sampleCount);
-	if (sc == SDL_GPU_SAMPLECOUNT_1) return CreateColorTarget(dev, w, h, 0.0f, 0.0f, 0.0f, 1.0f);
+	if (sc == SDL_GPU_SAMPLECOUNT_1) return CreateColorTarget(dev, w, h, r, g, b, 1.0f);
 	SDL_GPUTextureFormat fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
 	if (!SDL_GPUTextureSupportsFormat(dev, fmt, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET)) return nullptr;
+	SDL_PropertiesID props = SDL_CreateProperties();
+	if (props) {
+		SDL_SetFloatProperty(props, SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_R_FLOAT, r);
+		SDL_SetFloatProperty(props, SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_G_FLOAT, g);
+		SDL_SetFloatProperty(props, SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_B_FLOAT, b);
+		SDL_SetFloatProperty(props, SDL_PROP_GPU_TEXTURE_CREATE_D3D12_CLEAR_A_FLOAT, 1.0f);
+	}
 	SDL_GPUTextureCreateInfo info{};
 	info.type = SDL_GPU_TEXTURETYPE_2D;
 	info.format = fmt;
@@ -650,7 +657,10 @@ SDL_GPUTexture* CreateColorTargetMS(SDL_GPUDevice* dev, unsigned w, unsigned h, 
 	info.layer_count_or_depth = 1;
 	info.num_levels = 1;
 	info.sample_count = sc;
-	return SDL_CreateGPUTexture(dev, &info);
+	info.props = props;
+	SDL_GPUTexture* tex = SDL_CreateGPUTexture(dev, &info);
+	if (props) SDL_DestroyProperties(props);
+	return tex;
 }
 
 SDL_GPUTexture* CreateDepthTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, int formatValue) {

@@ -855,7 +855,8 @@ bool gxScene::begin(const std::vector<gxLight*>& lights) {
 			if ((unsigned)depthTarget->getWidth() > tw) tw = (unsigned)depthTarget->getWidth();
 			if ((unsigned)depthTarget->getHeight() > th) th = (unsigned)depthTarget->getHeight();
 		}
-		sdlgpu::BeginSceneFrame(gpuFrame, (SDL_GPUDevice*)graphics->runtime->sdlGpu, (SDL_Window*)graphics->runtime->sdlWindow, tw, th, antialias);
+		sdlgpu::BeginSceneFrame(gpuFrame, (SDL_GPUDevice*)graphics->runtime->sdlGpu, (SDL_Window*)graphics->runtime->sdlWindow, tw, th,
+			target ? (unsigned)target->getWidth() : 0, target ? (unsigned)target->getHeight() : 0, antialias);
 		if (depthTarget) {
 			gpuFrame.externalDepth = sdlgpu::EnsureCanvasDepthTarget((SDL_GPUDevice*)graphics->runtime->sdlGpu, depthTarget, tw, th);
 			gpuFrame.externalDepthW = tw;

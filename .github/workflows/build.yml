@@ -73,7 +73,7 @@ jobs:
             Branch: `${{ github.ref_name }}`
             Commit: `${{ github.sha }}`
             This is not a stable release.
-            If you complain that Containment Breach doesn't work yet, I will kill you.
+            If you complain that Containment Breach doesn't fully work yet, I will kill you.
           prerelease: true
           generate_release_notes: false
           fail_on_unmatched_files: true

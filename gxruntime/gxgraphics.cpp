@@ -439,7 +439,8 @@ void gxGraphics::copy(gxCanvas* dest, int dx, int dy, int dw, int dh, gxCanvas* 
 		return;
 	}
 	if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return;
-	if (runtime && runtime->sdlGpu && src == getBackCanvas() && (dest->getFlags() & gxCanvas::CANVAS_TEXTURE)) {
+	if (runtime && runtime->sdlGpu && src == getBackCanvas()
+		&& (dest->getFlags() & (gxCanvas::CANVAS_TEXTURE | gxCanvas::CANVAS_TEX_RGB))) {
 		if (copySceneToTexture(dest, dx, dy, dw, dh, sx, sy, sw, sh)) return;
 	}
 	if (!dest->lock() || !src->lockRO()) {

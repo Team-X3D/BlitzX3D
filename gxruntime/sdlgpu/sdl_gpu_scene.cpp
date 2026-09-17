@@ -29,6 +29,7 @@ static void ReleaseTargetsLocked(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 	frame.depthFormat = 0;
 	frame.depthSamples = 1;
 	frame.sampleCount = 1;
+	frame.createdClearValid = false;
 }
 
 void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
@@ -47,7 +48,7 @@ void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 	frame.drew3D = false;
 }
 
-bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH, bool antialias) {
+bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH, unsigned displayW, unsigned displayH, bool antialias) {
 	if (!dev || !win) return false;
 
 	if (frame.cmds && frame.dev != dev) {
@@ -59,6 +60,8 @@ bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, 
 
 	frame.dev = dev;
 	frame.antialias = antialias;
+	frame.displayW = displayW;
+	frame.displayH = displayH;
 	frame.skipped = false;
 	if (frame.cmds) {
 		EndSceneFrame(frame);
@@ -88,7 +91,9 @@ static bool EnsureTargets(GpuSceneFrame& frame) {
 		if (SDL_GPUTextureSupportsSampleCount(frame.dev, (SDL_GPUTextureFormat)colorFmt, SDL_GPU_SAMPLECOUNT_4)) want = 4;
 		else if (SDL_GPUTextureSupportsSampleCount(frame.dev, (SDL_GPUTextureFormat)colorFmt, SDL_GPU_SAMPLECOUNT_2)) want = 2;
 	}
-	if (!frame.colorTarget || frame.colorW != frame.targetW || frame.colorH != frame.targetH || frame.colorFormat != colorFmt || frame.colorSamples != want) {
+	if (!frame.colorTarget || frame.colorW != frame.targetW || frame.colorH != frame.targetH || frame.colorFormat != colorFmt || frame.colorSamples != want
+		|| !frame.createdClearValid
+		|| frame.createdClearR != frame.colorClearR || frame.createdClearG != frame.colorClearG || frame.createdClearB != frame.colorClearB) {
 		if (frame.colorTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.colorTarget); frame.colorTarget = nullptr; }
 		if (frame.msaaColor) { SDL_ReleaseGPUTexture(frame.dev, frame.msaaColor); frame.msaaColor = nullptr; }
 		if (frame.ownedDepth) { SDL_ReleaseGPUTexture(frame.dev, frame.ownedDepth); frame.ownedDepth = nullptr; }
@@ -99,11 +104,16 @@ static bool EnsureTargets(GpuSceneFrame& frame) {
 		frame.colorTarget = CreateColorTarget(frame.dev, frame.targetW, frame.targetH,
 			frame.colorClearR, frame.colorClearG, frame.colorClearB, 1.0f);
 		if (!frame.colorTarget) return false;
-		frame.msaaColor = (want > 1) ? CreateColorTargetMS(frame.dev, frame.targetW, frame.targetH, want) : nullptr;
+		frame.msaaColor = (want > 1) ? CreateColorTargetMS(frame.dev, frame.targetW, frame.targetH, want,
+			frame.colorClearR, frame.colorClearG, frame.colorClearB) : nullptr;
 		frame.colorW = frame.targetW;
 		frame.colorH = frame.targetH;
 		frame.colorFormat = colorFmt;
 		frame.colorSamples = frame.msaaColor ? want : 1;
+		frame.createdClearR = frame.colorClearR;
+		frame.createdClearG = frame.colorClearG;
+		frame.createdClearB = frame.colorClearB;
+		frame.createdClearValid = true;
 	}
 	frame.sampleCount = frame.colorSamples;
 	if (frame.externalDepth && frame.externalDepthW == frame.colorW && frame.externalDepthH == frame.colorH) {
@@ -155,6 +165,12 @@ bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	EndSceneFrame(frame);
 
 	bool firstPass = !frame.drew3D;
+
+	if (clearColor || firstPass) {
+		frame.colorClearR = clearR;
+		frame.colorClearG = clearG;
+		frame.colorClearB = clearB;
+	}
 
 	if (!EnsureTargets(frame)) return false;
 
@@ -227,13 +243,11 @@ void EndSceneFrame(GpuSceneFrame& frame) {
 }
 
 static void SceneSourceRect(const GpuSceneFrame& frame, int& x, int& y, unsigned& w, unsigned& h) {
-	x = 0; y = 0; w = frame.colorW; h = frame.colorH;
-	if (frame.vpW > 0 && frame.vpH > 0) { x = frame.vpX; y = frame.vpY; w = (unsigned)frame.vpW; h = (unsigned)frame.vpH; }
-	if (x < 0) x = 0;
-	if (y < 0) y = 0;
-	if ((unsigned)x >= frame.colorW || (unsigned)y >= frame.colorH) { x = 0; y = 0; w = frame.colorW; h = frame.colorH; return; }
-	if ((unsigned)x + w > frame.colorW) w = frame.colorW - x;
-	if ((unsigned)y + h > frame.colorH) h = frame.colorH - y;
+	x = 0; y = 0;
+	w = frame.displayW ? frame.displayW : frame.colorW;
+	h = frame.displayH ? frame.displayH : frame.colorH;
+	if (w > frame.colorW) w = frame.colorW;
+	if (h > frame.colorH) h = frame.colorH;
 }
 
 static SDL_FColor ArgbToClearColor(unsigned argb, bool present) {
