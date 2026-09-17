@@ -6,6 +6,7 @@
 #include "../std.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -19,6 +20,7 @@
 
 #include "shaders/mesh_shaders.h"
 #include "shaders/canvas_shaders.h"
+#include "shaders/present_shaders.h"
 #include "sdl_gpu_text.h"
 
 namespace sdlgpu {
@@ -130,29 +132,32 @@ namespace sdlgpu {
 		}
 		bool haveData = g_blitHasData || didUpload;
 		if (tex) {
-			if (haveData) {
-				SDL_GPUBlitInfo blit{};
-				blit.source.texture = g_blitTex;
-				blit.source.w = w;
-				blit.source.h = h;
-				blit.destination.texture = tex;
-				blit.destination.w = sw;
-				blit.destination.h = sh;
-				blit.load_op = SDL_GPU_LOADOP_CLEAR;
-				blit.clear_color = SDL_FColor{ r, g, b, 1.0f };
-				blit.flip_mode = SDL_FLIP_NONE;
-				blit.filter = SDL_GPU_FILTER_LINEAR;
-				blit.cycle = false;
-				SDL_BlitGPUTexture(cmds, &blit);
-			}
-			else {
-				SDL_GPUColorTargetInfo target{};
-				target.texture = tex;
-				target.load_op = SDL_GPU_LOADOP_CLEAR;
-				target.store_op = SDL_GPU_STOREOP_STORE;
-				target.clear_color = SDL_FColor{ r, g, b, 1.0f };
-				SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &target, 1, nullptr);
-				if (pass) SDL_EndGPURenderPass(pass);
+			bool gammaDone = haveData && GammaBlit(dev, cmds, g_blitTex, tex, sw, sh, SDL_GetGPUSwapchainTextureFormat(dev, win));
+			if (!gammaDone) {
+				if (haveData) {
+					SDL_GPUBlitInfo blit{};
+					blit.source.texture = g_blitTex;
+					blit.source.w = w;
+					blit.source.h = h;
+					blit.destination.texture = tex;
+					blit.destination.w = sw;
+					blit.destination.h = sh;
+					blit.load_op = SDL_GPU_LOADOP_CLEAR;
+					blit.clear_color = SDL_FColor{ r, g, b, 1.0f };
+					blit.flip_mode = SDL_FLIP_NONE;
+					blit.filter = SDL_GPU_FILTER_LINEAR;
+					blit.cycle = false;
+					SDL_BlitGPUTexture(cmds, &blit);
+				}
+				else {
+					SDL_GPUColorTargetInfo target{};
+					target.texture = tex;
+					target.load_op = SDL_GPU_LOADOP_CLEAR;
+					target.store_op = SDL_GPU_STOREOP_STORE;
+					target.clear_color = SDL_FColor{ r, g, b, 1.0f };
+					SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &target, 1, nullptr);
+					if (pass) SDL_EndGPURenderPass(pass);
+				}
 			}
 		}
 		bool ok = SDL_SubmitGPUCommandBuffer(cmds);
@@ -179,19 +184,37 @@ namespace sdlgpu {
 			int zMode = MESH_Z_NORMAL;
 			SDL_GPUCullMode cullMode = SDL_GPU_CULLMODE_NONE;
 			bool wireframe = false;
+			int samples = 1;
 			bool operator==(const MeshPipeKey& o) const {
 				return format == o.format && depthFormat == o.depthFormat && stride == o.stride &&
 					skinned == o.skinned && twoTex == o.twoTex && extra == o.extra &&
 					cube0 == o.cube0 && cube1 == o.cube1 &&
-					blend == o.blend && zMode == o.zMode && cullMode == o.cullMode && wireframe == o.wireframe;
+					blend == o.blend && zMode == o.zMode && cullMode == o.cullMode && wireframe == o.wireframe &&
+					samples == o.samples;
 			}
 			bool operator<(const MeshPipeKey& o) const {
-				return std::tie(format, depthFormat, stride, skinned, twoTex, extra, cube0, cube1, blend, zMode, cullMode, wireframe)
-					< std::tie(o.format, o.depthFormat, o.stride, o.skinned, o.twoTex, o.extra, o.cube0, o.cube1, o.blend, o.zMode, o.cullMode, o.wireframe);
+				return std::tie(format, depthFormat, stride, skinned, twoTex, extra, cube0, cube1, blend, zMode, cullMode, wireframe, samples)
+					< std::tie(o.format, o.depthFormat, o.stride, o.skinned, o.twoTex, o.extra, o.cube0, o.cube1, o.blend, o.zMode, o.cullMode, o.wireframe, o.samples);
 			}
 		};
 		std::map<MeshPipeKey, SDL_GPUGraphicsPipeline*> g_meshPipes;
-		SDL_GPUSampler* g_meshSamps[8] = {};
+		struct MeshSampKey {
+			unsigned pack = 0;
+			int biasQ = 0;
+			bool operator<(const MeshSampKey& o) const {
+				return pack < o.pack || (pack == o.pack && biasQ < o.biasQ);
+			}
+		};
+		std::map<MeshSampKey, SDL_GPUSampler*> g_meshSamps;
+
+		static SDL_GPUSampleCount ToSampleCount(int n) {
+			switch (n) {
+				case 8: return SDL_GPU_SAMPLECOUNT_8;
+				case 4: return SDL_GPU_SAMPLECOUNT_4;
+				case 2: return SDL_GPU_SAMPLECOUNT_2;
+				default: return SDL_GPU_SAMPLECOUNT_1;
+			}
+		}
 
 		SDL_GPUDevice* g_canvasDev = nullptr;
 		SDL_GPUGraphicsPipeline* g_canvasPipe = nullptr;
@@ -208,7 +231,8 @@ namespace sdlgpu {
 		GpuLock lock;
 		for (auto& e : g_meshPipes) if (e.second && g_meshDev) SDL_ReleaseGPUGraphicsPipeline(g_meshDev, e.second);
 		g_meshPipes.clear();
-		for (SDL_GPUSampler*& s : g_meshSamps) { if (s && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, s); s = nullptr; }
+		for (auto& e : g_meshSamps) if (e.second && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, e.second);
+		g_meshSamps.clear();
 		if (g_meshSamp && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, g_meshSamp);
 		g_meshSamp = nullptr;
 		g_meshDev = nullptr;
@@ -216,11 +240,16 @@ namespace sdlgpu {
 		g_depthFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
 	}
 
-	static SDL_GPUSampler* EnsureMeshSampler(SDL_GPUDevice* dev, bool wrapU, bool wrapV, bool point) {
+	static SDL_GPUSampler* EnsureMeshSampler(SDL_GPUDevice* dev, bool wrapU, bool wrapV, bool point, int aniso, float lodBias) {
 		GpuLock lock;
 		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
-		unsigned key = (wrapU ? 4u : 0u) | (wrapV ? 2u : 0u) | (point ? 1u : 0u);
-		if (g_meshSamps[key]) return g_meshSamps[key];
+		if (aniso < 1) aniso = 1;
+		if (aniso > 16) aniso = 16;
+		MeshSampKey key;
+		key.pack = (wrapU ? 4u : 0u) | (wrapV ? 2u : 0u) | (point ? 1u : 0u) | ((unsigned)aniso << 3);
+		key.biasQ = (int)lroundf(lodBias * 256.0f);
+		auto it = g_meshSamps.find(key);
+		if (it != g_meshSamps.end()) return it->second;
 		SDL_GPUSamplerCreateInfo samp{};
 		samp.min_filter = point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
 		samp.mag_filter = point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
@@ -228,6 +257,11 @@ namespace sdlgpu {
 		samp.address_mode_u = wrapU ? SDL_GPU_SAMPLERADDRESSMODE_REPEAT : SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
 		samp.address_mode_v = wrapV ? SDL_GPU_SAMPLERADDRESSMODE_REPEAT : SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
 		samp.max_lod = 1000.0f;
+		samp.mip_lod_bias = (float)key.biasQ / 256.0f;
+		if (aniso > 1) {
+			samp.enable_anisotropy = true;
+			samp.max_anisotropy = (float)aniso;
+		}
 		SDL_GPUSampler* s = SDL_CreateGPUSampler(dev, &samp);
 		if (!s) return nullptr;
 		g_meshDev = dev;
@@ -346,7 +380,7 @@ namespace sdlgpu {
 		return cached;
 	}
 
-	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, bool skinned, bool twoTex, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode, bool wireframe, bool extra = false, bool cube0 = false, bool cube1 = false) {
+	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, bool skinned, bool twoTex, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode, bool wireframe, bool extra = false, bool cube0 = false, bool cube1 = false, int samples = 1) {
 		GpuLock lock;
 		SDL_GPUTextureFormat fmt = colorFormatOverride ? (SDL_GPUTextureFormat)colorFormatOverride : SDL_GetGPUSwapchainTextureFormat(dev, win);
 		SDL_GPUTextureFormat depthFmt = depthFormatOverride ? (SDL_GPUTextureFormat)depthFormatOverride : PickMeshDepthFormat(dev);
@@ -355,7 +389,7 @@ namespace sdlgpu {
 		if (zMode < MESH_Z_NORMAL || zMode > MESH_Z_CMPONLY) zMode = MESH_Z_NORMAL;
 		if (extra) { cube0 = false; cube1 = false; }
 
-		MeshPipeKey key{ fmt, depthFmt, stride, skinned, twoTex, extra, cube0, cube1, blendMode, zMode, cullMode, wireframe };
+		MeshPipeKey key{ fmt, depthFmt, stride, skinned, twoTex, extra, cube0, cube1, blendMode, zMode, cullMode, wireframe, samples };
 		{
 			auto found = g_meshPipes.find(key);
 			if (found != g_meshPipes.end()) return found->second;
@@ -478,7 +512,7 @@ namespace sdlgpu {
 		info.rasterizer_state.depth_bias_constant_factor = 0.0f;
 		info.rasterizer_state.depth_bias_clamp = 0.0f;
 		info.rasterizer_state.depth_bias_slope_factor = 0.0f;
-		info.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+		info.multisample_state.sample_count = ToSampleCount(samples);
 		info.multisample_state.sample_mask = 0;
 
 		info.depth_stencil_state.enable_depth_test = (zMode != MESH_Z_DISABLE);
@@ -535,6 +569,7 @@ namespace sdlgpu {
 		float mat1A[4];
 		float mat1B[4];
 		float bump[4];
+		float flat[4];
 	};
 
 	static void PushMeshFragUniforms(SDL_GPUCommandBuffer* cmds, const MeshDrawParams& p) {
@@ -545,10 +580,11 @@ namespace sdlgpu {
 		memcpy(fu.mat1A, p.uvMat1A, sizeof(fu.mat1A));
 		memcpy(fu.mat1B, p.uvMat1B, sizeof(fu.mat1B));
 		memcpy(fu.bump, p.bumpMat, sizeof(fu.bump));
+		fu.flat[0] = p.flat;
 		SDL_PushGPUFragmentUniformData(cmds, 0, &fu, (unsigned)sizeof(fu));
 	}
 
-	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshDrawParams& p) {
+	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshDrawParams& p, int samples) {
 		GpuLock lock;
 		if (!dev || !cmds || !pass || !mesh || !uniforms || !uniformBytes || !indexCount) return;
 		if (!colorFormat && !win) return;
@@ -562,7 +598,7 @@ namespace sdlgpu {
 		bool cube0 = p.cube0 && p.tex != nullptr;
 		bool cube1 = p.cube1 && p.tex1 != nullptr;
 
-		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, skinned, twoTex, colorFormat, depthFormat, p.blend, p.zMode, p.cull, p.wireframe, false, cube0, cube1);
+		SDL_GPUGraphicsPipeline* meshPipe = EnsureMeshPipe(dev, win, mesh->vertStride, skinned, twoTex, colorFormat, depthFormat, p.blend, p.zMode, p.cull, p.wireframe, false, cube0, cube1, samples);
 		if (!meshPipe) return;
 		if (!g_meshSamp) return;
 
@@ -582,13 +618,13 @@ namespace sdlgpu {
 		SDL_GPUBufferBinding ib{};
 		ib.buffer = mesh->indices;
 		SDL_BindGPUIndexBuffer(pass, &ib, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-		SDL_GPUSampler* samp0 = EnsureMeshSampler(dev, p.wrapU0, p.wrapV0, p.point0);
+		SDL_GPUSampler* samp0 = EnsureMeshSampler(dev, p.wrapU0, p.wrapV0, p.point0, p.aniso, p.lodBias);
 		SDL_GPUTextureSamplerBinding binds[2]{};
 		binds[0].texture = boundTex;
 		binds[0].sampler = samp0 ? samp0 : g_meshSamp;
 		unsigned samplerCount = 1;
 		if (twoTex) {
-			SDL_GPUSampler* samp1 = EnsureMeshSampler(dev, p.wrapU1, p.wrapV1, p.point1);
+			SDL_GPUSampler* samp1 = EnsureMeshSampler(dev, p.wrapU1, p.wrapV1, p.point1, p.aniso, p.lodBias);
 			binds[1].texture = p.tex1;
 			binds[1].sampler = samp1 ? samp1 : binds[0].sampler;
 			samplerCount = 2;
@@ -598,7 +634,7 @@ namespace sdlgpu {
 		SDL_DrawGPUIndexedPrimitives(pass, indexCount, 1, startIndex, firstVertex, 0);
 	}
 
-	void DrawMeshExtraStage(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshExtraStage& stage, const MeshDrawParams& base) {
+	void DrawMeshExtraStage(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshExtraStage& stage, const MeshDrawParams& base, int samples) {
 		GpuLock lock;
 		if (!dev || !cmds || !pass || !mesh || !uniforms || !uniformBytes || !indexCount || !stage.tex) return;
 		if (!colorFormat) return;
@@ -608,7 +644,7 @@ namespace sdlgpu {
 		if (!mesh->verts || !mesh->indices) return;
 		if (CachedShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
 
-		SDL_GPUGraphicsPipeline* pipe = EnsureMeshPipe(dev, nullptr, mesh->vertStride, base.boneBuf != nullptr, false, colorFormat, depthFormat, stage.blend, base.zMode, base.cull, base.wireframe, true);
+		SDL_GPUGraphicsPipeline* pipe = EnsureMeshPipe(dev, nullptr, mesh->vertStride, base.boneBuf != nullptr, false, colorFormat, depthFormat, stage.blend, base.zMode, base.cull, base.wireframe, true, false, false, samples);
 		if (!pipe) return;
 
 		SDL_BindGPUGraphicsPipeline(pass, pipe);
@@ -629,7 +665,7 @@ namespace sdlgpu {
 		SDL_GPUBufferBinding ib{};
 		ib.buffer = mesh->indices;
 		SDL_BindGPUIndexBuffer(pass, &ib, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-		SDL_GPUSampler* samp = EnsureMeshSampler(dev, stage.wrapU, stage.wrapV, stage.point);
+		SDL_GPUSampler* samp = EnsureMeshSampler(dev, stage.wrapU, stage.wrapV, stage.point, base.aniso, base.lodBias);
 		if (!samp) samp = g_meshSamp;
 		if (!samp) return;
 		SDL_GPUTextureSamplerBinding bind{};
@@ -739,12 +775,223 @@ namespace sdlgpu {
 		SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
 	}
 
+	namespace {
+		SDL_GPUDevice* g_gammaDev = nullptr;
+		SDL_GPUTexture* g_gammaLut = nullptr;
+		SDL_GPUGraphicsPipeline* g_gammaPipe = nullptr;
+		SDL_GPUDevice* g_gammaPipeDev = nullptr;
+		SDL_GPUTextureFormat g_gammaFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+		SDL_GPUSampler* g_gammaSrcSamp = nullptr;
+		SDL_GPUSampler* g_gammaLutSamp = nullptr;
+		SDL_GPUTexture* g_gammaComp = nullptr;
+		SDL_GPUDevice* g_gammaCompDev = nullptr;
+		Uint32 g_gammaCompW = 0, g_gammaCompH = 0;
+		SDL_GPUTextureFormat g_gammaCompFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+		bool g_gammaActive = false;
+
+		void TeardownGamma() {
+			GpuLock lock;
+			if (g_gammaComp && g_gammaCompDev) SDL_ReleaseGPUTexture(g_gammaCompDev, g_gammaComp);
+			g_gammaComp = nullptr; g_gammaCompDev = nullptr;
+			g_gammaCompW = g_gammaCompH = 0; g_gammaCompFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+			if (g_gammaPipe && g_gammaPipeDev) SDL_ReleaseGPUGraphicsPipeline(g_gammaPipeDev, g_gammaPipe);
+			g_gammaPipe = nullptr; g_gammaPipeDev = nullptr; g_gammaFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+			if (g_gammaLut && g_gammaDev) SDL_ReleaseGPUTexture(g_gammaDev, g_gammaLut);
+			g_gammaLut = nullptr;
+			if (g_gammaSrcSamp && g_gammaDev) SDL_ReleaseGPUSampler(g_gammaDev, g_gammaSrcSamp);
+			if (g_gammaLutSamp && g_gammaDev) SDL_ReleaseGPUSampler(g_gammaDev, g_gammaLutSamp);
+			g_gammaSrcSamp = nullptr; g_gammaLutSamp = nullptr;
+			g_gammaDev = nullptr;
+			g_gammaActive = false;
+		}
+
+		bool EnsureGammaSamplers(SDL_GPUDevice* dev) {
+			if (!g_gammaSrcSamp) {
+				SDL_GPUSamplerCreateInfo s{};
+				s.min_filter = SDL_GPU_FILTER_LINEAR; s.mag_filter = SDL_GPU_FILTER_LINEAR;
+				s.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+				s.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+				s.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+				s.max_lod = 0.0f;
+				g_gammaSrcSamp = SDL_CreateGPUSampler(dev, &s);
+				if (!g_gammaSrcSamp) return false;
+			}
+			if (!g_gammaLutSamp) {
+				SDL_GPUSamplerCreateInfo s{};
+				s.min_filter = SDL_GPU_FILTER_NEAREST; s.mag_filter = SDL_GPU_FILTER_NEAREST;
+				s.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+				s.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+				s.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+				s.max_lod = 0.0f;
+				g_gammaLutSamp = SDL_CreateGPUSampler(dev, &s);
+				if (!g_gammaLutSamp) return false;
+			}
+			return true;
+		}
+
+		bool EnsureGammaPipeline(SDL_GPUDevice* dev, SDL_GPUTextureFormat fmt) {
+			if (g_gammaPipe && g_gammaPipeDev == dev && g_gammaFmt == fmt) return true;
+			if (g_gammaPipe && g_gammaPipeDev) SDL_ReleaseGPUGraphicsPipeline(g_gammaPipeDev, g_gammaPipe);
+			g_gammaPipe = nullptr; g_gammaFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+			SDL_GPUShaderFormat sup = CachedShaderFormats(dev);
+			const uint8_t* vsCode = nullptr; const uint8_t* psCode = nullptr;
+			size_t vsSize = 0, psSize = 0;
+			SDL_GPUShaderFormat use = SDL_GPU_SHADERFORMAT_INVALID;
+			if (sup & SDL_GPU_SHADERFORMAT_SPIRV) { use = SDL_GPU_SHADERFORMAT_SPIRV; vsCode = kCanvasVS_SPIRV; vsSize = kCanvasVS_SPIRV_size; psCode = kPresentPS_SPIRV; psSize = kPresentPS_SPIRV_size; }
+			else if (sup & SDL_GPU_SHADERFORMAT_DXIL) { use = SDL_GPU_SHADERFORMAT_DXIL; vsCode = kCanvasVS_DXIL; vsSize = kCanvasVS_DXIL_size; psCode = kPresentPS_DXIL; psSize = kPresentPS_DXIL_size; }
+			if (use == SDL_GPU_SHADERFORMAT_INVALID) return false;
+			SDL_GPUShader* vs = LoadShader(dev, use, SDL_GPU_SHADERSTAGE_VERTEX, "VSMain", vsCode, vsSize, 0, 0);
+			if (!vs) return false;
+			SDL_GPUShader* ps = LoadShader(dev, use, SDL_GPU_SHADERSTAGE_FRAGMENT, "PSMain", psCode, psSize, 2, 0);
+			if (!ps) { SDL_ReleaseGPUShader(dev, vs); return false; }
+			SDL_GPUVertexBufferDescription vb{}; vb.slot = 0; vb.pitch = 16; vb.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+			SDL_GPUVertexAttribute attrs[2]{};
+			attrs[0].location = 0; attrs[0].buffer_slot = 0; attrs[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2; attrs[0].offset = 0;
+			attrs[1].location = 1; attrs[1].buffer_slot = 0; attrs[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2; attrs[1].offset = 8;
+			SDL_GPUVertexInputState vin{}; vin.vertex_buffer_descriptions = &vb; vin.num_vertex_buffers = 1; vin.vertex_attributes = attrs; vin.num_vertex_attributes = 2;
+			SDL_GPUColorTargetDescription tgt{}; tgt.format = fmt;
+			SDL_GPUGraphicsPipelineCreateInfo info{};
+			info.vertex_shader = vs; info.fragment_shader = ps; info.vertex_input_state = vin;
+			info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+			info.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL; info.rasterizer_state.cull_mode = SDL_GPU_CULLMODE_NONE;
+			info.rasterizer_state.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
+			info.rasterizer_state.enable_depth_clip = true;
+			info.multisample_state.sample_count = SDL_GPU_SAMPLECOUNT_1;
+			info.depth_stencil_state.enable_depth_test = false; info.depth_stencil_state.enable_depth_write = false;
+			info.depth_stencil_state.enable_stencil_test = false;
+			info.depth_stencil_state.back_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
+			info.depth_stencil_state.front_stencil_state.compare_op = SDL_GPU_COMPAREOP_ALWAYS;
+			info.target_info.num_color_targets = 1; info.target_info.color_target_descriptions = &tgt;
+			info.target_info.has_depth_stencil_target = false;
+			SDL_PropertiesID props = SDL_CreateProperties();
+			if (props) SDL_SetStringProperty(props, SDL_PROP_GPU_GRAPHICSPIPELINE_CREATE_NAME_STRING, "b3d_gamma");
+			info.props = props;
+			g_gammaPipe = SDL_CreateGPUGraphicsPipeline(dev, &info);
+			if (props) SDL_DestroyProperties(props);
+			SDL_ReleaseGPUShader(dev, vs); SDL_ReleaseGPUShader(dev, ps);
+			if (!g_gammaPipe) return false;
+			g_gammaPipeDev = dev; g_gammaFmt = fmt;
+			return true;
+		}
+	}
+
+	void SetGammaRamp(SDL_GPUDevice* dev, const unsigned short* ramp) {
+		GpuLock lock;
+		if (!dev || !ramp) return;
+		if (g_gammaDev && g_gammaDev != dev) TeardownGamma();
+		g_gammaDev = dev;
+		bool ident = true;
+		for (int ch = 0; ch < 3 && ident; ++ch) {
+			for (int i = 0; i < 256; ++i) {
+				if (ramp[ch * 256 + i] != (unsigned short)(i * 257)) { ident = false; break; }
+			}
+		}
+		g_gammaActive = false;
+		if (ident) return;
+		if (!g_gammaLut) {
+			SDL_GPUTextureCreateInfo ti{};
+			ti.type = SDL_GPU_TEXTURETYPE_2D;
+			ti.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+			ti.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+			ti.width = 256; ti.height = 1; ti.layer_count_or_depth = 1; ti.num_levels = 1;
+			ti.sample_count = SDL_GPU_SAMPLECOUNT_1;
+			g_gammaLut = SDL_CreateGPUTexture(dev, &ti);
+			if (!g_gammaLut) return;
+		}
+		unsigned char px[256 * 4];
+		for (int i = 0; i < 256; ++i) {
+			px[i * 4 + 0] = (unsigned char)(ramp[i] >> 8);
+			px[i * 4 + 1] = (unsigned char)(ramp[256 + i] >> 8);
+			px[i * 4 + 2] = (unsigned char)(ramp[512 + i] >> 8);
+			px[i * 4 + 3] = 255;
+		}
+		SDL_GPUCommandBuffer* cmds = SDL_AcquireGPUCommandBuffer(dev);
+		if (!cmds) return;
+		SDL_GPUTransferBuffer* tb = AcquireUploadTransferBuffer(dev, sizeof(px));
+		if (!tb) { SDL_CancelGPUCommandBuffer(cmds); return; }
+		void* dst = SDL_MapGPUTransferBuffer(dev, tb, true);
+		if (!dst) { ReleaseUploadTransferBuffer(dev, tb); SDL_CancelGPUCommandBuffer(cmds); return; }
+		memcpy(dst, px, sizeof(px));
+		SDL_UnmapGPUTransferBuffer(dev, tb);
+		SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmds);
+		if (!cp) { ReleaseUploadTransferBuffer(dev, tb); SDL_CancelGPUCommandBuffer(cmds); return; }
+		SDL_GPUTextureTransferInfo src{};
+		src.transfer_buffer = tb;
+		src.pixels_per_row = 256;
+		src.rows_per_layer = 1;
+		SDL_GPUTextureRegion reg{};
+		reg.texture = g_gammaLut;
+		reg.w = 256; reg.h = 1; reg.d = 1;
+		SDL_UploadToGPUTexture(cp, &src, &reg, true);
+		SDL_EndGPUCopyPass(cp);
+		bool ok = SDL_SubmitGPUCommandBuffer(cmds);
+		ReleaseUploadTransferBuffer(dev, tb);
+		if (ok) g_gammaActive = true;
+	}
+
+	bool GammaActive(SDL_GPUDevice* dev) {
+		GpuLock lock;
+		return g_gammaActive && g_gammaDev == dev && g_gammaLut != nullptr;
+	}
+
+	SDL_GPUTexture* AcquireGammaComposite(SDL_GPUDevice* dev, SDL_GPUTextureFormat fmt, unsigned w, unsigned h) {
+		GpuLock lock;
+		if (!dev || !w || !h) return nullptr;
+		if (g_gammaComp && g_gammaCompDev == dev && g_gammaCompW == w && g_gammaCompH == h && g_gammaCompFmt == fmt) return g_gammaComp;
+		if (g_gammaComp && g_gammaCompDev) SDL_ReleaseGPUTexture(g_gammaCompDev, g_gammaComp);
+		g_gammaComp = nullptr;
+		SDL_GPUTextureCreateInfo ti{};
+		ti.type = SDL_GPU_TEXTURETYPE_2D;
+		ti.format = fmt;
+		ti.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+		ti.width = w; ti.height = h; ti.layer_count_or_depth = 1; ti.num_levels = 1;
+		ti.sample_count = SDL_GPU_SAMPLECOUNT_1;
+		g_gammaComp = SDL_CreateGPUTexture(dev, &ti);
+		if (!g_gammaComp) { g_gammaCompDev = nullptr; return nullptr; }
+		g_gammaCompDev = dev; g_gammaCompW = w; g_gammaCompH = h; g_gammaCompFmt = fmt;
+		return g_gammaComp;
+	}
+
+	bool GammaBlit(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* src, SDL_GPUTexture* dst, unsigned w, unsigned h, SDL_GPUTextureFormat fmt) {
+		GpuLock lock;
+		if (!dev || !cmds || !src || !dst || !g_gammaLut || !g_gammaActive) return false;
+		if (!EnsureCanvasPipeline(dev, fmt)) return false;
+		if (!g_canvasVB) return false;
+		if (!EnsureGammaSamplers(dev)) return false;
+		if (!EnsureGammaPipeline(dev, fmt)) return false;
+		SDL_GPUColorTargetInfo ci{};
+		ci.texture = dst;
+		ci.load_op = SDL_GPU_LOADOP_DONT_CARE;
+		ci.store_op = SDL_GPU_STOREOP_STORE;
+		ci.cycle = false;
+		SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &ci, 1, nullptr);
+		if (!pass) return false;
+		SDL_GPUViewport vp{};
+		vp.x = 0; vp.y = 0; vp.w = (float)w; vp.h = (float)h;
+		vp.min_depth = 0.0f; vp.max_depth = 1.0f;
+		SDL_SetGPUViewport(pass, &vp);
+		SDL_Rect sc{};
+		sc.x = 0; sc.y = 0; sc.w = (int)w; sc.h = (int)h;
+		SDL_SetGPUScissor(pass, &sc);
+		SDL_BindGPUGraphicsPipeline(pass, g_gammaPipe);
+		SDL_GPUBufferBinding vb{}; vb.buffer = g_canvasVB;
+		SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
+		SDL_GPUTextureSamplerBinding binds[2]{};
+		binds[0].texture = src; binds[0].sampler = g_gammaSrcSamp;
+		binds[1].texture = g_gammaLut; binds[1].sampler = g_gammaLutSamp;
+		SDL_BindGPUFragmentSamplers(pass, 0, binds, 2);
+		SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
+		SDL_EndGPURenderPass(pass);
+		return true;
+	}
+
 	void TeardownPipelines() {
 		ShutdownUploads();
 		GpuLock lock;
 		TeardownBlit();
 		TeardownMeshPipe();
 		TeardownCanvas();
+		TeardownGamma();
 		TeardownWhiteTexture();
 		TeardownText();
 		ReleaseBones(nullptr);

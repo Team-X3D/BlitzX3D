@@ -54,6 +54,7 @@ struct VSOut
 {
 	float4 pos : SV_Position;
 	float4 color : COLOR0;
+	nointerpolation float4 colorFlat : COLOR1;
 	float2 uv : TEXCOORD0;
 	float2 uv1 : TEXCOORD1;
 	float fog : TEXCOORD2;
@@ -143,6 +144,7 @@ VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 	}
 
 	o.color = float4(finalRgb, baseA);
+	o.colorFlat = o.color;
 	float3 nV = float3(dot(nW, viewX.xyz), dot(nW, viewY.xyz), dot(nW, viewZ.xyz));
 	float2 sph = float2(nV.x * 0.5 + 0.5, -nV.y * 0.5 + 0.5);
 	float2 baseUv0 = (texGen.z > 0.5) ? uv1 : uv;
@@ -216,6 +218,7 @@ cbuffer PSParams : register(b0, space3)
 	float4 psMat1A;
 	float4 psMat1B;
 	float4 psBump;
+	float4 psFlat;
 };
 
 float2 xformUV(float2 uv, float4 A, float4 B)
@@ -225,10 +228,15 @@ float2 xformUV(float2 uv, float4 A, float4 B)
 	return float2(uv.x * A.x + uv.y * A.y + A.z, uv.x * B.x + uv.y * B.y + B.z);
 }
 
+float4 shadeColor(VSOut i)
+{
+	return (psFlat.x > 0.5) ? i.colorFlat : i.color;
+}
+
 float4 PSMain(VSOut i) : SV_Target0
 {
 	float2 uv = xformUV(i.uv, psMat0A, psMat0B);
-	float4 tex = MeshTex.Sample(MeshSamp, uv) * i.color;
+	float4 tex = MeshTex.Sample(MeshSamp, uv) * shadeColor(i);
 	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
@@ -244,13 +252,13 @@ float4 PSMain2Tex(VSOut i) : SV_Target0
 	if (op > 5.5) {
 		float4 bump = MeshTex1.Sample(MeshSamp1, uv1);
 		float2 duv = float2(dot(bump.rg - 0.5, psBump.xy), dot(bump.rg - 0.5, psBump.zw));
-		float4 tex = MeshTex.Sample(MeshSamp, uv + duv) * i.color;
+		float4 tex = MeshTex.Sample(MeshSamp, uv + duv) * shadeColor(i);
 		if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
 			discard;
 		tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
 		return tex;
 	}
-	float4 tex = MeshTex.Sample(MeshSamp, uv) * i.color;
+	float4 tex = MeshTex.Sample(MeshSamp, uv) * shadeColor(i);
 	float4 t1 = MeshTex1.Sample(MeshSamp1, uv1);
 	if (op < 1.5) {
 		tex.rgb = lerp(tex.rgb, t1.rgb, t1.a);
@@ -289,7 +297,7 @@ float4 blendStages(float4 tex, float4 t1, float op, float alphaFlag)
 
 float4 PSMainCube(VSOut i) : SV_Target0
 {
-	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * i.color;
+	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * shadeColor(i);
 	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
@@ -298,7 +306,7 @@ float4 PSMainCube(VSOut i) : SV_Target0
 
 float4 PSMainCubeTex(VSOut i) : SV_Target0
 {
-	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * i.color;
+	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * shadeColor(i);
 	float2 uv1base = (psStage1.y > 0.5) ? i.uv1 : i.uv;
 	float2 uv1 = xformUV(uv1base, psMat1A, psMat1B);
 	float4 t1 = MeshTex1.Sample(MeshSamp1, uv1);
@@ -312,7 +320,7 @@ float4 PSMainCubeTex(VSOut i) : SV_Target0
 float4 PSMainTexCube(VSOut i) : SV_Target0
 {
 	float2 uv = xformUV(i.uv, psMat0A, psMat0B);
-	float4 tex = MeshTex.Sample(MeshSamp, uv) * i.color;
+	float4 tex = MeshTex.Sample(MeshSamp, uv) * shadeColor(i);
 	float4 t1 = MeshTex1Cube.Sample(MeshSamp1, i.refl1);
 	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
 	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
@@ -323,7 +331,7 @@ float4 PSMainTexCube(VSOut i) : SV_Target0
 
 float4 PSMainCubeCube(VSOut i) : SV_Target0
 {
-	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * i.color;
+	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * shadeColor(i);
 	float4 t1 = MeshTex1Cube.Sample(MeshSamp1, i.refl1);
 	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
 	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)

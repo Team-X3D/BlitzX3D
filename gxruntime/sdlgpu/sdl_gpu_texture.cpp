@@ -626,13 +626,45 @@ SDL_GPUTexture* CreateColorTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, fl
 	return tex;
 }
 
+static SDL_GPUSampleCount ToSDLSamples(int n) {
+	switch (n) {
+		case 8: return SDL_GPU_SAMPLECOUNT_8;
+		case 4: return SDL_GPU_SAMPLECOUNT_4;
+		case 2: return SDL_GPU_SAMPLECOUNT_2;
+		default: return SDL_GPU_SAMPLECOUNT_1;
+	}
+}
+
+SDL_GPUTexture* CreateColorTargetMS(SDL_GPUDevice* dev, unsigned w, unsigned h, int sampleCount) {
+	if (!dev || !w || !h) return nullptr;
+	SDL_GPUSampleCount sc = ToSDLSamples(sampleCount);
+	if (sc == SDL_GPU_SAMPLECOUNT_1) return CreateColorTarget(dev, w, h, 0.0f, 0.0f, 0.0f, 1.0f);
+	SDL_GPUTextureFormat fmt = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+	if (!SDL_GPUTextureSupportsFormat(dev, fmt, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET)) return nullptr;
+	SDL_GPUTextureCreateInfo info{};
+	info.type = SDL_GPU_TEXTURETYPE_2D;
+	info.format = fmt;
+	info.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+	info.width = w;
+	info.height = h;
+	info.layer_count_or_depth = 1;
+	info.num_levels = 1;
+	info.sample_count = sc;
+	return SDL_CreateGPUTexture(dev, &info);
+}
+
 SDL_GPUTexture* CreateDepthTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, int formatValue) {
 	return CreateDepthTarget(dev, w, h, formatValue, 1.0f, 0);
 }
 
 SDL_GPUTexture* CreateDepthTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, int formatValue, float depth, unsigned char stencil) {
+	return CreateDepthTarget(dev, w, h, formatValue, depth, stencil, 1);
+}
+
+SDL_GPUTexture* CreateDepthTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, int formatValue, float depth, unsigned char stencil, int sampleCount) {
 	if (!dev || !w || !h) return nullptr;
 	SDL_GPUTextureFormat fmt = (SDL_GPUTextureFormat)formatValue;
+	SDL_GPUSampleCount sc = ToSDLSamples(sampleCount);
 	if (!SDL_GPUTextureSupportsFormat(dev, fmt, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) return nullptr;
 	SDL_PropertiesID props = SDL_CreateProperties();
 	if (props) {
@@ -647,7 +679,7 @@ SDL_GPUTexture* CreateDepthTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, in
 	info.height = h;
 	info.layer_count_or_depth = 1;
 	info.num_levels = 1;
-	info.sample_count = SDL_GPU_SAMPLECOUNT_1;
+	info.sample_count = sc;
 	info.props = props;
 	SDL_GPUTexture* tex = SDL_CreateGPUTexture(dev, &info);
 	if (props) SDL_DestroyProperties(props);

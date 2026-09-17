@@ -28,3 +28,6 @@ if "%DXC_EXE%"=="" set DXC_EXE=%HERE%..\..\..\tools\dxc-x64\dxc.exe
 "%DXC_EXE%" -spirv -T ps_6_0 -E PSMain text.hlsl -Fo text_ps.spv || exit /b 1
 "%DXC_EXE%" -T vs_6_0 -E VSMain text.hlsl -Fo text_vs.dxil || exit /b 1
 "%DXC_EXE%" -T ps_6_0 -E PSMain text.hlsl -Fo text_ps.dxil || exit /b 1
+"%DXC_EXE%" -spirv -T ps_6_0 -E PSMain present.hlsl -Fo present_ps.spv || exit /b 1
+"%DXC_EXE%" -T ps_6_0 -E PSMain present.hlsl -Fo present_ps.dxil || exit /b 1
+powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%embed_shaders.ps1" || exit /b 1

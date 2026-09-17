@@ -7,6 +7,7 @@
 #include "sdlgpu/sdl_gpu_texture.h"
 #include "sdlgpu/sdl_gpu_text.h"
 #include "sdlgpu/sdl_gpu_context.h"
+#include "sdlgpu/sdl_gpu_pipeline.h"
 #include "../gxruntime/gxutf8.h"
 #include <cstring>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -50,7 +51,9 @@ gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9
 		zbuffFmt = D3DFMT_UNKNOWN;
 	}
 
-	// todo: gamma
+	for (int i = 0; i < 3; ++i)
+		for (int k = 0; k < 256; ++k)
+			gammaRamp[i][k] = (unsigned short)(k * 257);
 }
 
 gxGraphics::~gxGraphics() {
@@ -138,15 +141,22 @@ void gxGraphics::clearEffects() {
 }
 
 void gxGraphics::setGamma(int r, int g, int b, float dr, float dg, float db) {
-	//bruh
+	gammaRamp[0][r & 255] = (unsigned short)(dr * 257.0f);
+	gammaRamp[1][g & 255] = (unsigned short)(dg * 257.0f);
+	gammaRamp[2][b & 255] = (unsigned short)(db * 257.0f);
 }
 
 void gxGraphics::updateGamma(bool calibrate) {
-	//bruh
+	(void)calibrate;
+	if (runtime && runtime->sdlGpu) {
+		sdlgpu::SetGammaRamp((SDL_GPUDevice*)runtime->sdlGpu, (const unsigned short*)gammaRamp);
+	}
 }
 
 void gxGraphics::getGamma(int r, int g, int b, float* dr, float* dg, float* db) {
-	//bruh
+	*dr = gammaRamp[0][r & 255] / 257.0f;
+	*dg = gammaRamp[1][g & 255] / 257.0f;
+	*db = gammaRamp[2][b & 255] / 257.0f;
 }
 
 bool gxGraphics::ensureD3DBegun() {

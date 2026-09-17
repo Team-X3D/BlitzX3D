@@ -19,12 +19,16 @@ static void ReleaseTargetsLocked(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 	SDL_GPUDevice* relDev = frame.dev ? frame.dev : dev;
 	if (!relDev) return;
 	if (frame.colorTarget) { SDL_ReleaseGPUTexture(relDev, frame.colorTarget); frame.colorTarget = nullptr; }
+	if (frame.msaaColor) { SDL_ReleaseGPUTexture(relDev, frame.msaaColor); frame.msaaColor = nullptr; }
 	if (frame.ownedDepth) { SDL_ReleaseGPUTexture(relDev, frame.ownedDepth); frame.ownedDepth = nullptr; }
 	frame.depthTarget = nullptr;
 	frame.colorW = frame.colorH = 0;
 	frame.colorFormat = 0;
+	frame.colorSamples = 1;
 	frame.depthW = frame.depthH = 0;
 	frame.depthFormat = 0;
+	frame.depthSamples = 1;
+	frame.sampleCount = 1;
 }
 
 void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
@@ -43,7 +47,7 @@ void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame) {
 	frame.drew3D = false;
 }
 
-bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH) {
+bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, unsigned targetW, unsigned targetH, bool antialias) {
 	if (!dev || !win) return false;
 
 	if (frame.cmds && frame.dev != dev) {
@@ -54,6 +58,7 @@ bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, 
 	}
 
 	frame.dev = dev;
+	frame.antialias = antialias;
 	frame.skipped = false;
 	if (frame.cmds) {
 		EndSceneFrame(frame);
@@ -76,29 +81,49 @@ bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, 
 static bool EnsureTargets(GpuSceneFrame& frame) {
 	if (!frame.dev || !frame.targetW || !frame.targetH) return false;
 	int colorFmt = SceneColorFormat();
-	if (!frame.colorTarget || frame.colorW != frame.targetW || frame.colorH != frame.targetH || frame.colorFormat != colorFmt) {
+	int fmt = MeshDepthFormat(frame.dev);
+	bool extDepth = frame.externalDepth && frame.externalDepthW == frame.targetW && frame.externalDepthH == frame.targetH;
+	int want = 1;
+	if (frame.antialias && !extDepth) {
+		if (SDL_GPUTextureSupportsSampleCount(frame.dev, (SDL_GPUTextureFormat)colorFmt, SDL_GPU_SAMPLECOUNT_4)) want = 4;
+		else if (SDL_GPUTextureSupportsSampleCount(frame.dev, (SDL_GPUTextureFormat)colorFmt, SDL_GPU_SAMPLECOUNT_2)) want = 2;
+	}
+	if (!frame.colorTarget || frame.colorW != frame.targetW || frame.colorH != frame.targetH || frame.colorFormat != colorFmt || frame.colorSamples != want) {
 		if (frame.colorTarget) { SDL_ReleaseGPUTexture(frame.dev, frame.colorTarget); frame.colorTarget = nullptr; }
+		if (frame.msaaColor) { SDL_ReleaseGPUTexture(frame.dev, frame.msaaColor); frame.msaaColor = nullptr; }
 		if (frame.ownedDepth) { SDL_ReleaseGPUTexture(frame.dev, frame.ownedDepth); frame.ownedDepth = nullptr; }
 		frame.depthTarget = nullptr;
 		frame.depthW = frame.depthH = 0;
 		frame.depthFormat = 0;
+		frame.depthSamples = 1;
 		frame.colorTarget = CreateColorTarget(frame.dev, frame.targetW, frame.targetH,
 			frame.colorClearR, frame.colorClearG, frame.colorClearB, 1.0f);
 		if (!frame.colorTarget) return false;
+		frame.msaaColor = (want > 1) ? CreateColorTargetMS(frame.dev, frame.targetW, frame.targetH, want) : nullptr;
 		frame.colorW = frame.targetW;
 		frame.colorH = frame.targetH;
 		frame.colorFormat = colorFmt;
+		frame.colorSamples = frame.msaaColor ? want : 1;
 	}
-	int fmt = MeshDepthFormat(frame.dev);
+	frame.sampleCount = frame.colorSamples;
 	if (frame.externalDepth && frame.externalDepthW == frame.colorW && frame.externalDepthH == frame.colorH) {
 		frame.depthTarget = frame.externalDepth;
 	}
 	else {
-		if (!frame.ownedDepth || frame.depthW != frame.colorW || frame.depthH != frame.colorH || frame.depthFormat != fmt) {
+		if (!frame.ownedDepth || frame.depthW != frame.colorW || frame.depthH != frame.colorH || frame.depthFormat != fmt || frame.depthSamples != frame.colorSamples) {
 			if (frame.ownedDepth) { SDL_ReleaseGPUTexture(frame.dev, frame.ownedDepth); frame.ownedDepth = nullptr; }
-			frame.ownedDepth = CreateDepthTarget(frame.dev, frame.colorW, frame.colorH, fmt, 1.0f, 0);
-			if (!frame.ownedDepth) return false;
+			int ds = frame.colorSamples;
+			SDL_GPUTexture* depth = (ds > 1) ? CreateDepthTarget(frame.dev, frame.colorW, frame.colorH, fmt, 1.0f, 0, ds) : nullptr;
+			if (!depth) {
+				depth = CreateDepthTarget(frame.dev, frame.colorW, frame.colorH, fmt, 1.0f, 0, 1);
+				if (!depth) return false;
+				if (frame.msaaColor) { SDL_ReleaseGPUTexture(frame.dev, frame.msaaColor); frame.msaaColor = nullptr; }
+				frame.colorSamples = 1;
+				frame.sampleCount = 1;
+			}
+			frame.ownedDepth = depth;
 			frame.depthFormat = fmt;
+			frame.depthSamples = frame.colorSamples;
 		}
 		frame.depthTarget = frame.ownedDepth;
 	}
@@ -134,11 +159,19 @@ bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	if (!EnsureTargets(frame)) return false;
 
 	SDL_GPUColorTargetInfo colorInfo{};
-	colorInfo.texture = frame.colorTarget;
+	colorInfo.texture = frame.msaaColor ? frame.msaaColor : frame.colorTarget;
 	colorInfo.load_op = (clearColor || firstPass) ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
-	colorInfo.store_op = SDL_GPU_STOREOP_STORE;
 	colorInfo.clear_color = SDL_FColor{ clearR, clearG, clearB, 1.0f };
 	colorInfo.cycle = firstPass;
+	if (frame.msaaColor) {
+		colorInfo.store_op = SDL_GPU_STOREOP_RESOLVE_AND_STORE;
+		colorInfo.resolve_texture = frame.colorTarget;
+		colorInfo.resolve_mip_level = 0;
+		colorInfo.resolve_layer = 0;
+	}
+	else {
+		colorInfo.store_op = SDL_GPU_STOREOP_STORE;
+	}
 
 	SDL_GPUDepthStencilTargetInfo depthInfo{};
 	depthInfo.texture = frame.depthTarget;
@@ -165,7 +198,7 @@ void RenderSceneMesh(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& un
 
 	unsigned indexCount = (unsigned)tri_cnt * 3;
 	unsigned startIndex = (unsigned)first_tri * 3;
-	DrawMesh(frame.dev, nullptr, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), p);
+	DrawMesh(frame.dev, nullptr, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), p, frame.sampleCount);
 }
 
 void RenderSceneMeshExtra(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& uniforms, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const MeshDrawParams& base, const MeshExtraStage* extras, int extraCount) {
@@ -182,7 +215,7 @@ void RenderSceneMeshExtra(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniform
 	}
 	for (int k = 0; k < extraCount; ++k) {
 		if (!extras[k].tex) continue;
-		DrawMeshExtraStage(frame.dev, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), extras[k], base);
+		DrawMeshExtraStage(frame.dev, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), extras[k], base, frame.sampleCount);
 	}
 }
 
@@ -258,12 +291,19 @@ bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame
 		ClearPendingText();
 		return true;
 	}
-	{ int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, swap, sw, sh); }
+	SDL_GPUTextureFormat swapFmt = SDL_GetGPUSwapchainTextureFormat(dev, win);
+	bool gamma = GammaActive(dev);
+	SDL_GPUTexture* target = swap;
+	if (gamma) {
+		target = AcquireGammaComposite(dev, swapFmt, sw, sh);
+		if (!target) gamma = false;
+	}
+	{ int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh); }
 
 	bool textReady = HasPendingText() && PreparePendingText(dev, cmds);
 	if (textReady) {
 		SDL_GPUColorTargetInfo ci{};
-		ci.texture = swap;
+		ci.texture = target;
 		ci.load_op = SDL_GPU_LOADOP_LOAD;
 		ci.store_op = SDL_GPU_STOREOP_STORE;
 		ci.clear_color = SDL_FColor{ 0, 0, 0, 1 };
@@ -281,6 +321,19 @@ bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame
 		}
 	}
 	ClearPendingText();
+
+	if (gamma && !GammaBlit(dev, cmds, target, swap, sw, sh, swapFmt)) {
+		SDL_GPUBlitInfo info{};
+		info.source.texture = target;
+		info.source.w = sw; info.source.h = sh;
+		info.destination.texture = swap;
+		info.destination.w = sw; info.destination.h = sh;
+		info.load_op = SDL_GPU_LOADOP_DONT_CARE;
+		info.flip_mode = SDL_FLIP_NONE;
+		info.filter = SDL_GPU_FILTER_NEAREST;
+		info.cycle = false;
+		SDL_BlitGPUTexture(cmds, &info);
+	}
 
 	return SDL_SubmitGPUCommandBuffer(cmds);
 }
@@ -320,14 +373,22 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		return true;
 	}
 
-	if (has3D) { int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, swap, sw, sh); }
+	SDL_GPUTextureFormat swapFmt = SDL_GetGPUSwapchainTextureFormat(dev, win);
+	bool gamma = GammaActive(dev);
+	SDL_GPUTexture* target = swap;
+	if (gamma) {
+		target = AcquireGammaComposite(dev, swapFmt, sw, sh);
+		if (!target) gamma = false;
+	}
+
+	if (has3D) { int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh); }
 
 	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds) : nullptr;
 	bool haveText = HasPendingText();
 	bool textReady = haveText && PreparePendingText(dev, cmds);
 	if (canvasTex || textReady || !has3D) {
 		SDL_GPUColorTargetInfo ci{};
-		ci.texture = swap;
+		ci.texture = target;
 		ci.load_op = has3D ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
 		ci.store_op = SDL_GPU_STOREOP_STORE;
 		ci.clear_color = SDL_FColor{ 0, 0, 0, 0 };
@@ -347,6 +408,19 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		}
 	}
 	if (haveText) ClearPendingText();
+
+	if (gamma && !GammaBlit(dev, cmds, target, swap, sw, sh, swapFmt)) {
+		SDL_GPUBlitInfo info{};
+		info.source.texture = target;
+		info.source.w = sw; info.source.h = sh;
+		info.destination.texture = swap;
+		info.destination.w = sw; info.destination.h = sh;
+		info.load_op = SDL_GPU_LOADOP_DONT_CARE;
+		info.flip_mode = SDL_FLIP_NONE;
+		info.filter = SDL_GPU_FILTER_NEAREST;
+		info.cycle = false;
+		SDL_BlitGPUTexture(cmds, &info);
+	}
 
 	return SDL_SubmitGPUCommandBuffer(cmds);
 }

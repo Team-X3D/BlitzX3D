@@ -45,6 +45,7 @@ private:
 	gxCanvas* front_canvas, * back_canvas;
 	gxFont* def_font;
 	bool gfx_lost;
+	unsigned short gammaRamp[3][256];
 	gxMesh* dummy_mesh;
 	std::string lastEffectError;
 

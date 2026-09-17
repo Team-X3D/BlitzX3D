@@ -146,8 +146,13 @@ gxScene::gxScene(gxGraphics* g, gxCanvas* t) :
 	caps_level = 100;
 	max_lights = 8;
 
+	bool sdlBackend = graphics && graphics->runtime && graphics->runtime->sdlGpu;
 	D3DCAPS9 caps8;
-	if (dir3dDev && SUCCEEDED(dir3dDev->GetDeviceCaps(&caps8))) {
+	if (sdlBackend) {
+		hw_tex_stages = MAX_TEXTURES;
+		caps_level = 110;
+	}
+	else if (dir3dDev && SUCCEEDED(dir3dDev->GetDeviceCaps(&caps8))) {
 		DWORD rasterCaps = caps8.RasterCaps;
 
 		//texture stages
@@ -850,7 +855,7 @@ bool gxScene::begin(const std::vector<gxLight*>& lights) {
 			if ((unsigned)depthTarget->getWidth() > tw) tw = (unsigned)depthTarget->getWidth();
 			if ((unsigned)depthTarget->getHeight() > th) th = (unsigned)depthTarget->getHeight();
 		}
-		sdlgpu::BeginSceneFrame(gpuFrame, (SDL_GPUDevice*)graphics->runtime->sdlGpu, (SDL_Window*)graphics->runtime->sdlWindow, tw, th);
+		sdlgpu::BeginSceneFrame(gpuFrame, (SDL_GPUDevice*)graphics->runtime->sdlGpu, (SDL_Window*)graphics->runtime->sdlWindow, tw, th, antialias);
 		if (depthTarget) {
 			gpuFrame.externalDepth = sdlgpu::EnsureCanvasDepthTarget((SDL_GPUDevice*)graphics->runtime->sdlGpu, depthTarget, tw, th);
 			gpuFrame.externalDepthW = tw;
@@ -1173,6 +1178,9 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 	p.stage1[0] = p.stage1[1] = p.stage1[2] = p.stage1[3] = 0.0f;
 	p.boneBuf = nullptr;
 	p.blend = blend; p.zMode = zmode;
+	p.aniso = textureAnisotropic;
+	p.lodBias = *(const float*)&textureLodBias;
+	p.flat = (fx & FX_FLATSHADED) ? 1.0f : 0.0f;
 	p.cull = SDL_GPU_CULLMODE_BACK;
 	if (fx & FX_DOUBLESIDED) p.cull = SDL_GPU_CULLMODE_NONE;
 	else if (flipped) p.cull = SDL_GPU_CULLMODE_FRONT;
