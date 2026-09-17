@@ -236,7 +236,17 @@ static void SceneSourceRect(const GpuSceneFrame& frame, int& x, int& y, unsigned
 	if ((unsigned)y + h > frame.colorH) h = frame.colorH - y;
 }
 
-static void BlitSceneToSwap(SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* scene, int sceneX, int sceneY, unsigned sceneW, unsigned sceneH, SDL_GPUTexture* swap, Uint32 swapW, Uint32 swapH) {
+static SDL_FColor ArgbToClearColor(unsigned argb, bool present) {
+	if (!present) return SDL_FColor{ 0, 0, 0, 0 };
+	return SDL_FColor{
+		((argb >> 16) & 0xff) / 255.0f,
+		((argb >> 8) & 0xff) / 255.0f,
+		(argb & 0xff) / 255.0f,
+		1.0f
+	};
+}
+
+static void BlitSceneToSwap(SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* scene, int sceneX, int sceneY, unsigned sceneW, unsigned sceneH, SDL_GPUTexture* swap, Uint32 swapW, Uint32 swapH, const SDL_FColor& clearColor) {
 	SDL_GPUBlitInfo blit{};
 	blit.source.texture = scene;
 	blit.source.x = (Uint32)sceneX;
@@ -247,7 +257,7 @@ static void BlitSceneToSwap(SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* scene, i
 	blit.destination.w = swapW;
 	blit.destination.h = swapH;
 	blit.load_op = SDL_GPU_LOADOP_CLEAR;
-	blit.clear_color = SDL_FColor{ 0, 0, 0, 0 };
+	blit.clear_color = clearColor;
 	blit.flip_mode = SDL_FLIP_NONE;
 	blit.filter = SDL_GPU_FILTER_LINEAR;
 	blit.cycle = false;
@@ -298,7 +308,10 @@ bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame
 		target = AcquireGammaComposite(dev, swapFmt, sw, sh);
 		if (!target) gamma = false;
 	}
-	{ int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh); }
+	unsigned backClear = 0;
+	bool hasBackClear = TakeBackbufferClear(&backClear);
+	SDL_FColor clearColor = ArgbToClearColor(backClear, hasBackClear);
+	{ int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh, clearColor); }
 
 	bool textReady = HasPendingText() && PreparePendingText(dev, cmds);
 	if (textReady) {
@@ -381,7 +394,11 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		if (!target) gamma = false;
 	}
 
-	if (has3D) { int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh); }
+	unsigned backClear = 0;
+	bool hasBackClear = TakeBackbufferClear(&backClear);
+	SDL_FColor clearColor = ArgbToClearColor(backClear, hasBackClear);
+
+	if (has3D) { int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh, clearColor); }
 
 	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds) : nullptr;
 	bool haveText = HasPendingText();
@@ -391,7 +408,7 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 		ci.texture = target;
 		ci.load_op = has3D ? SDL_GPU_LOADOP_LOAD : SDL_GPU_LOADOP_CLEAR;
 		ci.store_op = SDL_GPU_STOREOP_STORE;
-		ci.clear_color = SDL_FColor{ 0, 0, 0, 0 };
+		ci.clear_color = clearColor;
 		ci.cycle = false;
 		SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmds, &ci, 1, nullptr);
 		if (pass) {

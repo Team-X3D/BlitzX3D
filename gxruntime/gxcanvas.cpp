@@ -683,7 +683,8 @@ void gxCanvas::cls() {
     if (((argb >> 24) & 0xff) == 255) {
         GpuBack b;
         if (gpuBackbuffer(this, b)) {
-            if (queueAbsRun(b, viewport.left, viewport.top, viewport.right, viewport.bottom, argb)) return;
+            sdlgpu::QueueBackbufferClear(b.dev, argb);
+            return;
         }
     }
     fillRect(viewport, argb);

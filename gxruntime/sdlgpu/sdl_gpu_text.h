@@ -28,6 +28,8 @@ bool QueueTextSolid(SDL_GPUDevice* dev, ::gxCanvas* target, unsigned canvasW, un
 bool QueueRectFilled(SDL_GPUDevice* dev, ::gxCanvas* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color);
 bool QueueRectOutline(SDL_GPUDevice* dev, ::gxCanvas* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color);
 bool QueueSpriteQuad(SDL_GPUDevice* dev, ::gxCanvas* target, SDL_GPUTexture* tex, bool smooth, unsigned canvasW, unsigned canvasH, unsigned texW, unsigned texH, const TextQuad* quad);
+void QueueBackbufferClear(SDL_GPUDevice* dev, unsigned argb);
+bool TakeBackbufferClear(unsigned* argb);
 bool HasPendingText();
 bool PreparePendingText(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds);
 void DrawPendingText(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass);

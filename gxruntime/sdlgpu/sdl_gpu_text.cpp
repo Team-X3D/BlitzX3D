@@ -73,6 +73,9 @@ std::vector<DrawRange> g_ranges;
 
 ::gxCanvas* g_activeTarget = nullptr;
 
+bool g_backClearSet = false;
+unsigned g_backClearColor = 0;
+
 unsigned PackTextColor(unsigned argb) {
 	unsigned a = (argb >> 24) & 0xff;
 	unsigned r = (argb >> 16) & 0xff;
@@ -623,11 +626,34 @@ bool IsActiveCanvasTarget(::gxCanvas* canvas) {
 	return canvas && g_activeTarget == canvas;
 }
 
+void QueueBackbufferClear(SDL_GPUDevice* dev, unsigned argb) {
+	GpuLock lock;
+	if (!dev) return;
+	g_backClearSet = true;
+	g_backClearColor = argb;
+	std::vector<PendingItem> keep;
+	keep.reserve(g_pending.size());
+	for (auto& item : g_pending) {
+		if (!item.target) continue;
+		keep.push_back(item);
+	}
+	g_pending.swap(keep);
+}
+
+bool TakeBackbufferClear(unsigned* argb) {
+	GpuLock lock;
+	bool set = g_backClearSet;
+	if (argb) *argb = g_backClearColor;
+	g_backClearSet = false;
+	return set;
+}
+
 void ClearPendingText() {
 	GpuLock lock;
 	g_pending.clear();
 	g_staged.clear();
 	g_ranges.clear();
+	g_backClearSet = false;
 }
 
 void InvalidateTextAtlas(::gxCanvas* atlas) {
