@@ -2,13 +2,14 @@ name: Build
 
 on:
   push:
+    branches: ["SDL-GPU"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  RELEASE_VERSION: "2.0.0"
+  RELEASE_TAG: SDLTEST${{ github.run_number }}_UNSTABLE
 
 jobs:
   build:
@@ -51,21 +52,29 @@ jobs:
 
       - name: Package build
         shell: pwsh
-        run: Compress-Archive -Path "_release\*" -DestinationPath "BlitzX3D-${{ env.RELEASE_VERSION }}-Test${{ github.run_number }}.zip" -Force
+        run: |
+          Get-ChildItem "_release" -Recurse -Include *.pdb,*.ilk | Remove-Item -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path "_release\*" -DestinationPath "BlitzX3D-${{ env.RELEASE_TAG }}.zip" -Force
 
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
-          name: BlitzX3D-${{ env.RELEASE_VERSION }}-Test${{ github.run_number }}
+          name: ${{ env.RELEASE_TAG }}
           path: BlitzX3D-*.zip
           if-no-files-found: warn
 
       - name: Publish pre-release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: test${{ github.run_number }}
-          name: Test${{ github.run_number }} ${{ env.RELEASE_VERSION }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          body: |
+            Automated **unstable** SDL-GPU test build.
+            Branch: `${{ github.ref_name }}`
+            Commit: `${{ github.sha }}`
+            This is not a stable release.
+            If you complain that Containment Breach doesn't work yet, I will kill you.
           prerelease: true
-          generate_release_notes: true
+          generate_release_notes: false
           fail_on_unmatched_files: true
           files: BlitzX3D-*.zip
