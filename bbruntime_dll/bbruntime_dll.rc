@@ -105,8 +105,8 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "FileDescription", "Made with BlitzX3D V1.5.2"
-            VALUE "LegalCopyright", "Made with BlitzX3D V1.5.2\nCopyright (c) 2026 Chris A. (krimbopple)"
+            VALUE "FileDescription", "Made with BlitzX3D V2.0.0"
+            VALUE "LegalCopyright", "Made with BlitzX3D V2.0.0\nCopyright (c) 2026 Chris A. (krimbopple)"
         END
     END
     BLOCK "VarFileInfo"
