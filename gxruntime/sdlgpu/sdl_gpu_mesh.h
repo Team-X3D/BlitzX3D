@@ -16,8 +16,8 @@ struct GpuMesh {
 };
 
 GpuMesh* CreateMesh(SDL_GPUDevice* dev, unsigned vertStride, unsigned maxVerts, unsigned maxTris);
-bool UploadMesh(SDL_GPUDevice* dev, GpuMesh* mesh, const void* vertData, unsigned vertBytes, const void* idxData, unsigned idxBytes);
-bool UploadMeshRange(SDL_GPUDevice* dev, GpuMesh* mesh, const void* vertBase, unsigned vertDstOff, unsigned vertBytes, const void* idxBase, unsigned idxDstOff, unsigned idxBytes);
+bool UploadMesh(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, GpuMesh* mesh, const void* vertData, unsigned vertBytes, const void* idxData, unsigned idxBytes);
+bool UploadMeshRange(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, GpuMesh* mesh, const void* vertBase, unsigned vertDstOff, unsigned vertBytes, const void* idxBase, unsigned idxDstOff, unsigned idxBytes);
 void ReleaseMesh(SDL_GPUDevice* dev, GpuMesh* mesh);
 
 static constexpr unsigned kMaxBones = 64; // don't really think we need these anymore...

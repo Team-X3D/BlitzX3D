@@ -24,12 +24,7 @@ static HMODULE linkerHMOD, runtimeHMOD;
 static const char* DX9_DOWNLOAD_URL = "https://www.microsoft.com/en-us/download/details.aspx?id=35";
 
 static bool isD3DX943Missing() {
-	HMODULE h = LoadLibraryExA("d3dx9_43.dll", NULL, 0);
-	if (h) {
-		FreeLibrary(h);
-		return false;
-	}
-	return GetLastError() == ERROR_MOD_NOT_FOUND;
+	return false;
 }
 
 static HRESULT CALLBACK DX9TaskDialogCallback(HWND, UINT msg, WPARAM wParam, LPARAM, LONG_PTR) {

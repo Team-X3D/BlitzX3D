@@ -3,7 +3,7 @@
 
 #include <map>
 #include <d3d9.h>
-#include <d3dx9.h>
+#include "d3dxmath.h"
 
 #include "gxlight.h"
 #include "gxeffect.h"

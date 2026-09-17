@@ -55,7 +55,6 @@ bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, 
 
 	frame.dev = dev;
 	frame.skipped = false;
-	frame.drew3D = false;
 	if (frame.cmds) {
 		EndSceneFrame(frame);
 		if (targetW > frame.targetW) frame.targetW = targetW;
@@ -63,6 +62,7 @@ bool BeginSceneFrame(GpuSceneFrame& frame, SDL_GPUDevice* dev, SDL_Window* win, 
 		return true;
 	}
 
+	frame.drew3D = false;
 	frame.targetW = targetW ? targetW : 1;
 	frame.targetH = targetH ? targetH : 1;
 	frame.cmds = SDL_AcquireGPUCommandBuffer(dev);
@@ -138,7 +138,7 @@ bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	colorInfo.load_op = (clearColor || firstPass) ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
 	colorInfo.store_op = SDL_GPU_STOREOP_STORE;
 	colorInfo.clear_color = SDL_FColor{ clearR, clearG, clearB, 1.0f };
-	colorInfo.cycle = false;
+	colorInfo.cycle = firstPass;
 
 	SDL_GPUDepthStencilTargetInfo depthInfo{};
 	depthInfo.texture = frame.depthTarget;
@@ -148,7 +148,7 @@ bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 	depthInfo.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
 	depthInfo.clear_depth = 1.0f;
 	depthInfo.clear_stencil = 0;
-	depthInfo.cycle = false;
+	depthInfo.cycle = firstPass;
 
 	frame.pass = SDL_BeginGPURenderPass(frame.cmds, &colorInfo, 1, &depthInfo);
 	if (!frame.pass) return false;
@@ -177,10 +177,11 @@ void RenderSceneMeshExtra(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniform
 
 	unsigned indexCount = (unsigned)tri_cnt * 3;
 	unsigned startIndex = (unsigned)first_tri * 3;
+	if (!frame.active()) {
+		if (!BeginScenePass(frame, frame.vpX, frame.vpY, frame.vpW, frame.vpH, 0, 0, 0, false, false)) return;
+	}
 	for (int k = 0; k < extraCount; ++k) {
 		if (!extras[k].tex) continue;
-		EndSceneFrame(frame);
-		if (!BeginScenePass(frame, frame.vpX, frame.vpY, frame.vpW, frame.vpH, 0, 0, 0, false, false)) return;
 		DrawMeshExtraStage(frame.dev, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), extras[k], base);
 	}
 }
@@ -396,6 +397,7 @@ bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, ::gxCanvas* des
 	info.filter = SDL_GPU_FILTER_LINEAR;
 	info.cycle = false;
 	SDL_BlitGPUTexture(frame.cmds, &info);
+	if (cube && (dest->getFlags() & ::gxCanvas::CANVAS_TEX_MIPMAP) && dest->getWidth() > 1) SDL_GenerateMipmapsForGPUTexture(frame.cmds, destTex);
 	dest->releaseCPUBitsIfUnused();
 	return true;
 }

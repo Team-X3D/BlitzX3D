@@ -22,6 +22,7 @@ static struct CanvasTexEntry {
 	int modCnt = -1;
 	unsigned w = 0, h = 0;
 	bool rt = false;
+	bool mips = false;
 } ;
 
 static std::unordered_map< ::gxCanvas*, CanvasTexEntry> g_canvasTexMap;
@@ -40,6 +41,39 @@ static void RetireTexture(SDL_GPUDevice* dev, SDL_GPUTexture* tex) {
 	if (!dev || !tex) return;
 	InvalidatePendingTexture(tex);
 	SDL_ReleaseGPUTexture(dev, tex);
+}
+
+static unsigned MipLevels(unsigned w, unsigned h) {
+	unsigned size = w > h ? w : h;
+	unsigned levels = 1;
+	for (unsigned s = size; s > 1; s >>= 1) ++levels;
+	return levels;
+}
+
+static bool UploadTextureRGBAOn(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* tex, unsigned w, unsigned h, const void* px, bool cycle) {
+	if (!dev || !cmds || !tex || !w || !h || !px) return false;
+	Uint32 size = w * h * 4;
+	SDL_GPUTransferBuffer* buf = AcquireUploadTransferBuffer(dev, size);
+	if (!buf) return false;
+	void* dst = SDL_MapGPUTransferBuffer(dev, buf, true);
+	if (!dst) { ReleaseUploadTransferBuffer(dev, buf); return false; }
+	memcpy(dst, px, size);
+	SDL_UnmapGPUTransferBuffer(dev, buf);
+	SDL_GPUCopyPass* pass = SDL_BeginGPUCopyPass(cmds);
+	if (!pass) { ReleaseUploadTransferBuffer(dev, buf); return false; }
+	SDL_GPUTextureTransferInfo src{};
+	src.transfer_buffer = buf;
+	src.pixels_per_row = w;
+	src.rows_per_layer = h;
+	SDL_GPUTextureRegion dstReg{};
+	dstReg.texture = tex;
+	dstReg.w = w;
+	dstReg.h = h;
+	dstReg.d = 1;
+	SDL_UploadToGPUTexture(pass, &src, &dstReg, cycle);
+	SDL_EndGPUCopyPass(pass);
+	ReleaseUploadTransferBuffer(dev, buf);
+	return true;
 }
 
 void TeardownTexturePools(SDL_GPUDevice* dev) {
@@ -100,14 +134,23 @@ bool SeedCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas, unsigned w, unsig
 	SDL_GPUDevice* oldDev = dev;
 	if (it != g_canvasTexMap.end()) { old = it->second.tex; oldDev = it->second.dev; g_canvasTexMap.erase(it); }
 	if (old) RetireTexture(oldDev, old);
-	SDL_GPUTexture* tex = CreateTexture2D(dev, w, h);
+	bool mips = (canvas->getFlags() & ::gxCanvas::CANVAS_TEX_MIPMAP) != 0;
+	SDL_GPUTexture* tex = CreateTexture2D(dev, w, h, mips);
 	if (!tex) return false;
-	if (!UploadTextureRGBA(dev, tex, w, h, rgba, false)) {
+	SDL_GPUCommandBuffer* cmds = SDL_AcquireGPUCommandBuffer(dev);
+	if (!cmds) { SDL_ReleaseGPUTexture(dev, tex); return false; }
+	if (!UploadTextureRGBAOn(dev, cmds, tex, w, h, rgba, false)) {
+		SDL_CancelGPUCommandBuffer(cmds);
+		SDL_ReleaseGPUTexture(dev, tex);
+		return false;
+	}
+	if (mips && MipLevels(w, h) > 1) SDL_GenerateMipmapsForGPUTexture(cmds, tex);
+	if (!SDL_SubmitGPUCommandBuffer(cmds)) {
 		SDL_ReleaseGPUTexture(dev, tex);
 		return false;
 	}
 	CanvasTexEntry e;
-	e.tex = tex; e.dev = dev; e.modCnt = canvas->getModify(); e.w = w; e.h = h;
+	e.tex = tex; e.dev = dev; e.modCnt = canvas->getModify(); e.w = w; e.h = h; e.mips = mips;
 	g_canvasTexMap[canvas] = e;
 	canvas->releaseCPUBitsIfUnused();
 	return true;
@@ -132,13 +175,10 @@ bool DownloadCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 	size_t faceBytes = (size_t)w * (size_t)h * 4;
 	SDL_GPUCommandBuffer* cmds = SDL_AcquireGPUCommandBuffer(dev);
 	if (!cmds) return false;
-	SDL_GPUTransferBufferCreateInfo tbi{};
-	tbi.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-	tbi.size = (Uint32)(faceBytes * faces);
-	SDL_GPUTransferBuffer* tb = SDL_CreateGPUTransferBuffer(dev, &tbi);
+	SDL_GPUTransferBuffer* tb = AcquireDownloadTransferBuffer(dev, (Uint32)(faceBytes * faces));
 	if (!tb) { SDL_CancelGPUCommandBuffer(cmds); return false; }
 	SDL_GPUCopyPass* cp = SDL_BeginGPUCopyPass(cmds);
-	if (!cp) { SDL_ReleaseGPUTransferBuffer(dev, tb); SDL_CancelGPUCommandBuffer(cmds); return false; }
+	if (!cp) { ReleaseDownloadTransferBuffer(dev, tb); SDL_CancelGPUCommandBuffer(cmds); return false; }
 	for (unsigned f = 0; f < faces; ++f) {
 		SDL_GPUTextureRegion src{};
 		src.texture = tex;
@@ -155,11 +195,11 @@ bool DownloadCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 	}
 	SDL_EndGPUCopyPass(cp);
 	SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmds);
-	if (!fence) { SDL_ReleaseGPUTransferBuffer(dev, tb); return false; }
+	if (!fence) { ReleaseDownloadTransferBuffer(dev, tb); return false; }
 	SDL_WaitForGPUFences(dev, true, &fence, 1);
 	SDL_ReleaseGPUFence(dev, fence);
 	void* mapped = SDL_MapGPUTransferBuffer(dev, tb, false);
-	if (!mapped) { SDL_ReleaseGPUTransferBuffer(dev, tb); return false; }
+	if (!mapped) { ReleaseDownloadTransferBuffer(dev, tb); return false; }
 	int pitch = canvas->cpu_pitch;
 	int bpp = canvas->format.getPitch();
 	for (unsigned f = 0; f < faces; ++f) {
@@ -175,14 +215,18 @@ bool DownloadCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 		}
 	}
 	SDL_UnmapGPUTransferBuffer(dev, tb);
-	SDL_ReleaseGPUTransferBuffer(dev, tb);
+	ReleaseDownloadTransferBuffer(dev, tb);
 	return true;
 }
 
-static SDL_GPUTexture* CreateCubeTexture(SDL_GPUDevice* dev, unsigned size) {
+static SDL_GPUTexture* CreateCubeTexture(SDL_GPUDevice* dev, unsigned size, bool mipmaps) {
 	if (!dev || !size) return nullptr;
 	if (!SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, SDL_GPU_TEXTURETYPE_CUBE,
 		(SDL_GPUTextureUsageFlags)(SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER))) return nullptr;
+	unsigned levels = 1;
+	if (mipmaps) {
+		for (unsigned s = size; s > 1; s >>= 1) ++levels;
+	}
 	SDL_GPUTextureCreateInfo info{};
 	info.type = SDL_GPU_TEXTURETYPE_CUBE;
 	info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
@@ -190,12 +234,12 @@ static SDL_GPUTexture* CreateCubeTexture(SDL_GPUDevice* dev, unsigned size) {
 	info.width = size;
 	info.height = size;
 	info.layer_count_or_depth = 6;
-	info.num_levels = 1;
+	info.num_levels = levels;
 	info.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	return SDL_CreateGPUTexture(dev, &info);
 }
 
-static bool UploadCubePixels(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUTexture* tex, unsigned w, unsigned h) {
+static bool UploadCubePixels(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUTexture* tex, unsigned w, unsigned h, bool mipmaps) {
 	if (!dev || !canvas || !tex) return false;
 	const unsigned char* bits = canvas->cpu_bits;
 	int pitch = canvas->cpu_pitch;
@@ -211,14 +255,7 @@ static bool UploadCubePixels(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUText
 	for (unsigned face = 0; face < 6; ++face) {
 		const unsigned char* plane = bits + faceBytes * face;
 		for (unsigned y = 0; y < h; ++y) {
-			for (unsigned x = 0; x < w; ++x) {
-				unsigned argb = canvas->format.getPixel(const_cast<unsigned char*>(plane) + (size_t)y * pitch + (size_t)x * canvas->format.getPitch());
-				unsigned char* dst = &rgba[((size_t)y * w + x) * 4];
-				dst[0] = (argb >> 16) & 0xff;
-				dst[1] = (argb >> 8) & 0xff;
-				dst[2] = argb & 0xff;
-				dst[3] = (argb >> 24) & 0xff;
-			}
+			ConvertPixelsToRGBA(canvas->format, plane + (size_t)y * pitch, &rgba[(size_t)y * w * 4], w);
 		}
 		SDL_GPUTransferBuffer* tb = AcquireUploadTransferBuffer(dev, (Uint32)rgba.size());
 		if (!tb) { SDL_EndGPUCopyPass(cp); SDL_CancelGPUCommandBuffer(cmds); return false; }
@@ -240,6 +277,7 @@ static bool UploadCubePixels(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUText
 		ReleaseUploadTransferBuffer(dev, tb);
 	}
 	SDL_EndGPUCopyPass(cp);
+	if (mipmaps && MipLevels(w, h) > 1) SDL_GenerateMipmapsForGPUTexture(cmds, tex);
 	return SDL_SubmitGPUCommandBuffer(cmds);
 }
 
@@ -249,18 +287,19 @@ SDL_GPUTexture* EnsureCanvasCubeTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) 
 	unsigned w = (unsigned)canvas->getWidth();
 	unsigned h = (unsigned)canvas->getHeight();
 	if (!w || !h) return nullptr;
+	bool mips = (canvas->getFlags() & ::gxCanvas::CANVAS_TEX_MIPMAP) != 0;
 	auto it = g_canvasTexMap.find(canvas);
-	if (it != g_canvasTexMap.end() && it->second.tex && it->second.rt && it->second.dev == dev && it->second.w == w && it->second.h == h)
+	if (it != g_canvasTexMap.end() && it->second.tex && it->second.rt && it->second.dev == dev && it->second.w == w && it->second.h == h && it->second.mips == mips)
 		return it->second.tex;
 	SDL_GPUTexture* old = nullptr;
 	SDL_GPUDevice* oldDev = dev;
 	if (it != g_canvasTexMap.end()) { old = it->second.tex; oldDev = it->second.dev; g_canvasTexMap.erase(it); }
 	if (old) RetireTexture(oldDev, old);
-	SDL_GPUTexture* tex = CreateCubeTexture(dev, w);
+	SDL_GPUTexture* tex = CreateCubeTexture(dev, w, mips);
 	if (!tex) return nullptr;
-	UploadCubePixels(dev, canvas, tex, w, h);
+	UploadCubePixels(dev, canvas, tex, w, h, mips);
 	CanvasTexEntry e;
-	e.tex = tex; e.dev = dev; e.modCnt = canvas->getModify(); e.w = w; e.h = h; e.rt = true;
+	e.tex = tex; e.dev = dev; e.modCnt = canvas->getModify(); e.w = w; e.h = h; e.rt = true; e.mips = mips;
 	g_canvasTexMap[canvas] = e;
 	canvas->releaseCPUBitsIfUnused();
 	return tex;
@@ -274,16 +313,17 @@ SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 	unsigned h = (unsigned)canvas->getHeight();
 	if (!w || !h) return nullptr;
 	int mod = canvas->getModify();
+	bool mips = (canvas->getFlags() & ::gxCanvas::CANVAS_TEX_MIPMAP) != 0;
 	auto it = g_canvasTexMap.find(canvas);
-	if (it != g_canvasTexMap.end() && it->second.tex && it->second.rt && it->second.dev == dev && it->second.w == w && it->second.h == h) {
+	if (it != g_canvasTexMap.end() && it->second.tex && it->second.rt && it->second.dev == dev && it->second.w == w && it->second.h == h && it->second.mips == mips) {
 		return it->second.tex;
 	}
-	if (it != g_canvasTexMap.end() && it->second.tex && it->second.dev == dev && it->second.modCnt == mod && it->second.w == w && it->second.h == h) {
+	if (it != g_canvasTexMap.end() && it->second.tex && it->second.dev == dev && it->second.modCnt == mod && it->second.w == w && it->second.h == h && it->second.mips == mips) {
 		return it->second.tex;
 	}
 	SDL_GPUTexture* tex = nullptr;
 	bool isNew = false;
-	if (it != g_canvasTexMap.end() && it->second.tex && it->second.dev == dev && it->second.w == w && it->second.h == h) {
+	if (it != g_canvasTexMap.end() && it->second.tex && it->second.dev == dev && it->second.w == w && it->second.h == h && it->second.mips == mips) {
 		tex = it->second.tex;
 	}
 	else {
@@ -291,7 +331,7 @@ SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 		SDL_GPUDevice* oldDev = dev;
 		if (it != g_canvasTexMap.end()) { old = it->second.tex; oldDev = it->second.dev; g_canvasTexMap.erase(it); }
 		if (old) RetireTexture(oldDev, old);
-		tex = CreateTexture2D(dev, w, h);
+		tex = CreateTexture2D(dev, w, h, mips);
 		if (!tex) return nullptr;
 		isNew = true;
 	}
@@ -305,24 +345,24 @@ SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 	unsigned char* bits = canvas->cpu_bits;
 	int pitch = canvas->cpu_pitch;
 	if (!bits || pitch <= 0 || (unsigned)canvas->cpu_h != h) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
-	int bpp = canvas->format.getPitch();
 	for (unsigned y = 0; y < h; ++y) {
-		for (unsigned x = 0; x < w; ++x) {
-			unsigned argb = canvas->format.getPixel(bits + (size_t)y * pitch + (size_t)x * bpp);
-			unsigned char* dst = &rgba[(size_t)(y * w + x) * 4];
-			dst[0] = (argb >> 16) & 0xff;
-			dst[1] = (argb >> 8) & 0xff;
-			dst[2] = argb & 0xff;
-			dst[3] = (argb >> 24) & 0xff;
-		}
+		ConvertPixelsToRGBA(canvas->format, bits + (size_t)y * pitch, &rgba[(size_t)y * w * 4], w);
 	}
 
-	if (!UploadTextureRGBA(dev, tex, w, h, rgba.data(), !isNew)) {
+	SDL_GPUCommandBuffer* cmds = SDL_AcquireGPUCommandBuffer(dev);
+	if (!cmds) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
+	if (!UploadTextureRGBAOn(dev, cmds, tex, w, h, rgba.data(), !isNew)) {
+		SDL_CancelGPUCommandBuffer(cmds);
+		if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex);
+		return nullptr;
+	}
+	if (mips && MipLevels(w, h) > 1) SDL_GenerateMipmapsForGPUTexture(cmds, tex);
+	if (!SDL_SubmitGPUCommandBuffer(cmds)) {
 		if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex);
 		return nullptr;
 	}
 	CanvasTexEntry e;
-	e.tex = tex; e.dev = dev; e.modCnt = mod; e.w = w; e.h = h;
+	e.tex = tex; e.dev = dev; e.modCnt = mod; e.w = w; e.h = h; e.mips = mips;
 	g_canvasTexMap[canvas] = e;
 	canvas->releaseCPUBitsIfUnused();
 	return tex;
@@ -349,19 +389,11 @@ static bool UploadCanvasPixels(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUTe
 	unsigned char* bits = canvas->cpu_bits;
 	int pitch = canvas->cpu_pitch;
 	if (!bits || pitch <= 0 || (unsigned)canvas->cpu_h != h) return false;
-	int bpp = canvas->format.getPitch();
 	static thread_local std::vector<unsigned char> rgba;
 	try { rgba.resize((size_t)w * h * 4); }
 	catch (...) { return false; }
 	for (unsigned y = 0; y < h; ++y) {
-		for (unsigned x = 0; x < w; ++x) {
-			unsigned argb = canvas->format.getPixel(bits + (size_t)y * pitch + (size_t)x * bpp);
-			unsigned char* dst = &rgba[(size_t)(y * w + x) * 4];
-			dst[0] = (argb >> 16) & 0xff;
-			dst[1] = (argb >> 8) & 0xff;
-			dst[2] = argb & 0xff;
-			dst[3] = (argb >> 24) & 0xff;
-		}
+		ConvertPixelsToRGBA(canvas->format, bits + (size_t)y * pitch, &rgba[(size_t)y * w * 4], w);
 	}
 	return UploadTextureRGBA(dev, tex, w, h, rgba.data(), false);
 }
@@ -429,7 +461,7 @@ SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) 
 		SDL_GPUDevice* oldDev = dev;
 		if (it != g_canvasOverlayMap.end()) { old = it->second.tex; oldDev = it->second.dev; g_canvasOverlayMap.erase(it); }
 		if (old) RetireTexture(oldDev, old);
-		tex = CreateTexture2D(dev, w, h);
+		tex = CreateTexture2D(dev, w, h, false);
 		if (!tex) return nullptr;
 		isNew = true;
 	}
@@ -440,15 +472,11 @@ SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) 
 	if (!canvas->lockRO()) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	unsigned clsRgb = canvas->getClsColor() & 0x00ffffff;
 	for (unsigned y = 0; y < h; ++y) {
+		unsigned char* row = &rgba[(size_t)y * w * 4];
+		ConvertPixelsToRGBA(canvas->format, canvas->getLockedSurf() + (size_t)y * canvas->getLockedPitch(), row, w);
 		for (unsigned x = 0; x < w; ++x) {
-			unsigned argb = canvas->getPixelFast((int)x, (int)y);
-			unsigned rgb = argb & 0x00ffffff;
-			unsigned a = (rgb == clsRgb) ? 0 : 255;
-			unsigned char* dst = &rgba[(size_t)(y * w + x) * 4];
-			dst[0] = (argb >> 16) & 0xff;
-			dst[1] = (argb >> 8) & 0xff;
-			dst[2] = argb & 0xff;
-			dst[3] = (unsigned char)a;
+			unsigned rgb = ((unsigned)row[x * 4] << 16) | ((unsigned)row[x * 4 + 1] << 8) | row[x * 4 + 2];
+			row[x * 4 + 3] = (rgb == clsRgb) ? 0 : 255;
 		}
 	}
 	canvas->unlock();
@@ -480,7 +508,7 @@ SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* c
 		SDL_GPUDevice* oldDev = dev;
 		if (it != g_canvasOverlayMap.end()) { old = it->second.tex; oldDev = it->second.dev; g_canvasOverlayMap.erase(it); }
 		if (old) RetireTexture(oldDev, old);
-		tex = CreateTexture2D(dev, w, h);
+		tex = CreateTexture2D(dev, w, h, false);
 		if (!tex) return nullptr;
 		isNew = true;
 	}
@@ -491,14 +519,14 @@ SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* c
 	} catch (...) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	if (!canvas->lockRO()) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
 	unsigned clsRgb = canvas->getClsColor() & 0x00ffffff;
+	int srcBpp = canvas->format.getPitch();
 	for (unsigned y = 0; y < uh; ++y) {
+		unsigned char* row = &rgba[(size_t)y * uw * 4];
+		ConvertPixelsToRGBA(canvas->format,
+			canvas->getLockedSurf() + (size_t)(uy + y) * canvas->getLockedPitch() + (size_t)ux * srcBpp, row, uw);
 		for (unsigned x = 0; x < uw; ++x) {
-			unsigned argb = canvas->getPixelFast((int)(ux + x), (int)(uy + y));
-			unsigned char* dst = &rgba[(size_t)(y * uw + x) * 4];
-			dst[0] = (argb >> 16) & 0xff;
-			dst[1] = (argb >> 8) & 0xff;
-			dst[2] = argb & 0xff;
-			dst[3] = ((argb & 0x00ffffff) == clsRgb) ? 0 : 255;
+			unsigned rgb = ((unsigned)row[x * 4] << 16) | ((unsigned)row[x * 4 + 1] << 8) | row[x * 4 + 2];
+			row[x * 4 + 3] = (rgb == clsRgb) ? 0 : 255;
 		}
 	}
 	canvas->unlock();
@@ -532,17 +560,19 @@ SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* c
 	return tex;
 }
 
-SDL_GPUTexture* CreateTexture2D(SDL_GPUDevice* dev, unsigned w, unsigned h) {
+SDL_GPUTexture* CreateTexture2D(SDL_GPUDevice* dev, unsigned w, unsigned h, bool mipmaps) {
 	if (!dev || !w || !h) return nullptr;
-	if (!SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_SAMPLER)) return nullptr;
+	SDL_GPUTextureUsageFlags usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	if (mipmaps) usage |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
+	if (!SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, SDL_GPU_TEXTURETYPE_2D, usage)) return nullptr;
 	SDL_GPUTextureCreateInfo info{};
 	info.type = SDL_GPU_TEXTURETYPE_2D;
 	info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-	info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	info.usage = usage;
 	info.width = w;
 	info.height = h;
 	info.layer_count_or_depth = 1;
-	info.num_levels = 1;
+	info.num_levels = mipmaps ? MipLevels(w, h) : 1;
 	info.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	return SDL_CreateGPUTexture(dev, &info);
 }
@@ -553,36 +583,13 @@ bool UploadTextureRGBA(SDL_GPUDevice* dev, SDL_GPUTexture* tex, unsigned w, unsi
 
 bool UploadTextureRGBA(SDL_GPUDevice* dev, SDL_GPUTexture* tex, unsigned w, unsigned h, const void* px, bool cycle) {
 	if (!dev || !tex || !w || !h || !px) return false;
-	Uint32 size = w * h * 4;
-
-	SDL_GPUTransferBuffer* buf = AcquireUploadTransferBuffer(dev, size);
-	if (!buf) return false;
-
-	void* dst = SDL_MapGPUTransferBuffer(dev, buf, true);
-	if (!dst) { ReleaseUploadTransferBuffer(dev, buf); return false; }
-	memcpy(dst, px, size);
-	SDL_UnmapGPUTransferBuffer(dev, buf);
-
 	SDL_GPUCommandBuffer* cmds = SDL_AcquireGPUCommandBuffer(dev);
-	if (!cmds) { ReleaseUploadTransferBuffer(dev, buf); return false; }
-	SDL_GPUCopyPass* pass = SDL_BeginGPUCopyPass(cmds);
-
-	SDL_GPUTextureTransferInfo src{};
-	src.transfer_buffer = buf;
-	src.pixels_per_row = w;
-	src.rows_per_layer = h;
-
-	SDL_GPUTextureRegion dstReg{};
-	dstReg.texture = tex;
-	dstReg.w = w;
-	dstReg.h = h;
-	dstReg.d = 1;
-
-	SDL_UploadToGPUTexture(pass, &src, &dstReg, cycle);
-	SDL_EndGPUCopyPass(pass);
-	bool ok = SDL_SubmitGPUCommandBuffer(cmds);
-	ReleaseUploadTransferBuffer(dev, buf);
-	return ok;
+	if (!cmds) return false;
+	if (!UploadTextureRGBAOn(dev, cmds, tex, w, h, px, cycle)) {
+		SDL_CancelGPUCommandBuffer(cmds);
+		return false;
+	}
+	return SDL_SubmitGPUCommandBuffer(cmds);
 }
 
 void ReleaseTexture(SDL_GPUDevice* dev, SDL_GPUTexture* tex) {

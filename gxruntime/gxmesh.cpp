@@ -46,15 +46,15 @@ struct MeshUploadJob {
     bool full = false;
 };
 
-static bool RecordMeshUpload(void* ctx) {
+static bool RecordMeshUpload(void* ctx, SDL_GPUCommandBuffer* cmds) {
     MeshUploadJob* job = (MeshUploadJob*)ctx;
     bool ok;
     if (job->full) {
-        ok = sdlgpu::UploadMesh(job->dev, job->mirror,
+        ok = sdlgpu::UploadMesh(job->dev, cmds, job->mirror,
             job->verts.data(), (unsigned)job->verts.size(),
             job->indices.data(), (unsigned)job->indices.size());
     } else {
-        ok = sdlgpu::UploadMeshRange(job->dev, job->mirror,
+        ok = sdlgpu::UploadMeshRange(job->dev, cmds, job->mirror,
             job->verts.empty() ? nullptr : job->verts.data(), job->vOff, (unsigned)job->verts.size(),
             job->indices.empty() ? nullptr : job->indices.data(), job->iOff, (unsigned)job->indices.size());
     }
@@ -129,7 +129,7 @@ void gxMesh::unlock() {
             }
         }
         if (job) {
-            gpuUpload = sdlgpu::EnqueueUpload(RecordMeshUpload, job);
+            gpuUpload = sdlgpu::EnqueueUpload(dev, RecordMeshUpload, job);
             gpu_uploaded = true;
         }
     }
@@ -139,8 +139,8 @@ void gxMesh::unlock() {
     locked_indices = nullptr;
 
     if (staging_full && !keep_staging) {
-        staging_v.clear(); staging_v.shrink_to_fit();
-        staging_i.clear(); staging_i.shrink_to_fit();
+        staging_v.clear();
+        staging_i.clear();
     }
     staging_full = false;
 }
@@ -187,7 +187,7 @@ void gxMesh::uploadFrom(int firstVert, const void* verts, int vertCount, int src
     }
 
     if (job->verts.empty() && job->indices.empty()) { delete job; return; }
-    gpuUpload = sdlgpu::EnqueueUpload(RecordMeshUpload, job);
+    gpuUpload = sdlgpu::EnqueueUpload(job->dev, RecordMeshUpload, job);
     gpu_uploaded = true;
     mesh_dirty = false;
 }

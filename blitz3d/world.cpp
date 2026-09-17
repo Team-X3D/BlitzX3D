@@ -475,12 +475,14 @@ void World::render(Camera* cam, Mirror* mirror) {
 	}
 
 	gx_scene->setZMode(gxScene::ZMODE_NORMAL);
-	std::vector<char> fadeOk(unord_mods.size());
+	static std::vector<char> fadeOk;
+	fadeOk.assign(unord_mods.size(), 0);
 	parallel_for(unord_mods.size(), [&](size_t i) {
 		fadeOk[i] = unord_mods[i]->doAutoFade(cam_tform.v);
 	});
-	std::vector<Model*> bucketOrder;
-	bucketOrder.reserve(unord_mods.size());
+	static std::vector<Model*> bucketOrder;
+	bucketOrder.clear();
+	if (bucketOrder.capacity() < unord_mods.size()) bucketOrder.reserve(unord_mods.size());
 	for (size_t i = 0; i < unord_mods.size(); ++i) {
 		if(fadeOk[i]) bucketOrder.push_back(unord_mods[i]);
 	}
@@ -590,7 +592,8 @@ void World::renderEntity(Camera* cam, Entity* target, float tween) {
 void World::flushTransparent() {
 	size_t n = transparents.size();
 	if(!n) return;
-	std::vector<std::pair<float, Model*>> items(n);
+	static std::vector<std::pair<float, Model*>> items;
+	items.resize(n);
 	parallel_for(n, [&](size_t i) {
 		Model* mod = transparents[i];
 		items[i] = { cam_tform.v.distance(mod->getRenderTform().v), mod };

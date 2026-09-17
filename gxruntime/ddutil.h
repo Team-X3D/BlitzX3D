@@ -85,4 +85,30 @@ public:
     unsigned getPixel(void* p) const { return point(p); }
 };
 
+inline void ConvertPixelsToRGBA(const PixelFormat& fmt, const unsigned char* src, unsigned char* dst, unsigned w) {
+    if (fmt.is8888()) {
+        unsigned fill = fmt.hasAlphaMask() ? 0u : 0xff000000u;
+        for (unsigned x = 0; x < w; ++x) {
+            unsigned argb = *(const unsigned*)src | fill;
+            dst[0] = (unsigned char)(argb >> 16);
+            dst[1] = (unsigned char)(argb >> 8);
+            dst[2] = (unsigned char)argb;
+            dst[3] = (unsigned char)(argb >> 24);
+            src += 4;
+            dst += 4;
+        }
+        return;
+    }
+    int pitch = fmt.getPitch();
+    for (unsigned x = 0; x < w; ++x) {
+        unsigned argb = fmt.getPixel((void*)src);
+        dst[0] = (unsigned char)(argb >> 16);
+        dst[1] = (unsigned char)(argb >> 8);
+        dst[2] = (unsigned char)argb;
+        dst[3] = (unsigned char)(argb >> 24);
+        src += pitch;
+        dst += 4;
+    }
+}
+
 #endif

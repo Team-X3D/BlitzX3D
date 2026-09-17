@@ -9,7 +9,7 @@ class gxCanvas;
 
 namespace sdlgpu {
 
-	SDL_GPUTexture* CreateTexture2D(SDL_GPUDevice* dev, unsigned w, unsigned h);
+	SDL_GPUTexture* CreateTexture2D(SDL_GPUDevice* dev, unsigned w, unsigned h, bool mipmaps);
 	bool UploadTextureRGBA(SDL_GPUDevice* dev, SDL_GPUTexture* tex, unsigned w, unsigned h, const void* px);
 	bool UploadTextureRGBA(SDL_GPUDevice* dev, SDL_GPUTexture* tex, unsigned w, unsigned h, const void* px, bool cycle);
 	void ReleaseTexture(SDL_GPUDevice* dev, SDL_GPUTexture* tex);

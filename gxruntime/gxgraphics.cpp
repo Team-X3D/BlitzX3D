@@ -868,6 +868,7 @@ bool gxGraphics::ensureSkinningShader() {
 		}
 	}
 
+#if GX_USE_LEGACY_D3DX
 	ID3DXBuffer* code = nullptr;
 	ID3DXBuffer* errors = nullptr;
 	HRESULT hr = D3DXCompileShader(SKIN_VSHADER_SRC, (UINT)strlen(SKIN_VSHADER_SRC), nullptr, nullptr, "main", "vs_3_0", 0, &code, &errors, nullptr);
@@ -895,4 +896,8 @@ bool gxGraphics::ensureSkinningShader() {
 
 	runtime->debugLog("GPU skinning shader compiled successfully");
 	return true;
+#else
+	skin_shader_load_failed = true;
+	return false;
+#endif
 }

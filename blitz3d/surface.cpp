@@ -85,12 +85,14 @@ void Surface::updateNormals() {
 }
 
 gxMesh* Surface::getMesh() {
-	if(mesh && mesh->dirty()) valid_vs = 0;
+	if(mesh && mesh->dirty()) { valid_vs = 0; valid_ts = 0; }
 
 	if(valid_vs == vertices.size() && valid_ts == triangles.size()) return mesh;
 
 	int start_vs = valid_vs, start_ts = valid_ts;
 	valid_vs = valid_ts = 0;
+	if (start_vs > (int)vertices.size()) start_vs = (int)vertices.size();
+	if (start_ts > (int)triangles.size()) start_ts = (int)triangles.size();
 
 	if(mesh_vs < vertices.size() || mesh_ts < triangles.size()) {
 		if(mesh) {
@@ -103,6 +105,7 @@ gxMesh* Surface::getMesh() {
 			mesh_ts = triangles.size();
 		}
 		mesh = gx_graphics->createMesh(mesh_vs, mesh_ts, 0);
+		start_vs = start_ts = 0;
 	}
 
 	if (!mesh) {
@@ -111,8 +114,8 @@ gxMesh* Surface::getMesh() {
 		return mesh;
 	}
 
-	mesh->uploadFrom(0, vertices.data(), (int)vertices.size(), (int)sizeof(Vertex),
-		0, triangles.data(), (int)triangles.size());
+	mesh->uploadFrom(start_vs, vertices.data() + start_vs, (int)vertices.size() - start_vs, (int)sizeof(Vertex),
+		start_ts, triangles.data() + start_ts, (int)triangles.size() - start_ts);
 
 	valid_vs = (int)vertices.size();
 	valid_ts = (int)triangles.size();

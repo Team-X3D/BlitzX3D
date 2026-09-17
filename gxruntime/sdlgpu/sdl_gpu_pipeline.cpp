@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <map>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -183,17 +185,13 @@ namespace sdlgpu {
 					cube0 == o.cube0 && cube1 == o.cube1 &&
 					blend == o.blend && zMode == o.zMode && cullMode == o.cullMode && wireframe == o.wireframe;
 			}
-		};
-		struct MeshPipeEntry { MeshPipeKey key; SDL_GPUGraphicsPipeline* pipe = nullptr; };
-		std::vector<MeshPipeEntry> g_meshPipes;
-		struct MeshSampKey {
-			bool wrapU = false, wrapV = false, point = false;
-			bool operator==(const MeshSampKey& o) const {
-				return wrapU == o.wrapU && wrapV == o.wrapV && point == o.point;
+			bool operator<(const MeshPipeKey& o) const {
+				return std::tie(format, depthFormat, stride, skinned, twoTex, extra, cube0, cube1, blend, zMode, cullMode, wireframe)
+					< std::tie(o.format, o.depthFormat, o.stride, o.skinned, o.twoTex, o.extra, o.cube0, o.cube1, o.blend, o.zMode, o.cullMode, o.wireframe);
 			}
 		};
-		struct MeshSampEntry { MeshSampKey key; SDL_GPUSampler* samp = nullptr; };
-		std::vector<MeshSampEntry> g_meshSamps;
+		std::map<MeshPipeKey, SDL_GPUGraphicsPipeline*> g_meshPipes;
+		SDL_GPUSampler* g_meshSamps[8] = {};
 
 		SDL_GPUDevice* g_canvasDev = nullptr;
 		SDL_GPUGraphicsPipeline* g_canvasPipe = nullptr;
@@ -208,10 +206,9 @@ namespace sdlgpu {
 
 	static void TeardownMeshPipe() {
 		GpuLock lock;
-		for (auto& e : g_meshPipes) if (e.pipe && g_meshDev) SDL_ReleaseGPUGraphicsPipeline(g_meshDev, e.pipe);
+		for (auto& e : g_meshPipes) if (e.second && g_meshDev) SDL_ReleaseGPUGraphicsPipeline(g_meshDev, e.second);
 		g_meshPipes.clear();
-		for (auto& e : g_meshSamps) if (e.samp && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, e.samp);
-		g_meshSamps.clear();
+		for (SDL_GPUSampler*& s : g_meshSamps) { if (s && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, s); s = nullptr; }
 		if (g_meshSamp && g_meshDev) SDL_ReleaseGPUSampler(g_meshDev, g_meshSamp);
 		g_meshSamp = nullptr;
 		g_meshDev = nullptr;
@@ -222,19 +219,19 @@ namespace sdlgpu {
 	static SDL_GPUSampler* EnsureMeshSampler(SDL_GPUDevice* dev, bool wrapU, bool wrapV, bool point) {
 		GpuLock lock;
 		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
-		MeshSampKey key{ wrapU, wrapV, point };
-		for (auto& e : g_meshSamps) {
-			if (e.key == key) return e.samp;
-		}
+		unsigned key = (wrapU ? 4u : 0u) | (wrapV ? 2u : 0u) | (point ? 1u : 0u);
+		if (g_meshSamps[key]) return g_meshSamps[key];
 		SDL_GPUSamplerCreateInfo samp{};
 		samp.min_filter = point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
 		samp.mag_filter = point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
+		samp.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
 		samp.address_mode_u = wrapU ? SDL_GPU_SAMPLERADDRESSMODE_REPEAT : SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
 		samp.address_mode_v = wrapV ? SDL_GPU_SAMPLERADDRESSMODE_REPEAT : SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+		samp.max_lod = 1000.0f;
 		SDL_GPUSampler* s = SDL_CreateGPUSampler(dev, &samp);
 		if (!s) return nullptr;
 		g_meshDev = dev;
-		g_meshSamps.push_back({ key, s });
+		g_meshSamps[key] = s;
 		return s;
 	}
 
@@ -339,6 +336,16 @@ namespace sdlgpu {
 		return g_whiteTex;
 	}
 
+	static SDL_GPUShaderFormat CachedShaderFormats(SDL_GPUDevice* dev) {
+		GpuLock lock;
+		static SDL_GPUDevice* cachedDev = nullptr;
+		static SDL_GPUShaderFormat cached = SDL_GPU_SHADERFORMAT_INVALID;
+		if (dev && dev == cachedDev) return cached;
+		cached = dev ? SDL_GetGPUShaderFormats(dev) : SDL_GPU_SHADERFORMAT_INVALID;
+		cachedDev = dev;
+		return cached;
+	}
+
 	static SDL_GPUGraphicsPipeline* EnsureMeshPipe(SDL_GPUDevice* dev, SDL_Window* win, unsigned stride, bool skinned, bool twoTex, int colorFormatOverride, int depthFormatOverride, int blendMode, int zMode, SDL_GPUCullMode cullMode, bool wireframe, bool extra = false, bool cube0 = false, bool cube1 = false) {
 		GpuLock lock;
 		SDL_GPUTextureFormat fmt = colorFormatOverride ? (SDL_GPUTextureFormat)colorFormatOverride : SDL_GetGPUSwapchainTextureFormat(dev, win);
@@ -349,11 +356,12 @@ namespace sdlgpu {
 		if (extra) { cube0 = false; cube1 = false; }
 
 		MeshPipeKey key{ fmt, depthFmt, stride, skinned, twoTex, extra, cube0, cube1, blendMode, zMode, cullMode, wireframe };
-		for (auto& e : g_meshPipes) {
-			if (e.key == key) return e.pipe;
+		{
+			auto found = g_meshPipes.find(key);
+			if (found != g_meshPipes.end()) return found->second;
 		}
 
-		SDL_GPUShaderFormat supported = SDL_GetGPUShaderFormats(dev);
+		SDL_GPUShaderFormat supported = CachedShaderFormats(dev);
 		const uint8_t* vsCode = nullptr;
 		const uint8_t* psCode = nullptr;
 		size_t vsSize = 0, psSize = 0;
@@ -497,8 +505,8 @@ namespace sdlgpu {
 			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateGPUGraphicsPipeline mesh failed: %s", SDL_GetError());
 			return nullptr;
 		}
-		if (g_meshPipes.size() >= 24) {
-			SDL_GPUGraphicsPipeline* old = g_meshPipes.front().pipe;
+		if (g_meshPipes.size() >= 512) {
+			SDL_GPUGraphicsPipeline* old = g_meshPipes.begin()->second;
 			if (old) SDL_ReleaseGPUGraphicsPipeline(dev, old);
 			g_meshPipes.erase(g_meshPipes.begin());
 		}
@@ -507,14 +515,16 @@ namespace sdlgpu {
 			SDL_GPUSamplerCreateInfo samp{};
 			samp.min_filter = SDL_GPU_FILTER_LINEAR;
 			samp.mag_filter = SDL_GPU_FILTER_LINEAR;
+			samp.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
 			samp.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
 			samp.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+			samp.max_lod = 1000.0f;
 			g_meshSamp = SDL_CreateGPUSampler(dev, &samp);
 			if (!g_meshSamp) { SDL_ReleaseGPUGraphicsPipeline(dev, newPipe); return nullptr; }
 		}
 
 		g_meshDev = dev;
-		g_meshPipes.push_back({ key, newPipe });
+		g_meshPipes.emplace(key, newPipe);
 		return newPipe;
 	}
 
@@ -546,7 +556,7 @@ namespace sdlgpu {
 		if (firstVertex < 0 || (unsigned)firstVertex >= mesh->maxVerts) return;
 		if (uniformBytes > 4096) return;
 		if (!mesh->verts || !mesh->indices) return;
-		if (SDL_GetGPUShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
+		if (CachedShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
 		bool skinned = p.boneBuf != nullptr;
 		bool twoTex = p.tex1 != nullptr;
 		bool cube0 = p.cube0 && p.tex != nullptr;
@@ -596,7 +606,7 @@ namespace sdlgpu {
 		if (firstVertex < 0 || (unsigned)firstVertex >= mesh->maxVerts) return;
 		if (uniformBytes > 4096) return;
 		if (!mesh->verts || !mesh->indices) return;
-		if (SDL_GetGPUShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
+		if (CachedShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
 
 		SDL_GPUGraphicsPipeline* pipe = EnsureMeshPipe(dev, nullptr, mesh->vertStride, base.boneBuf != nullptr, false, colorFormat, depthFormat, stage.blend, base.zMode, base.cull, base.wireframe, true);
 		if (!pipe) return;
@@ -730,8 +740,8 @@ namespace sdlgpu {
 	}
 
 	void TeardownPipelines() {
-		GpuLock lock;
 		ShutdownUploads();
+		GpuLock lock;
 		TeardownBlit();
 		TeardownMeshPipe();
 		TeardownCanvas();
@@ -746,6 +756,7 @@ namespace sdlgpu {
 			SDL_GPUDevice* dev = nullptr;
 			SDL_GPUTransferBuffer* buf = nullptr;
 			Uint32 size = 0;
+			SDL_GPUTransferBufferUsage usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
 		};
 		std::vector<PooledEntry> g_transferPool;
 		std::unordered_map<SDL_GPUTransferBuffer*, PooledEntry> g_transferSizes;
@@ -766,11 +777,11 @@ namespace sdlgpu {
 		}
 	}
 
-	SDL_GPUTransferBuffer* AcquireUploadTransferBuffer(SDL_GPUDevice* dev, Uint32 size) {
+	static SDL_GPUTransferBuffer* AcquireTransferBuffer(SDL_GPUDevice* dev, Uint32 size, SDL_GPUTransferBufferUsage usage) {
 		GpuLock lock;
 		if (!dev || !size) return nullptr;
 		for (auto it = g_transferPool.begin(); it != g_transferPool.end(); ++it) {
-			if (it->dev == dev && it->size >= size) {
+			if (it->dev == dev && it->usage == usage && it->size >= size) {
 				SDL_GPUTransferBuffer* buf = it->buf;
 				g_transferPool.erase(it);
 				g_transferSizes.erase(buf);
@@ -778,17 +789,27 @@ namespace sdlgpu {
 			}
 		}
 		SDL_GPUTransferBufferCreateInfo ci{};
-		ci.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+		ci.usage = usage;
 		ci.size = size;
 		SDL_GPUTransferBuffer* buf = SDL_CreateGPUTransferBuffer(dev, &ci);
-		if (buf) g_transferSizes[buf] = PooledEntry{ dev, buf, size };
+		if (buf) g_transferSizes[buf] = PooledEntry{ dev, buf, size, usage };
 		return buf;
 	}
-	void ReleaseUploadTransferBuffer(SDL_GPUDevice* dev, SDL_GPUTransferBuffer* buf) {
+
+	SDL_GPUTransferBuffer* AcquireUploadTransferBuffer(SDL_GPUDevice* dev, Uint32 size) {
+		return AcquireTransferBuffer(dev, size, SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD);
+	}
+
+	SDL_GPUTransferBuffer* AcquireDownloadTransferBuffer(SDL_GPUDevice* dev, Uint32 size) {
+		return AcquireTransferBuffer(dev, size, SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD);
+	}
+
+	static void ReleaseTransferBuffer(SDL_GPUDevice* dev, SDL_GPUTransferBuffer* buf) {
 		GpuLock lock;
 		if (!dev || !buf) return;
 		auto sit = g_transferSizes.find(buf);
 		Uint32 size = (sit != g_transferSizes.end() && sit->second.dev == dev) ? sit->second.size : 0;
+		SDL_GPUTransferBufferUsage usage = (sit != g_transferSizes.end()) ? sit->second.usage : SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
 		static const Uint32 kMaxPooledBytes = 4u * 1024u * 1024u;
 		if (!size || size > kMaxPooledBytes) {
 			g_transferSizes.erase(buf);
@@ -802,7 +823,15 @@ namespace sdlgpu {
 			g_transferSizes.erase(old);
 			g_transferPool.erase(g_transferPool.begin());
 		}
-		g_transferPool.push_back(PooledEntry{ dev, buf, size });
+		g_transferPool.push_back(PooledEntry{ dev, buf, size, usage });
+	}
+
+	void ReleaseUploadTransferBuffer(SDL_GPUDevice* dev, SDL_GPUTransferBuffer* buf) {
+		ReleaseTransferBuffer(dev, buf);
+	}
+
+	void ReleaseDownloadTransferBuffer(SDL_GPUDevice* dev, SDL_GPUTransferBuffer* buf) {
+		ReleaseTransferBuffer(dev, buf);
 	}
 
 }

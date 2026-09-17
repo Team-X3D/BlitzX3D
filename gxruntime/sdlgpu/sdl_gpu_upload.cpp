@@ -4,10 +4,14 @@
 #include <deque>
 #include <mutex>
 #include <thread>
+#include <vector>
+
+#include <SDL3/SDL_gpu.h>
 
 namespace sdlgpu {
 
 struct UploadHandle {
+	SDL_GPUDevice* dev = nullptr;
 	UploadFn fn = nullptr;
 	void* ctx = nullptr;
 	std::mutex m;
@@ -24,23 +28,47 @@ std::thread g_worker;
 bool g_started = false;
 bool g_stop = false;
 
+void Finish(UploadHandle* h, bool ok) {
+	{
+		std::lock_guard<std::mutex> lk(h->m);
+		h->ok = ok;
+		h->done = true;
+	}
+	h->cv.notify_one();
+}
+
+void RunGroup(SDL_GPUDevice* dev, const std::vector<UploadHandle*>& group) {
+	SDL_GPUCommandBuffer* cmds = dev ? SDL_AcquireGPUCommandBuffer(dev) : nullptr;
+	if (!cmds) {
+		for (UploadHandle* h : group) Finish(h, h->fn ? h->fn(h->ctx, nullptr) : false);
+		return;
+	}
+	std::vector<char> ok(group.size());
+	for (size_t i = 0; i < group.size(); ++i)
+		ok[i] = group[i]->fn ? group[i]->fn(group[i]->ctx, cmds) : false;
+	bool submitted = SDL_SubmitGPUCommandBuffer(cmds);
+	for (size_t i = 0; i < group.size(); ++i)
+		Finish(group[i], submitted && ok[i]);
+}
+
 void WorkerMain() {
 	for (;;) {
-		UploadHandle* h = nullptr;
+		std::deque<UploadHandle*> batch;
 		{
 			std::unique_lock<std::mutex> lk(g_m);
 			g_cv.wait(lk, [] { return g_stop || !g_q.empty(); });
 			if (g_stop && g_q.empty()) return;
-			h = g_q.front();
-			g_q.pop_front();
+			batch.swap(g_q);
 		}
-		bool ok = h->fn ? h->fn(h->ctx) : false;
-		{
-			std::lock_guard<std::mutex> lk(h->m);
-			h->ok = ok;
-			h->done = true;
+		while (!batch.empty()) {
+			SDL_GPUDevice* dev = batch.front()->dev;
+			std::vector<UploadHandle*> group;
+			for (auto it = batch.begin(); it != batch.end(); ) {
+				if ((*it)->dev == dev) { group.push_back(*it); it = batch.erase(it); }
+				else ++it;
+			}
+			RunGroup(dev, group);
 		}
-		h->cv.notify_one();
 	}
 }
 
@@ -57,11 +85,12 @@ bool EnsureWorker() {
 }
 }
 
-UploadHandle* EnqueueUpload(UploadFn fn, void* ctx) {
+UploadHandle* EnqueueUpload(SDL_GPUDevice* dev, UploadFn fn, void* ctx) {
 	std::lock_guard<std::mutex> lk(g_m);
 	UploadHandle* h = new UploadHandle;
+	h->dev = dev;
 	if (!EnsureWorker()) {
-		h->ok = fn ? fn(ctx) : false;
+		h->ok = fn ? fn(ctx, nullptr) : false;
 		h->done = true;
 		return h;
 	}

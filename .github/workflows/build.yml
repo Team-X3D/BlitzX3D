@@ -1,7 +1,14 @@
 name: Build
 
 on:
+  push:
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_VERSION: "2.0.0"
 
 jobs:
   build:
@@ -10,6 +17,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
@@ -26,54 +35,6 @@ jobs:
             "--quiet", "--norestart", "--wait" `
             -Wait -PassThru | Select-Object -ExpandProperty ExitCode
 
-      - name: Install DirectX SDK (June 2010)
-        shell: pwsh
-        timeout-minutes: 15
-        run: |
-          Write-Host "[1] Removing VC++ 2010 redistributables"
-          $vc2010x86 = "{F0C3E5D1-1ADE-321E-8167-68EF0DE699A5}"
-          $vc2010x64 = "{1D8E6291-B0D5-35EC-8441-6616F567A0F7}"
-          foreach ($guid in @($vc2010x86, $vc2010x64)) {
-            Write-Host "  Uninstalling $guid"
-            $p = Start-Process MsiExec.exe -ArgumentList "/x $guid /quiet /norestart" -Wait -NoNewWindow -PassThru
-            Write-Host "    Exit code: $($p.ExitCode)"
-          }
-      
-          Write-Host "[2] Downloading DirectX SDK"
-          $installer = "$env:TEMP\DXSDK_Jun10.exe"
-          Invoke-WebRequest -Uri "https://download.microsoft.com/download/A/E/7/AE743F1F-632B-4809-87A9-AA1BB3458E31/DXSDK_Jun10.exe" -OutFile $installer
-          Write-Host "  Downloaded $(Get-Item $installer).Length bytes"
-      
-          Write-Host "[3] Running installer (silent) – will wait up to 10 minutes"
-          $dxLog = "$env:TEMP\dxsetup.log"
-          $p = Start-Process $installer -ArgumentList "/silent", "/norestart", "/log", "`"$dxLog`"" -NoNewWindow -PassThru
-          Write-Host "  PID = $($p.Id)"
-      
-          $timeout = 600
-          $waited = 0
-          while (-not $p.HasExited -and $waited -lt $timeout) {
-            Start-Sleep -Seconds 10
-            $waited += 10
-            Write-Host "  ... still waiting, $waited s elapsed"
-          }
-          if (-not $p.HasExited) {
-            Write-Host "  TIMEOUT – killing process"
-            Stop-Process -Id $p.Id -Force
-          }
-          $p.Refresh()
-          Write-Host "  Installer exit code: $($p.ExitCode)"
-      
-          Write-Host "[4] Verifying installation"
-          $dxsdk = "${env:ProgramFiles(x86)}\Microsoft DirectX SDK (June 2010)\"
-          if (Test-Path "$dxsdk\Include\d3dx9.h") {
-            Write-Host "  SUCCESS: d3dx9.h found"
-            echo "DXSDK_DIR=$dxsdk" >> $env:GITHUB_ENV
-          } else {
-            Write-Host "  ERROR: d3dx9.h not found – installation failed"
-            if (Test-Path $dxLog) { Get-Content $dxLog -Tail 20 }
-            exit 1
-          }
-
       - name: Create cryptseed.h
         shell: pwsh
         run: |
@@ -88,12 +49,23 @@ jobs:
       - name: Build solution (Release)
         run: msbuild blitz3d.sln /p:Configuration=Release /m /v:minimal
 
+      - name: Package build
+        shell: pwsh
+        run: Compress-Archive -Path "_release\*" -DestinationPath "BlitzX3D-${{ env.RELEASE_VERSION }}-Test${{ github.run_number }}.zip" -Force
+
       - name: Upload build output
         uses: actions/upload-artifact@v4
         with:
-          name: blitz3d-release
-          path: |
-            _release/**
-            !_release/**/*.pdb
-            !_release/**/*.ilk
+          name: BlitzX3D-${{ env.RELEASE_VERSION }}-Test${{ github.run_number }}
+          path: BlitzX3D-*.zip
           if-no-files-found: warn
+
+      - name: Publish pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test${{ github.run_number }}
+          name: Test${{ github.run_number }} ${{ env.RELEASE_VERSION }}
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: BlitzX3D-*.zip
