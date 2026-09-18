@@ -912,7 +912,7 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 	}
 	if (!drewGpu) gpuOnlyFrame = false;
 
-	if (currentEffect) {
+	if (currentEffect && !(graphics && graphics->runtime && graphics->runtime->sdlGpu)) {
 		gpuOnlyFrame = false;
 		UINT passes;
 		if (currentEffect->begin(&passes)) {
@@ -1175,6 +1175,7 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 	p.tex = nullptr; p.tex1 = nullptr;
 	p.stage1[0] = p.stage1[1] = p.stage1[2] = p.stage1[3] = 0.0f;
 	p.boneBuf = nullptr;
+	p.shader = currentEffect ? currentEffect->getGpuShader() : nullptr;
 	p.blend = blend; p.zMode = zmode;
 	p.aniso = textureAnisotropic;
 	p.lodBias = *(const float*)&textureLodBias;

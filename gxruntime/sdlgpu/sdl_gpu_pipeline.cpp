@@ -22,6 +22,7 @@
 #include "shaders/canvas_shaders.h"
 #include "shaders/present_shaders.h"
 #include "sdl_gpu_text.h"
+#include "sdl_gpu_shader.h"
 
 namespace sdlgpu {
 
@@ -336,6 +337,31 @@ namespace sdlgpu {
 		return (int)SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
 	}
 
+	static SDL_GPUTexture* EnsureWhiteTexture(SDL_GPUDevice* dev);
+
+	SDL_GPUTexture* GetWhiteTexture(SDL_GPUDevice* dev) {
+		return EnsureWhiteTexture(dev);
+	}
+
+	SDL_GPUSampler* GetDefaultMeshSampler(SDL_GPUDevice* dev) {
+		GpuLock lock;
+		if (!dev) return nullptr;
+		if (g_meshDev && g_meshDev != dev) TeardownMeshPipe();
+		if (!g_meshSamp) {
+			SDL_GPUSamplerCreateInfo samp{};
+			samp.min_filter = SDL_GPU_FILTER_LINEAR;
+			samp.mag_filter = SDL_GPU_FILTER_LINEAR;
+			samp.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
+			samp.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+			samp.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+			samp.max_lod = 1000.0f;
+			g_meshSamp = SDL_CreateGPUSampler(dev, &samp);
+			if (!g_meshSamp) return nullptr;
+			g_meshDev = dev;
+		}
+		return g_meshSamp;
+	}
+
 	static SDL_GPUTexture* EnsureWhiteTexture(SDL_GPUDevice* dev) {
 		GpuLock lock;
 		if (g_whiteTex && g_whiteDev == dev) return g_whiteTex;
@@ -641,6 +667,26 @@ namespace sdlgpu {
 		if (!mesh->verts || !mesh->indices) return;
 		if (CachedShaderFormats(dev) == SDL_GPU_SHADERFORMAT_INVALID) return;
 		bool skinned = p.boneBuf != nullptr;
+		if (p.shader) {
+			SDL_GPUTextureFormat fmt = colorFormat ? (SDL_GPUTextureFormat)colorFormat : (win ? SDL_GetGPUSwapchainTextureFormat(dev, win) : SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM);
+			SDL_GPUTextureFormat depthFmt = depthFormat ? (SDL_GPUTextureFormat)depthFormat : PickMeshDepthFormat(dev);
+			SDL_GPUGraphicsPipeline* pipe = ShaderPipeline(p.shader, dev, (int)fmt, (int)depthFmt, p.blend, p.zMode, (int)p.cull, p.wireframe, samples, skinned);
+			if (!pipe) return;
+			InvalidateMeshState();
+			SDL_BindGPUGraphicsPipeline(pass, pipe);
+			ShaderBindTextures(p.shader, dev, pass);
+			SDL_PushGPUVertexUniformData(cmds, 0, uniforms, uniformBytes);
+			ShaderPushUniforms(p.shader, cmds);
+			if (skinned) SDL_BindGPUVertexStorageBuffers(pass, 0, &p.boneBuf, 1);
+			SDL_GPUBufferBinding vb{};
+			vb.buffer = mesh->verts;
+			SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
+			SDL_GPUBufferBinding ib{};
+			ib.buffer = mesh->indices;
+			SDL_BindGPUIndexBuffer(pass, &ib, SDL_GPU_INDEXELEMENTSIZE_16BIT);
+			SDL_DrawGPUIndexedPrimitives(pass, indexCount, 1, startIndex, firstVertex, 0);
+			return;
+		}
 		bool cube0 = p.cube0 && p.tex != nullptr;
 		bool cube1 = p.cube1 && p.tex1 != nullptr;
 		bool multi = !cube0 && !cube1;

@@ -55,7 +55,7 @@
       <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;NDEBUG;PRO;_LIB;_HAS_STD_BYTE=0;_NO_DEBUG_HEAP=1;SDL_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\..\ffmpeg\include;$(ProjectDir);$(ProjectDir)..;..\..\bass\include;$(ProjectDir)..\..\vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\ffmpeg\include;$(ProjectDir);$(ProjectDir)..;..\..\bass\include;$(ProjectDir)..\..\vendor\SDL3\include;$(SolutionDir)tools\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -71,7 +71,7 @@
       <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;_DEBUG;PRO;_LIB;SDL_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\..\ffmpeg\include;$(ProjectDir);$(ProjectDir)..;..\..\bass\include;$(ProjectDir)..\..\vendor\SDL3\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\ffmpeg\include;$(ProjectDir);$(ProjectDir)..;..\..\bass\include;$(ProjectDir)..\..\vendor\SDL3\include;$(SolutionDir)tools\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -83,6 +83,12 @@
     <ClCompile Include="sdl_gpu_context.cpp" />
     <ClCompile Include="sdl_gpu_mesh.cpp" />
     <ClCompile Include="sdl_gpu_pipeline.cpp" />
+    <ClCompile Include="sdl_gpu_shader.cpp">
+      <CallingConvention>Cdecl</CallingConvention>
+    </ClCompile>
+    <ClCompile Include="sdl_gpu_shader_data.cpp">
+      <CallingConvention>Cdecl</CallingConvention>
+    </ClCompile>
     <ClCompile Include="sdl_gpu_scene.cpp" />
     <ClCompile Include="sdl_gpu_text.cpp" />
     <ClCompile Include="sdl_gpu_upload.cpp" />
@@ -93,6 +99,8 @@
     <ClInclude Include="sdl_gpu_lock.h" />
     <ClInclude Include="sdl_gpu_mesh.h" />
     <ClInclude Include="sdl_gpu_pipeline.h" />
+    <ClInclude Include="sdl_gpu_shader.h" />
+    <ClInclude Include="sdl_gpu_shader_data.h" />
     <ClInclude Include="sdl_gpu_scene.h" />
     <ClInclude Include="sdl_gpu_text.h" />
     <ClInclude Include="sdl_gpu_upload.h" />

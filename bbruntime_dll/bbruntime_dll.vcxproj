@@ -97,10 +97,19 @@
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>..\ffmpeg\lib;</AdditionalLibraryDirectories>
+      <AdditionalDependencies>spirv-cross-c-shared.lib;delayimp.lib;bcrypt.lib;avformat.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\ffmpeg\lib;..\tools\spirv-cross\lib;</AdditionalLibraryDirectories>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
+if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -161,14 +170,21 @@
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>spirv-cross-c-shared.lib;delayimp.lib;bcrypt.lib;avformat.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalLibraryDirectories>..\ffmpeg\lib;</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>..\ffmpeg\lib;..\tools\spirv-cross\lib;</AdditionalLibraryDirectories>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\bass\bin\bass.dll" "$(OutDir)bass.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\bass\bin\bass.dll" "$(OutDir)bass.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
+if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -15,6 +15,9 @@ _release/*.ttf
 !bass/bin/**/*.dll
 !tools/dxc-x64/*.exe
 !tools/dxc-x64/*.dll
+!tools/dxc-x86/*.exe
+!tools/dxc-x86/*.dll
+!tools/spirv-cross/bin/*.dll
 *.pdb
 *.ilk
 *.aps
@@ -24,6 +27,7 @@ _release/*.ttf
 */objs/*
 *.zip
 temp
+_buildtmp
 linker/cryptseed.h
 llvm
 blitzide_imgui/bin

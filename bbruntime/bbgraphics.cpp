@@ -2501,6 +2501,7 @@ void graphics_link(void (*rtSym)(const char* sym, void* pc))
     rtSym("SetTFormMethod%method", bbSetTFormMethod);
     rtSym("TFormFilter%enable", bbTFormFilter);
     rtSym("$GetEffectError", bbGetEffectError);
+    rtSym("$GetShaderError", bbGetEffectError);
 
     rtSym("%ImagesOverlap%image1%x1%y1%image2%x2%y2", bbImagesOverlap);
     rtSym("%ImagesCollide%image1%x1%y1%frame1%image2%x2%y2%frame2", bbImagesCollide);

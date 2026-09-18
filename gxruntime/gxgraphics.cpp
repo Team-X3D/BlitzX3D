@@ -8,6 +8,7 @@
 #include "sdlgpu/sdl_gpu_text.h"
 #include "sdlgpu/sdl_gpu_context.h"
 #include "sdlgpu/sdl_gpu_pipeline.h"
+#include "sdlgpu/sdl_gpu_shader.h"
 #include "../gxruntime/gxutf8.h"
 #include <cstring>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -89,43 +90,21 @@ gxGraphics::~gxGraphics() {
 }
 
 gxEffect* gxGraphics::createEffect(const std::string& filename) {
-	(void)filename;
-	lastEffectError = "Effects are not supported on the SDL-GPU renderer";
-	return nullptr;
-
-	/*
-	ID3DXEffect* effect = nullptr;
-	ID3DXBuffer* errors = nullptr;
-
-	// BlitzPro shader support
-	//
-	// std::string converted;
-	// HRESULT hr = E_FAIL;
-	// if (convertShaderSource(dir3dDev, filename, converted)) {
-	// 	hr = D3DXCreateEffect(dir3dDev, converted.data(), (UINT)converted.size(),
-	// 		nullptr, nullptr, 0, nullptr, &effect, &errors);
-	// }
-	// if (FAILED(hr)) {
-	// 	if (errors) { errors->Release(); errors = nullptr; }
-	// 	hr = D3DXCreateEffectFromFile(dir3dDev, filename.c_str(), nullptr, nullptr, 0, nullptr, &effect, &errors);
-	// }
-
-	HRESULT hr = D3DXCreateEffectFromFile(dir3dDev, filename.c_str(), nullptr, nullptr, 0, nullptr, &effect, &errors);
-	if (FAILED(hr)) {
-		if (errors) {
-			lastEffectError = (const char*)errors->GetBufferPointer();
-			errors->Release();
-		}
-		else {
-			lastEffectError = "Unknown error creating effect";
-		}
+	if (!runtime || !runtime->sdlGpu) {
+		return nullptr;
+	}
+	std::string dir;
+	size_t pos = filename.find_last_of("/\\");
+	if (pos != std::string::npos) dir = filename.substr(0, pos + 1);
+	sdlgpu::GpuShader* shader = sdlgpu::CreateShaderFromFile((SDL_GPUDevice*)runtime->sdlGpu, filename.c_str(), "VSMain", "PSMain", dir.c_str());
+	if (!shader) {
+		lastEffectError = sdlgpu::ShaderError();
 		return nullptr;
 	}
 	lastEffectError.clear();
-	gxEffect* e = new gxEffect(this, effect);
+	gxEffect* e = new gxEffect(this, (SDL_GPUDevice*)runtime->sdlGpu, shader);
 	effect_set.insert(e);
 	return e;
-	*/
 }
 
 gxEffect* gxGraphics::verifyEffect(gxEffect* e) {

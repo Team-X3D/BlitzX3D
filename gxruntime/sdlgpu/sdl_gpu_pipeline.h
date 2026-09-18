@@ -12,7 +12,14 @@ struct SDL_GPUTransferBuffer;
 
 namespace sdlgpu {
 
+#ifdef _WIN32
+#define GXPIPE_API __stdcall
+#else
+#define GXPIPE_API
+#endif
+
 struct GpuMesh;
+struct GpuShader;
 
 enum { MESH_BLEND_REPLACE = 0, MESH_BLEND_ALPHA = 1, MESH_BLEND_MULTIPLY = 2, MESH_BLEND_ADD = 3 };
 enum { MESH_Z_NORMAL = 0, MESH_Z_DISABLE = 1, MESH_Z_CMPONLY = 2 };
@@ -52,8 +59,11 @@ struct MeshStage {
 		float flat = 0.0f;
 		int stageCount = 0;
 		MeshStage stages[MESH_MAX_STAGES] = {};
+		GpuShader* shader = nullptr;
 	};
 	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshDrawParams& p, int samples);
+	SDL_GPUTexture* GXPIPE_API GetWhiteTexture(SDL_GPUDevice* dev);
+	SDL_GPUSampler* GXPIPE_API GetDefaultMeshSampler(SDL_GPUDevice* dev);
 	void InvalidateMeshState();
 	void DrawCanvasOverlay(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass, SDL_GPUTexture* tex);
 	void SetGammaRamp(SDL_GPUDevice* dev, const unsigned short* ramp);

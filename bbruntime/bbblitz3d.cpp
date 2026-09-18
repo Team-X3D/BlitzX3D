@@ -853,18 +853,11 @@ void bbMeshCullBox(MeshModel* m, float x, float y, float z, float width, float h
 
 gxEffect* bbLoadEffect(BBStr* filename) {
 	debug3d("LoadEffect");
-	delete filename;
-	return nullptr;
-	/*
 	std::string f = *filename;
 	delete filename;
 	gxEffect* e = gx_graphics->createEffect(f);
-	if (!e) {
-		// error..........
-		return nullptr;
-	}
+	if (!e) return nullptr;
 	return e;
-	*/
 }
 
 void bbFreeEffect(gxEffect* effect) {
@@ -925,8 +918,7 @@ void bbSetEffectTexture(gxEffect* effect, BBStr* name, Texture* tex) {
 	if (!gx_graphics->verifyEffect(effect)) { delete name; return; }
 	gxCanvas* c = tex->getCanvas(0);
 	if (c) {
-		IDirect3DBaseTexture9* d3dtex = c->getTexSurface();
-		effect->setTexture(*name, d3dtex);
+		effect->setTextureCanvas(*name, c);
 	}
 	delete name;
 }
@@ -2383,6 +2375,15 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("SetEffectVector%effect$name#x#y#z#w", bbSetEffectVector);
 	rtSym("SetEffectMatrix%effect$name#m11#m12#m13#m14#m21#m22#m23#m24#m31#m32#m33#m34#m41#m42#m43#m44", bbSetEffectMatrix);
 	rtSym("SetEffectTexture%effect$name%texture", bbSetEffectTexture);
+
+	rtSym("%LoadShader$filename", bbLoadEffect);
+	rtSym("FreeShader%shader", bbFreeEffect);
+	rtSym("SetEntityShader%entity%shader", bbSetEntityEffect);
+	rtSym("SetBrushShader%brush%shader", bbSetBrushEffect);
+	rtSym("SetShaderFloat%shader$name#value", bbSetEffectFloat);
+	rtSym("SetShaderVector%shader$name#x#y#z#w", bbSetEffectVector);
+	rtSym("SetShaderMatrix%shader$name#m11#m12#m13#m14#m21#m22#m23#m24#m31#m32#m33#m34#m41#m42#m43#m44", bbSetEffectMatrix);
+	rtSym("SetShaderTexture%shader$name%texture", bbSetEffectTexture);
 
 	rtSym("ScaleTexture%texture#u_scale#v_scale", bbScaleTexture);
 	rtSym("RotateTexture%texture#angle", bbRotateTexture);

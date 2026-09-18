@@ -3,13 +3,16 @@
 
 #include "d3dxmath.h"
 #include <string>
-#include <unordered_map>
+
+namespace sdlgpu { struct GpuShader; }
 
 class gxGraphics;
+class gxCanvas;
+struct SDL_GPUDevice;
 
 class gxEffect {
 public:
-    gxEffect(gxGraphics* gfx, void* effect);
+    gxEffect(gxGraphics* gfx, SDL_GPUDevice* dev, sdlgpu::GpuShader* shader);
     ~gxEffect();
 
     void onLostDevice();
@@ -20,23 +23,20 @@ public:
     bool setMatrix(const std::string& name, const D3DXMATRIX& mat);
     void setMatrixBySemantic(const char* semantic, const D3DXMATRIX& mat);
     void setAutoMatrices(const D3DXMATRIX& world, const D3DXMATRIX& view, const D3DXMATRIX& proj);
-    bool setTexture(const std::string& name, IDirect3DBaseTexture9* tex);
+    bool setTexture(const std::string& name, void* tex);
+    bool setTextureCanvas(const std::string& name, gxCanvas* canvas);
 
     bool begin(unsigned* passes);
     bool beginPass(unsigned pass);
     bool endPass();
     bool end();
 
-    void* getEffect() const { return effect; }
+    sdlgpu::GpuShader* getGpuShader() const { return shader; }
 
 private:
     gxGraphics* graphics;
-    void* effect;
-
-#if GX_USE_LEGACY_D3DX
-    std::unordered_map<std::string, D3DXHANDLE> handleCache;
-    D3DXHANDLE getHandle(const std::string& name);
-#endif
+    SDL_GPUDevice* dev;
+    sdlgpu::GpuShader* shader;
 };
 
 #endif
