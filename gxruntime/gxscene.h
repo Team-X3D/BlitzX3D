@@ -207,7 +207,6 @@ private:
 	void computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const;
 	void computeGpuSkinnedUniforms(sdlgpu::MeshUniforms& u) const;
 	void fillGpuDrawParams(struct sdlgpu::MeshDrawParams& p, struct SDL_GPUDevice* dev);
-	int fillGpuExtraStages(struct sdlgpu::MeshExtraStage* out, int maxOut, struct SDL_GPUDevice* dev);
 	bool gpuTexGenOk() const;
 };
 

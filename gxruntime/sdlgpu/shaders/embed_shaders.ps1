@@ -3,10 +3,15 @@ param([string]$Dir = $PSScriptRoot)
 $headers = [ordered]@{
     'mesh_shaders.h' = @(
         @('kMeshVS_DXIL', 'mesh_vs.dxil'), @('kMeshVS_SPIRV', 'mesh_vs.spv'),
-        @('kMeshPS_DXIL', 'mesh_ps.dxil'), @('kMeshPS_SPIRV', 'mesh_ps.spv'),
-        @('kSkinVS_DXIL', 'skin_vs.dxil'), @('kSkinVS_SPIRV', 'skin_vs.spv'),
+        @('kMeshPS1_DXIL', 'mesh_ps1.dxil'), @('kMeshPS1_SPIRV', 'mesh_ps1.spv'),
         @('kMeshPS2_DXIL', 'mesh_ps2.dxil'), @('kMeshPS2_SPIRV', 'mesh_ps2.spv'),
-        @('kMeshPSExtra_DXIL', 'mesh_psextra.dxil'), @('kMeshPSExtra_SPIRV', 'mesh_psextra.spv'),
+        @('kMeshPS3_DXIL', 'mesh_ps3.dxil'), @('kMeshPS3_SPIRV', 'mesh_ps3.spv'),
+        @('kMeshPS4_DXIL', 'mesh_ps4.dxil'), @('kMeshPS4_SPIRV', 'mesh_ps4.spv'),
+        @('kMeshPS5_DXIL', 'mesh_ps5.dxil'), @('kMeshPS5_SPIRV', 'mesh_ps5.spv'),
+        @('kMeshPS6_DXIL', 'mesh_ps6.dxil'), @('kMeshPS6_SPIRV', 'mesh_ps6.spv'),
+        @('kMeshPS7_DXIL', 'mesh_ps7.dxil'), @('kMeshPS7_SPIRV', 'mesh_ps7.spv'),
+        @('kMeshPS8_DXIL', 'mesh_ps8.dxil'), @('kMeshPS8_SPIRV', 'mesh_ps8.spv'),
+        @('kSkinVS_DXIL', 'skin_vs.dxil'), @('kSkinVS_SPIRV', 'skin_vs.spv'),
         @('kMeshPSCube_DXIL', 'mesh_pscube.dxil'), @('kMeshPSCube_SPIRV', 'mesh_pscube.spv'),
         @('kMeshPSCubeTex_DXIL', 'mesh_pscubetex.dxil'), @('kMeshPSCubeTex_SPIRV', 'mesh_pscubetex.spv'),
         @('kMeshPSTexCube_DXIL', 'mesh_pstexcube.dxil'), @('kMeshPSTexCube_SPIRV', 'mesh_pstexcube.spv'),

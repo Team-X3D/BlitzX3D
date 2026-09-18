@@ -201,6 +201,7 @@ bool BeginScenePass(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH,
 
 	frame.pass = SDL_BeginGPURenderPass(frame.cmds, &colorInfo, 1, &depthInfo);
 	if (!frame.pass) return false;
+	InvalidateMeshState();
 	SetSceneViewport(frame, vpX, vpY, vpW, vpH);
 	frame.drew3D = true;
 	return true;
@@ -215,24 +216,6 @@ void RenderSceneMesh(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& un
 	unsigned indexCount = (unsigned)tri_cnt * 3;
 	unsigned startIndex = (unsigned)first_tri * 3;
 	DrawMesh(frame.dev, nullptr, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), p, frame.sampleCount);
-}
-
-void RenderSceneMeshExtra(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& uniforms, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const MeshDrawParams& base, const MeshExtraStage* extras, int extraCount) {
-	if (!extras || extraCount <= 0 || !mesh || tri_cnt <= 0 || vert_cnt <= 0) return;
-	if (first_vert < 0 || first_tri < 0) return;
-	if ((unsigned)first_vert + (unsigned)vert_cnt > mesh->maxVerts) return;
-	if ((unsigned)first_tri + (unsigned)tri_cnt > mesh->maxTris) return;
-	if (!frame.cmds || !frame.dev) return;
-
-	unsigned indexCount = (unsigned)tri_cnt * 3;
-	unsigned startIndex = (unsigned)first_tri * 3;
-	if (!frame.active()) {
-		if (!BeginScenePass(frame, frame.vpX, frame.vpY, frame.vpW, frame.vpH, 0, 0, 0, false, false)) return;
-	}
-	for (int k = 0; k < extraCount; ++k) {
-		if (!extras[k].tex) continue;
-		DrawMeshExtraStage(frame.dev, frame.cmds, frame.pass, mesh, (const float*)&uniforms, (unsigned)sizeof(uniforms), indexCount, startIndex, first_vert, SceneColorFormat(), MeshDepthFormat(frame.dev), extras[k], base, frame.sampleCount);
-	}
 }
 
 void EndSceneFrame(GpuSceneFrame& frame) {

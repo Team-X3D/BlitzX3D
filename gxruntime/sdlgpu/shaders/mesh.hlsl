@@ -210,6 +210,23 @@ SamplerState MeshSamp : register(s0, space2);
 Texture2D MeshTex1 : register(t1, space2);
 SamplerState MeshSamp1 : register(s1, space2);
 
+Texture2D StageTex0 : register(t0, space2);
+Texture2D StageTex1 : register(t1, space2);
+Texture2D StageTex2 : register(t2, space2);
+Texture2D StageTex3 : register(t3, space2);
+Texture2D StageTex4 : register(t4, space2);
+Texture2D StageTex5 : register(t5, space2);
+Texture2D StageTex6 : register(t6, space2);
+Texture2D StageTex7 : register(t7, space2);
+SamplerState StageSamp0 : register(s0, space2);
+SamplerState StageSamp1 : register(s1, space2);
+SamplerState StageSamp2 : register(s2, space2);
+SamplerState StageSamp3 : register(s3, space2);
+SamplerState StageSamp4 : register(s4, space2);
+SamplerState StageSamp5 : register(s5, space2);
+SamplerState StageSamp6 : register(s6, space2);
+SamplerState StageSamp7 : register(s7, space2);
+
 cbuffer PSParams : register(b0, space3)
 {
 	float4 psStage1;
@@ -219,6 +236,10 @@ cbuffer PSParams : register(b0, space3)
 	float4 psMat1B;
 	float4 psBump;
 	float4 psFlat;
+	float4 psStage[8];
+	float4 psMatA[8];
+	float4 psMatB[8];
+	float4 psBumpEnv[8];
 };
 
 float2 xformUV(float2 uv, float4 A, float4 B)
@@ -233,52 +254,69 @@ float4 shadeColor(VSOut i)
 	return (psFlat.x > 0.5) ? i.colorFlat : i.color;
 }
 
-float4 PSMain(VSOut i) : SV_Target0
+void applyStage(float4 t, float4 st, float4 bump, inout float3 current, inout float alpha, inout float2 bumpOfs)
 {
-	float2 uv = xformUV(i.uv, psMat0A, psMat0B);
-	float4 tex = MeshTex.Sample(MeshSamp, uv) * shadeColor(i);
-	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
-		discard;
-	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
-	return tex;
+	int op = (int)(st.x + 0.5);
+	if (op == 6) {
+		bumpOfs = float2(dot(t.rg - 0.5, bump.xy), dot(t.rg - 0.5, bump.zw));
+		return;
+	}
+	if (op == 1)      current = lerp(current, t.rgb, t.a);
+	else if (op == 2) current = saturate(current * t.rgb);
+	else if (op == 3) current = saturate(current + t.rgb);
+	else if (op == 4) current = saturate(dot(current - 0.5, t.rgb - 0.5) * 4.0);
+	else if (op == 5) current = saturate(current * t.rgb * 2.0);
+	if (st.z > 0.5) alpha = saturate(alpha * t.a);
 }
 
-float4 PSMain2Tex(VSOut i) : SV_Target0
+#define MULTI_STAGE(N, TEX, SAMP) \
+	if (psStage[N].x > 0.5) { \
+		float2 mbase = (psStage[N].y > 0.5) ? i.uv1 : i.uv; \
+		float2 muv = xformUV(mbase, psMatA[N], psMatB[N]) + bumpOfs; \
+		applyStage(TEX.Sample(SAMP, muv), psStage[N], psBumpEnv[N], current, alpha, bumpOfs); \
+	}
+
+#ifndef NSTAGES
+#define NSTAGES 8
+#endif
+
+float4 PSMainMulti(VSOut i) : SV_Target0
 {
-	float2 uv = xformUV(i.uv, psMat0A, psMat0B);
-	float2 uv1base = (psStage1.y > 0.5) ? i.uv1 : i.uv;
-	float2 uv1 = xformUV(uv1base, psMat1A, psMat1B);
-	float op = psStage1.x;
-	if (op > 5.5) {
-		float4 bump = MeshTex1.Sample(MeshSamp1, uv1);
-		float2 duv = float2(dot(bump.rg - 0.5, psBump.xy), dot(bump.rg - 0.5, psBump.zw));
-		float4 tex = MeshTex.Sample(MeshSamp, uv + duv) * shadeColor(i);
-		if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
-			discard;
-		tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
-		return tex;
-	}
-	float4 tex = MeshTex.Sample(MeshSamp, uv) * shadeColor(i);
-	float4 t1 = MeshTex1.Sample(MeshSamp1, uv1);
-	if (op < 1.5) {
-		tex.rgb = lerp(tex.rgb, t1.rgb, t1.a);
-	} else if (op < 2.5) {
-		tex.rgb = saturate(tex.rgb * t1.rgb);
-	} else if (op < 3.5) {
-		tex.rgb = saturate(tex.rgb + t1.rgb);
-	} else if (op < 4.5) {
-		float d = dot(tex.rgb - 0.5, t1.rgb - 0.5) * 4.0;
-		tex.rgb = saturate(d);
-	} else {
-		tex.rgb = saturate(tex.rgb * t1.rgb * 2.0);
-	}
-	if (psStage1.w > 0.5)
-		tex.a = saturate(tex.a * t1.a);
-	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+	float4 base = shadeColor(i);
+	float3 current = base.rgb;
+	float alpha = base.a;
+	float2 bumpOfs = float2(0.0, 0.0);
+#if NSTAGES > 0
+	MULTI_STAGE(0, StageTex0, StageSamp0)
+#endif
+#if NSTAGES > 1
+	MULTI_STAGE(1, StageTex1, StageSamp1)
+#endif
+#if NSTAGES > 2
+	MULTI_STAGE(2, StageTex2, StageSamp2)
+#endif
+#if NSTAGES > 3
+	MULTI_STAGE(3, StageTex3, StageSamp3)
+#endif
+#if NSTAGES > 4
+	MULTI_STAGE(4, StageTex4, StageSamp4)
+#endif
+#if NSTAGES > 5
+	MULTI_STAGE(5, StageTex5, StageSamp5)
+#endif
+#if NSTAGES > 6
+	MULTI_STAGE(6, StageTex6, StageSamp6)
+#endif
+#if NSTAGES > 7
+	MULTI_STAGE(7, StageTex7, StageSamp7)
+#endif
+	if (i.testParams.x > 0.5 && alpha < i.testParams.y)
 		discard;
-	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
-	return tex;
+	current = lerp(current, i.fogColor.rgb, i.fog);
+	return float4(current, alpha);
 }
+
+#undef MULTI_STAGE
 
 TextureCube MeshTexCube : register(t0, space2);
 TextureCube MeshTex1Cube : register(t1, space2);
@@ -340,22 +378,3 @@ float4 PSMainCubeCube(VSOut i) : SV_Target0
 	return tex;
 }
 
-Texture2D ExtraTex : register(t0, space2);
-SamplerState ExtraSamp : register(s0, space2);
-
-cbuffer PSExtraParams : register(b0, space3)
-{
-	float4 psExtra;
-	float4 psExtraMatA;
-	float4 psExtraMatB;
-};
-
-float4 PSMainExtra(VSOut i) : SV_Target0
-{
-	float2 base = (psExtra.x > 0.5) ? i.uv1 : i.uv;
-	float2 uv = xformUV(base, psExtraMatA, psExtraMatB);
-	float4 tex = ExtraTex.Sample(ExtraSamp, uv);
-	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
-		discard;
-	return tex;
-}

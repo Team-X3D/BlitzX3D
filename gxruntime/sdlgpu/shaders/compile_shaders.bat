@@ -3,15 +3,12 @@ setlocal
 set HERE=%~dp0
 if "%DXC_EXE%"=="" set DXC_EXE=%HERE%..\..\..\tools\dxc-x64\dxc.exe
 "%DXC_EXE%" -spirv -T vs_6_0 -E VSMain mesh.hlsl -Fo mesh_vs.spv || exit /b 1
-"%DXC_EXE%" -spirv -T ps_6_0 -E PSMain mesh.hlsl -Fo mesh_ps.spv || exit /b 1
-"%DXC_EXE%" -T vs_6_0 -E VSMain mesh.hlsl -Fo mesh_vs.dxil || exit /b 1
-"%DXC_EXE%" -T ps_6_0 -E PSMain mesh.hlsl -Fo mesh_ps.dxil || exit /b 1
+for %%N in (1,2,3,4,5,6,7,8) do (
+"%DXC_EXE%" -spirv -T ps_6_0 -E PSMainMulti -DNSTAGES=%%N mesh.hlsl -Fo mesh_ps%%N.spv || exit /b 1
+"%DXC_EXE%" -T ps_6_0 -E PSMainMulti -DNSTAGES=%%N mesh.hlsl -Fo mesh_ps%%N.dxil || exit /b 1
+)
 "%DXC_EXE%" -spirv -T vs_6_0 -E VSMainSkinned mesh.hlsl -Fo skin_vs.spv || exit /b 1
 "%DXC_EXE%" -T vs_6_0 -E VSMainSkinned mesh.hlsl -Fo skin_vs.dxil || exit /b 1
-"%DXC_EXE%" -spirv -T ps_6_0 -E PSMain2Tex mesh.hlsl -Fo mesh_ps2.spv || exit /b 1
-"%DXC_EXE%" -T ps_6_0 -E PSMain2Tex mesh.hlsl -Fo mesh_ps2.dxil || exit /b 1
-"%DXC_EXE%" -spirv -T ps_6_0 -E PSMainExtra mesh.hlsl -Fo mesh_psextra.spv || exit /b 1
-"%DXC_EXE%" -T ps_6_0 -E PSMainExtra mesh.hlsl -Fo mesh_psextra.dxil || exit /b 1
 "%DXC_EXE%" -spirv -T ps_6_0 -E PSMainCube mesh.hlsl -Fo mesh_pscube.spv || exit /b 1
 "%DXC_EXE%" -T ps_6_0 -E PSMainCube mesh.hlsl -Fo mesh_pscube.dxil || exit /b 1
 "%DXC_EXE%" -spirv -T ps_6_0 -E PSMainCubeTex mesh.hlsl -Fo mesh_pscubetex.spv || exit /b 1

@@ -906,9 +906,6 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 				sdlgpu::MeshDrawParams p;
 				fillGpuDrawParams(p, dev);
 				sdlgpu::RenderSceneMesh(gpuFrame, mesh->getGpuMirror(), uniforms, first_vert, vert_cnt, first_tri, tri_cnt, p);
-				sdlgpu::MeshExtraStage extras[6];
-				int nExtra = fillGpuExtraStages(extras, 6, dev);
-				if (nExtra > 0) sdlgpu::RenderSceneMeshExtra(gpuFrame, mesh->getGpuMirror(), uniforms, first_vert, vert_cnt, first_tri, tri_cnt, p, extras, nExtra);
 				drewGpu = true;
 			}
 		}
@@ -1189,6 +1186,7 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 	PackGpuUvMatrix(p.uvMat0A, p.uvMat0B, nullptr);
 	PackGpuUvMatrix(p.uvMat1A, p.uvMat1B, nullptr);
 	p.bumpMat[0] = p.bumpMat[1] = p.bumpMat[2] = p.bumpMat[3] = 0.0f;
+	p.cube0 = p.cube1 = false;
 	if (n_texs > 0 && texstate[0].canvas) {
 		p.tex = sdlgpu::GetCanvasTexture(dev, texstate[0].canvas);
 		int f0 = texstate[0].canvas->getFlags();
@@ -1212,46 +1210,40 @@ void gxScene::fillGpuDrawParams(sdlgpu::MeshDrawParams& p, SDL_GPUDevice* dev) {
 			p.wrapV1 = (f1 & gxCanvas::CANVAS_TEX_CLAMPV) == 0;
 			p.point1 = (f1 & gxCanvas::CANVAS_TEX_POINT) != 0;
 			if (texstate[1].mat_valid) PackGpuUvMatrix(p.uvMat1A, p.uvMat1B, &texstate[1].matrix);
-			if (texstate[1].blend == BLEND_BUMPENVMAP) {
-				float m00 = *(float*)&texstate[1].bumpEnvMat[0][0];
-				float m01 = *(float*)&texstate[1].bumpEnvMat[0][1];
-				float m10 = *(float*)&texstate[1].bumpEnvMat[1][0];
-				float m11 = *(float*)&texstate[1].bumpEnvMat[1][1];
-				if (bumpNormalize && texstate[1].canvas) {
-					float w = (float)texstate[1].canvas->getWidth();
-					float h = (float)texstate[1].canvas->getHeight();
-					if (w > 0.0f) { m00 *= w; m01 *= w; }
-					if (h > 0.0f) { m10 *= h; m11 *= h; }
-				}
-				p.bumpMat[0] = m00; p.bumpMat[1] = m01; p.bumpMat[2] = m10; p.bumpMat[3] = m11;
-			}
 		}
 	}
-}
 
-int gxScene::fillGpuExtraStages(sdlgpu::MeshExtraStage* out, int maxOut, SDL_GPUDevice* dev) {
-	if (!out || maxOut <= 0) return 0;
-	int count = 0;
-	for (int k = 2; k < n_texs && k < MAX_TEXTURES && count < maxOut; ++k) {
-		const TexState& state = texstate[k];
-		if (!state.canvas || !state.blend) continue;
-		SDL_GPUTexture* t = sdlgpu::GetCanvasTexture(dev, state.canvas);
+	p.stageCount = 0;
+	for (int k = 0; k < n_texs && k < MAX_TEXTURES; ++k) {
+		const TexState& st = texstate[k];
+		if (!st.canvas || !st.blend) continue;
+		if (p.stageCount >= sdlgpu::MESH_MAX_STAGES) break;
+		SDL_GPUTexture* t = sdlgpu::GetCanvasTexture(dev, st.canvas);
 		if (!t) continue;
-		sdlgpu::MeshExtraStage& e = out[count++];
-		e.tex = t;
-		switch (state.blend) {
-			case BLEND_ADD: e.blend = sdlgpu::MESH_BLEND_EXTRA_ADD; break;
-			case BLEND_ALPHA: e.blend = sdlgpu::MESH_BLEND_ALPHA; break;
-			default: e.blend = sdlgpu::MESH_BLEND_EXTRA_MUL; break;
+		sdlgpu::MeshStage& s = p.stages[p.stageCount++];
+		s.tex = t;
+		s.blend = st.blend;
+		s.useUV1 = (st.flags & TEX_COORDS2) != 0;
+		s.alpha = (st.canvas->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) != 0;
+		int f = st.canvas->getFlags();
+		s.wrapU = (f & gxCanvas::CANVAS_TEX_CLAMPU) == 0;
+		s.wrapV = (f & gxCanvas::CANVAS_TEX_CLAMPV) == 0;
+		s.point = (f & gxCanvas::CANVAS_TEX_POINT) != 0;
+		PackGpuUvMatrix(s.matA, s.matB, st.mat_valid ? &st.matrix : nullptr);
+		if (st.blend == BLEND_BUMPENVMAP) {
+			float m00 = *(float*)&st.bumpEnvMat[0][0];
+			float m01 = *(float*)&st.bumpEnvMat[0][1];
+			float m10 = *(float*)&st.bumpEnvMat[1][0];
+			float m11 = *(float*)&st.bumpEnvMat[1][1];
+			if (bumpNormalize) {
+				float w = (float)st.canvas->getWidth();
+				float h = (float)st.canvas->getHeight();
+				if (w > 0.0f) { m00 *= w; m01 *= w; }
+				if (h > 0.0f) { m10 *= h; m11 *= h; }
+			}
+			s.bump[0] = m00; s.bump[1] = m01; s.bump[2] = m10; s.bump[3] = m11;
 		}
-		e.useUV1 = (state.flags & TEX_COORDS2) != 0;
-		PackGpuUvMatrix(e.matA, e.matB, state.mat_valid ? &state.matrix : nullptr);
-		int f = state.canvas->getFlags();
-		e.wrapU = (f & gxCanvas::CANVAS_TEX_CLAMPU) == 0;
-		e.wrapV = (f & gxCanvas::CANVAS_TEX_CLAMPV) == 0;
-		e.point = (f & gxCanvas::CANVAS_TEX_POINT) != 0;
 	}
-	return count;
 }
 
 void gxScene::computeGpuSkinnedUniforms(sdlgpu::MeshUniforms& u) const {
@@ -1293,9 +1285,6 @@ void gxScene::renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int firs
 				fillGpuDrawParams(p, dev);
 				p.boneBuf = bones;
 				sdlgpu::RenderSceneMesh(gpuFrame, mesh->getGpuMirror(), uniforms, first_vert, vert_cnt, first_tri, tri_cnt, p);
-				sdlgpu::MeshExtraStage extras[6];
-				int nExtra = fillGpuExtraStages(extras, 6, dev);
-				if (nExtra > 0) sdlgpu::RenderSceneMeshExtra(gpuFrame, mesh->getGpuMirror(), uniforms, first_vert, vert_cnt, first_tri, tri_cnt, p, extras, nExtra);
 				drewGpu = true;
 			}
 		}

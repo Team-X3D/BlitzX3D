@@ -497,6 +497,7 @@ bool PreparePendingText(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds) {
 
 static void DrawRanges(SDL_GPUDevice* dev, SDL_GPURenderPass* pass, SDL_GPUGraphicsPipeline* pipe, const std::vector<DrawRange>& ranges) {
 	if (!dev || !pass || !pipe || !g_textVb || ranges.empty()) return;
+	InvalidateMeshState();
 	SDL_BindGPUGraphicsPipeline(pass, pipe);
 	SDL_GPUBufferBinding vb{};
 	vb.buffer = g_textVb;
