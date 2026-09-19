@@ -360,8 +360,11 @@ void PumpEvents(SDL_Window* win, gxRuntime* rt) {
 			rt->asyncEnd();
 			return;
 		case SDL_EVENT_KEY_DOWN:
-			if (!ev.key.repeat && rt->input) {
-				if (int dik = SdlScancodeToDIK((int)ev.key.scancode)) rt->input->wm_keydown(dik);
+			if (rt->input) {
+				if (ev.key.scancode == SDL_SCANCODE_BACKSPACE) rt->input->wm_char(8, 1);
+				if (!ev.key.repeat) {
+					if (int dik = SdlScancodeToDIK((int)ev.key.scancode)) rt->input->wm_keydown(dik);
+				}
 			}
 			break;
 		case SDL_EVENT_KEY_UP:
