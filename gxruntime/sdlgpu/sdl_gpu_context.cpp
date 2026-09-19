@@ -122,7 +122,10 @@ SDL_GPUDevice* CreateGPUDevice() {
 #endif
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXIL_BOOLEAN, true);
-	// SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan");
+	HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+	if (ntdll && GetProcAddress(ntdll, "wine_get_version")) {
+		SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan");
+	}
 #ifdef _DEBUG
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, true);
 #else
