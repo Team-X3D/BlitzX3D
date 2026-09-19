@@ -130,8 +130,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="English.cpp" />
-    <ClCompile Include="SimplifiedChinese.cpp" />
-    <ClCompile Include="TraditionalChinese.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

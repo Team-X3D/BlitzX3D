@@ -23,11 +23,5 @@
     <ClCompile Include="English.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="SimplifiedChinese.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="TraditionalChinese.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>
