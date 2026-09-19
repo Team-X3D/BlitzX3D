@@ -397,7 +397,7 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 
 	if (has3D) { int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh, clearColor); }
 
-	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds) : nullptr;
+	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds, nullptr, has3D) : nullptr;
 	bool haveText = HasPendingText();
 	bool textReady = haveText && PreparePendingText(dev, cmds);
 	if (canvasTex || textReady || !has3D) {

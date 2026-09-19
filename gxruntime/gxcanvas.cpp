@@ -763,7 +763,7 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
 static bool isRenderTarget(IDirect3DSurface9* s);
 
 
-static bool tryGpuSprite(gxCanvas* self, const RECT& dest_r, gxCanvas* src, const RECT& src_r, unsigned tint, bool smooth) {
+static bool tryGpuSprite(gxCanvas* self, const RECT& dest_r, gxCanvas* src, const RECT& src_r, unsigned tint, bool smooth, unsigned maskRGB = ~0u) {
     if (!self || !src || src == self) return false;
     if (dest_r.right <= dest_r.left || dest_r.bottom <= dest_r.top) return true;
     if (src_r.right <= src_r.left || src_r.bottom <= src_r.top) return true;
@@ -773,8 +773,12 @@ static bool tryGpuSprite(gxCanvas* self, const RECT& dest_r, gxCanvas* src, cons
     GpuBack b;
     if (!gpuDrawTarget(self, b)) return false;
     struct SDL_GPUDevice* dev = b.dev;
-    struct SDL_GPUTexture* tex = (struct SDL_GPUTexture*)sdlgpu::GetCanvasTexture(dev, src);
+    bool masked = (maskRGB != ~0u);
+    struct SDL_GPUTexture* tex = masked
+        ? (struct SDL_GPUTexture*)sdlgpu::GetCanvasMaskedTexture(dev, src, maskRGB)
+        : (struct SDL_GPUTexture*)sdlgpu::GetCanvasTexture(dev, src);
     if (!tex) return false;
+    if (masked) smooth = false;
     int cw = self->getWidth(), ch = self->getHeight();
     int tw = src->getWidth(), th = src->getHeight();
     if (cw <= 0 || ch <= 0 || tw <= 0 || th <= 0) return false;
@@ -1440,6 +1444,10 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
     if (!::clip(src->clip_rect, &src_r, &dest_r)) return;
 
     if (solid && tryGpuSprite(this, dest_r, src, src_r, 0xffffffff, false)) return;
+    if (!solid && src->hasMask()) {
+        unsigned maskRGB = src->format.toARGB(src->mask_surf) & 0x00ffffffu;
+        if (tryGpuSprite(this, dest_r, src, src_r, 0xffffffff, false, maskRGB)) return;
+    }
 
     if (solid) {
         D3DSURFACE_DESC srcDesc, dstDesc;
@@ -1522,7 +1530,8 @@ void gxCanvas::blitstretch(int x, int y, int w, int h,
 
     if (!::clip(src->clip_rect, &src_r)) return;
 
-    if (!src->hasMask() && tryGpuSprite(this, dest_r, src, src_r, 0xffffffff, true)) return;
+    if (tryGpuSprite(this, dest_r, src, src_r, 0xffffffff, true,
+        src->hasMask() ? (src->format.toARGB(src->mask_surf) & 0x00ffffffu) : ~0u)) return;
 
     if (!isRenderTarget(surf)) {
         cpuBlit(this, dest_r, src, src_r, solid);
@@ -1665,7 +1674,8 @@ void gxCanvas::blitAlpha(int x, int y, gxCanvas* src,
     if (!clip(&dest_r, &src_r)) return;
     if (!::clip(src->clip_rect, &src_r, &dest_r)) return;
 
-    if (tryGpuSprite(this, dest_r, src, src_r, color_argb, filter)) return;
+    if (tryGpuSprite(this, dest_r, src, src_r, color_argb, filter,
+        src->hasMask() ? (src->format.toARGB(src->mask_surf) & 0x00ffffffu) : ~0u)) return;
 
     if (!isRenderTarget(surf)) {
         cpuBlitAlpha(this, dest_r, src, src_r, color_argb);

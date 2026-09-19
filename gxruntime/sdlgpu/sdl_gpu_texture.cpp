@@ -23,10 +23,13 @@ static struct CanvasTexEntry {
 	unsigned w = 0, h = 0;
 	bool rt = false;
 	bool mips = false;
+	bool keyCls = true;
+	unsigned mask = 0;
 } ;
 
 static std::unordered_map< ::gxCanvas*, CanvasTexEntry> g_canvasTexMap;
 static std::unordered_map< ::gxCanvas*, CanvasTexEntry> g_canvasOverlayMap;
+static std::unordered_map< ::gxCanvas*, CanvasTexEntry> g_canvasMaskMap;
 
 static struct CanvasDepthEntry {
 	SDL_GPUTexture* tex = nullptr;
@@ -96,6 +99,15 @@ void TeardownTexturePools(SDL_GPUDevice* dev) {
 			it = g_canvasOverlayMap.erase(it);
 		} else ++it;
 	}
+	for (auto it = g_canvasMaskMap.begin(); it != g_canvasMaskMap.end(); ) {
+		if (!dev || it->second.dev == dev) {
+			if (it->second.tex) {
+				InvalidatePendingTexture(it->second.tex);
+				SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
+			}
+			it = g_canvasMaskMap.erase(it);
+		} else ++it;
+	}
 	for (auto it = g_canvasDepthMap.begin(); it != g_canvasDepthMap.end(); ) {
 		if (!dev || it->second.dev == dev) {
 			if (it->second.tex) SDL_ReleaseGPUTexture(it->second.dev, it->second.tex);
@@ -116,6 +128,11 @@ void InvalidateCanvasTextures(::gxCanvas* canvas) {
 	if (jt != g_canvasOverlayMap.end()) {
 		if (jt->second.tex) RetireTexture(jt->second.dev, jt->second.tex);
 		g_canvasOverlayMap.erase(jt);
+	}
+	auto mt = g_canvasMaskMap.find(canvas);
+	if (mt != g_canvasMaskMap.end()) {
+		if (mt->second.tex) RetireTexture(mt->second.dev, mt->second.tex);
+		g_canvasMaskMap.erase(mt);
 	}
 	auto dt = g_canvasDepthMap.find(canvas);
 	if (dt != g_canvasDepthMap.end()) {
@@ -368,6 +385,54 @@ SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
 	return tex;
 }
 
+SDL_GPUTexture* GetCanvasMaskedTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas, unsigned maskRGB) {
+	GpuLock lock;
+	if (!dev || !canvas) return nullptr;
+	unsigned w = (unsigned)canvas->getWidth();
+	unsigned h = (unsigned)canvas->getHeight();
+	if (!w || !h) return nullptr;
+	int mod = canvas->getModify();
+	auto it = g_canvasMaskMap.find(canvas);
+	if (it != g_canvasMaskMap.end() && it->second.tex && it->second.dev == dev && it->second.w == w
+		&& it->second.h == h && it->second.modCnt == mod && it->second.mask == maskRGB) {
+		return it->second.tex;
+	}
+	SDL_GPUTexture* tex = nullptr;
+	bool isNew = false;
+	if (it != g_canvasMaskMap.end() && it->second.tex && it->second.dev == dev && it->second.w == w && it->second.h == h) {
+		tex = it->second.tex;
+	} else {
+		SDL_GPUTexture* old = nullptr;
+		SDL_GPUDevice* oldDev = dev;
+		if (it != g_canvasMaskMap.end()) { old = it->second.tex; oldDev = it->second.dev; g_canvasMaskMap.erase(it); }
+		if (old) RetireTexture(oldDev, old);
+		tex = CreateTexture2D(dev, w, h, false);
+		if (!tex) return nullptr;
+		isNew = true;
+	}
+	static thread_local std::vector<unsigned char> rgba;
+	try {
+		rgba.resize((size_t)w * h * 4);
+	} catch (...) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
+	if (!canvas->ensureCPUBits()) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
+	unsigned char* bits = canvas->cpu_bits;
+	int pitch = canvas->cpu_pitch;
+	if (!bits || pitch <= 0 || (unsigned)canvas->cpu_h != h) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
+	for (unsigned y = 0; y < h; ++y) {
+		unsigned char* row = &rgba[(size_t)y * w * 4];
+		ConvertPixelsToRGBA(canvas->format, bits + (size_t)y * pitch, row, w);
+		for (unsigned x = 0; x < w; ++x) {
+			unsigned rgb = ((unsigned)row[x * 4] << 16) | ((unsigned)row[x * 4 + 1] << 8) | row[x * 4 + 2];
+			if ((rgb & 0x00ffffffu) == maskRGB) row[x * 4 + 3] = 0;
+		}
+	}
+	if (!UploadTextureRGBA(dev, tex, w, h, rgba.data(), !isNew)) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
+	CanvasTexEntry e;
+	e.tex = tex; e.dev = dev; e.modCnt = mod; e.w = w; e.h = h; e.mask = maskRGB;
+	g_canvasMaskMap[canvas] = e;
+	return tex;
+}
+
 static SDL_GPUTexture* CreateRenderTarget2D(SDL_GPUDevice* dev, unsigned w, unsigned h) {
 	if (!dev || !w || !h) return nullptr;
 	if (!SDL_GPUTextureSupportsFormat(dev, SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, SDL_GPU_TEXTURETYPE_2D,
@@ -440,7 +505,7 @@ SDL_GPUTexture* EnsureCanvasDepthTarget(SDL_GPUDevice* dev, ::gxCanvas* canvas, 
 	return tex;
 }
 
-SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) {
+SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas, bool keyCls) {
 	GpuLock lock;
 	if (!dev || !canvas) return nullptr;
 	unsigned w = (unsigned)canvas->getWidth();
@@ -448,7 +513,7 @@ SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) 
 	if (!w || !h) return nullptr;
 	int mod = canvas->getModify();
 	auto it = g_canvasOverlayMap.find(canvas);
-	if (it != g_canvasOverlayMap.end() && it->second.tex && it->second.dev == dev && it->second.modCnt == mod && it->second.w == w && it->second.h == h) {
+	if (it != g_canvasOverlayMap.end() && it->second.tex && it->second.dev == dev && it->second.modCnt == mod && it->second.w == w && it->second.h == h && it->second.keyCls == keyCls) {
 		return it->second.tex;
 	}
 	SDL_GPUTexture* tex = nullptr;
@@ -476,17 +541,17 @@ SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::gxCanvas* canvas) 
 		ConvertPixelsToRGBA(canvas->format, canvas->getLockedSurf() + (size_t)y * canvas->getLockedPitch(), row, w);
 		for (unsigned x = 0; x < w; ++x) {
 			unsigned rgb = ((unsigned)row[x * 4] << 16) | ((unsigned)row[x * 4 + 1] << 8) | row[x * 4 + 2];
-			row[x * 4 + 3] = (rgb == clsRgb) ? 0 : 255;
+			row[x * 4 + 3] = (keyCls && rgb == clsRgb) ? 0 : 255;
 		}
 	}
 	canvas->unlock();
 	if (!UploadTextureRGBA(dev, tex, w, h, rgba.data(), !isNew)) { if (isNew && tex) SDL_ReleaseGPUTexture(dev, tex); return nullptr; }
-	CanvasTexEntry e; e.tex = tex; e.dev = dev; e.modCnt = mod; e.w = w; e.h = h;
+	CanvasTexEntry e; e.tex = tex; e.dev = dev; e.modCnt = mod; e.w = w; e.h = h; e.keyCls = keyCls;
 	g_canvasOverlayMap[canvas] = e;
 	return tex;
 }
 
-SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUCommandBuffer* cmds, bool* didUpload) {
+SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* canvas, SDL_GPUCommandBuffer* cmds, bool* didUpload, bool keyCls) {
 	GpuLock lock;
 	if (didUpload) *didUpload = false;
 	if (!dev || !canvas) return nullptr;
@@ -495,10 +560,10 @@ SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* c
 	if (!w || !h) return nullptr;
 	int mod = canvas->getModify();
 	auto it = g_canvasOverlayMap.find(canvas);
-	if (it != g_canvasOverlayMap.end() && it->second.tex && it->second.dev == dev && it->second.modCnt == mod && it->second.w == w && it->second.h == h) {
+	if (it != g_canvasOverlayMap.end() && it->second.tex && it->second.dev == dev && it->second.modCnt == mod && it->second.w == w && it->second.h == h && it->second.keyCls == keyCls) {
 		return it->second.tex;
 	}
-	if (!cmds) return GetCanvasOverlayTexture(dev, canvas);
+	if (!cmds) return GetCanvasOverlayTexture(dev, canvas, keyCls);
 	SDL_GPUTexture* tex = nullptr;
 	bool isNew = false;
 	if (it != g_canvasOverlayMap.end() && it->second.tex && it->second.dev == dev && it->second.w == w && it->second.h == h) {
@@ -526,7 +591,7 @@ SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* c
 			canvas->getLockedSurf() + (size_t)(uy + y) * canvas->getLockedPitch() + (size_t)ux * srcBpp, row, uw);
 		for (unsigned x = 0; x < uw; ++x) {
 			unsigned rgb = ((unsigned)row[x * 4] << 16) | ((unsigned)row[x * 4 + 1] << 8) | row[x * 4 + 2];
-			row[x * 4 + 3] = (rgb == clsRgb) ? 0 : 255;
+			row[x * 4 + 3] = (keyCls && rgb == clsRgb) ? 0 : 255;
 		}
 	}
 	canvas->unlock();
@@ -555,7 +620,7 @@ SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::gxCanvas* c
 	ReleaseUploadTransferBuffer(dev, buf);
 	canvas->clearSDLDirty();
 	if (didUpload) *didUpload = true;
-	CanvasTexEntry e; e.tex = tex; e.dev = dev; e.modCnt = mod; e.w = w; e.h = h;
+	CanvasTexEntry e; e.tex = tex; e.dev = dev; e.modCnt = mod; e.w = w; e.h = h; e.keyCls = keyCls;
 	g_canvasOverlayMap[canvas] = e;
 	return tex;
 }
