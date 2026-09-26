@@ -55,6 +55,7 @@ struct VSOut
 	float4 pos : SV_Position;
 	float4 color : COLOR0;
 	nointerpolation float4 colorFlat : COLOR1;
+	float3 spec : TEXCOORD7;
 	float2 uv : TEXCOORD0;
 	float2 uv1 : TEXCOORD1;
 	float fog : TEXCOORD2;
@@ -98,6 +99,7 @@ VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 	float4 worldPos = mul(world, float4(lPos, 1.0));
 	float3 nW = normalize(mul(world, float4(lNrm, 0.0)).xyz);
 	float3 V = normalize(eyePos.xyz - worldPos.xyz);
+	float3 Vinf = -viewZ.xyz;
 
 	float3 difAcc = float3(0.0, 0.0, 0.0);
 	float3 ambAcc = matA * ambient.rgb;
@@ -132,7 +134,7 @@ VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 		ambAcc += matA * lightAmb[li].rgb * atten;
 		difAcc += matD * lightColor[li].rgb * (ndl * atten);
 		if (doSpec && ndl > 0.0) {
-			float3 H = normalize(hitDir + V);
+			float3 H = normalize(hitDir + Vinf);
 			specAcc += lightSpec[li].rgb * (pow(clamp(dot(nW, H), 0.0, 1.0), max(matSpec.w, 1.0)) * atten);
 		}
 	}
@@ -140,18 +142,22 @@ VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 	if (flags.y > 0.5) {
 		finalRgb = matD;
 	} else {
-		finalRgb = clamp(matE + ambAcc + difAcc, 0.0, 1.0) + matSpec.rgb * clamp(specAcc, 0.0, 1.0);
+		finalRgb = clamp(matE + ambAcc + difAcc, 0.0, 1.0);
 	}
 
 	o.color = float4(finalRgb, baseA);
 	o.colorFlat = o.color;
+	o.spec = matSpec.rgb * clamp(specAcc, 0.0, 1.0);
 	float3 nV = float3(dot(nW, viewX.xyz), dot(nW, viewY.xyz), dot(nW, viewZ.xyz));
-	float2 sph = float2(nV.x * 0.5 + 0.5, -nV.y * 0.5 + 0.5);
+	float3 vDir = float3(dot(worldPos.xyz - eyePos.xyz, viewX.xyz), dot(worldPos.xyz - eyePos.xyz, viewY.xyz), dot(worldPos.xyz - eyePos.xyz, viewZ.xyz));
+	float3 rfl = reflect(normalize(vDir), nV);
+	float sphM = length(rfl + float3(0.0, 0.0, 1.0)) * 2.0;
+	float2 sph = rfl.xy / sphM + 0.5;
 	float2 baseUv0 = (texGen.z > 0.5) ? uv1 : uv;
 	o.uv = (texGen.x > 0.5) ? sph : baseUv0;
 	o.uv1 = (texGen.y > 0.5) ? sph : uv1;
 
-	float dist = distance(worldPos.xyz, eyePos.xyz);
+	float dist = abs(dot(worldPos.xyz - eyePos.xyz, viewZ.xyz));
 	float f = 0.0;
 	if (fogParams.w > 0.5 && fogParams.w < 1.5) {
 		float span = max(fogParams.y - fogParams.x, 1e-6);
@@ -310,7 +316,8 @@ float4 PSMainMulti(VSOut i) : SV_Target0
 #if NSTAGES > 7
 	MULTI_STAGE(7, StageTex7, StageSamp7)
 #endif
-	if (i.testParams.x > 0.5 && alpha < i.testParams.y)
+	current += i.spec;
+	if (i.testParams.x > 0.5 && alpha <= i.testParams.y)
 		discard;
 	current = lerp(current, i.fogColor.rgb, i.fog);
 	return float4(current, alpha);
@@ -336,7 +343,8 @@ float4 blendStages(float4 tex, float4 t1, float op, float alphaFlag)
 float4 PSMainCube(VSOut i) : SV_Target0
 {
 	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * shadeColor(i);
-	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+	tex.rgb += i.spec;
+	if (i.testParams.x > 0.5 && tex.a <= i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
 	return tex;
@@ -349,7 +357,8 @@ float4 PSMainCubeTex(VSOut i) : SV_Target0
 	float2 uv1 = xformUV(uv1base, psMat1A, psMat1B);
 	float4 t1 = MeshTex1.Sample(MeshSamp1, uv1);
 	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
-	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+	tex.rgb += i.spec;
+	if (i.testParams.x > 0.5 && tex.a <= i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
 	return tex;
@@ -361,7 +370,8 @@ float4 PSMainTexCube(VSOut i) : SV_Target0
 	float4 tex = MeshTex.Sample(MeshSamp, uv) * shadeColor(i);
 	float4 t1 = MeshTex1Cube.Sample(MeshSamp1, i.refl1);
 	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
-	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+	tex.rgb += i.spec;
+	if (i.testParams.x > 0.5 && tex.a <= i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
 	return tex;
@@ -372,7 +382,8 @@ float4 PSMainCubeCube(VSOut i) : SV_Target0
 	float4 tex = MeshTexCube.Sample(MeshSamp, i.refl) * shadeColor(i);
 	float4 t1 = MeshTex1Cube.Sample(MeshSamp1, i.refl1);
 	tex = blendStages(tex, t1, psStage1.x, psStage1.w);
-	if (i.testParams.x > 0.5 && tex.a < i.testParams.y)
+	tex.rgb += i.spec;
+	if (i.testParams.x > 0.5 && tex.a <= i.testParams.y)
 		discard;
 	tex.rgb = lerp(tex.rgb, i.fogColor.rgb, i.fog);
 	return tex;
