@@ -15,98 +15,122 @@ public:
 	gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* cube_tex, int flags);
 	gxCanvas(gxGraphics* g, int w, int h, int flags);
 	~gxCanvas();
-	bool isCpuCanvas()const { return !surf && !tex && !cube_tex && !plain_surf; }
 
 	gxGraphics* graphics;
-
-	void backup();
-	void restore();
-
-	IDirect3DSurface9* getSurface()  const;
-	IDirect3DBaseTexture9* getTexture() const;
-
-	mutable int mod_cnt;
-	mutable bool mipmapNeeded;
-
-	mutable IDirect3DTexture9* blit_tex;
-	mutable int blit_tex_mod_cnt;
-	mutable unsigned blit_tex_mask;
-
-	mutable int locked_pitch, locked_cnt, lock_mod_cnt, remip_cnt;
-	mutable unsigned char* locked_surf;
-	mutable bool lock_is_rt;
-	mutable bool lock_ro;
-	mutable bool lock_d3d = false;
+	PixelFormat format;
+	RECT clip_rect;
+	int logical_w, logical_h;
+	IDirect3DSurface9* surf; // the "active" surf
+	IDirect3DSurface9* z_surf; // depth/stencil surf
 	mutable unsigned char* cpu_bits = nullptr;
 	mutable int cpu_pitch = 0, cpu_w = 0, cpu_h = 0;
-	mutable bool d3d_dirty = false;
-	mutable RECT sdlDirtyRect;
-	mutable bool sdlDirtyValid;
 	mutable bool cpu_keep = false;
 
-	PixelFormat format;
-
-	RECT clip_rect;
-
-	unsigned mask_surf, color_surf, color_argb, clsColor_surf;
-	bool has_mask;
+	//ACCESSORS
+	int getWidth()const;
+	int getHeight()const;
+	int getDepth()const;
+	int getFlags()const { return flags; }
+	int cubeMode()const { return cube_mode; }
+	int getCubeFace()const { return cube_face; }
+	void getOrigin(int* x, int* y)const;
+	void getHandle(int* x, int* y)const;
+	void getViewport(int* x, int* y, int* w, int* h)const;
+	unsigned getMask()const;
+	bool hasMask()const { return has_mask; }
+	void copyMaskFrom(const gxCanvas* src) { mask_surf = src->mask_surf; has_mask = src->has_mask; }
+	unsigned getColor()const;
+	unsigned getClsColor()const;
+	IDirect3DSurface9* getSurface() const;
+	IDirect3DBaseTexture9* getTexture() const;
+	IDirect3DBaseTexture9* getTexSurface() const;
+	void setMipmapNeeded(bool needed) const { mipmapNeeded = needed; }
 
 	void setModify(int n);
 	int  getModify() const;
 
+	bool isCpuCanvas()const { return !surf && !tex && !cube_tex && !plain_surf; }
+
+	void setFont(gxFont* f);
+	void setMask(unsigned argb);
+	void setColor(unsigned argb);
+	void setClsColor(unsigned argb);
+	void setOrigin(int x, int y);
+	void setHandle(int x, int y);
+	void setViewport(int x, int y, int w, int h);
+	void setLogicalSize(int w, int h) { logical_w = w; logical_h = h; }
+
+	//MANIPULATORS
+	void fillRect(const RECT& r, unsigned argb);
+	void cls();
+	void plot(int x, int y);
+	void line(int x, int y, int x2, int y2);
+	void rect(int x, int y, int w, int h, bool solid);
+	void rectBlend(int x, int y, int w, int h, unsigned argb);
+	void oval(int x, int y, int w, int h, bool solid);
+	void text(int x, int y, const std::string& t);
+	void blit(int x, int y, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, bool solid);
+	void blitstretch(int x, int y, int w, int h, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, bool solid);
+	void blitAlpha(int x, int y, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, unsigned color_argb, bool filter = false);
+	void blitTForm(int x, int y, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, float mat[2][2], bool filter);
+
+	bool collide(int x, int y, const gxCanvas* src, int src_x, int src_y, bool solid)const;
+	bool rect_collide(int x, int y, int rect_x, int rect_y, int rect_w, int rect_h, bool solid)const;
+
+	void beginBlitBatch() const;
+	void endBlitBatch() const;
+
+	//LOCKING
+	bool lock()const;
+	bool lockRO()const;
+	bool isLocked()const { return locked_cnt > 0; }
+	unsigned char* getLockedSurf()const { return locked_surf; }
+	int getLockedPitch()const { return locked_pitch; }
+	void unlock()const;
+
+	//CPU STORE
+	bool ensureCPUBits()const;
+	void releaseCPUBitsIfUnused()const;
+
+	//PIXELS
+	void setPixel(int x, int y, unsigned argb);
+	void setPixelFast(int x, int y, unsigned argb) {
+		format.setPixel(locked_surf + y * locked_pitch + x * format.getPitch(), argb);
+		++mod_cnt;
+	}
+	unsigned getPixel(int x, int y)const;
+	unsigned getPixelFast(int x, int y)const {
+		return format.getPixel(locked_surf + y * locked_pitch + x * format.getPitch());
+	}
+	void copyPixel(int x, int y, gxCanvas* src, int src_x, int src_y);
+	void copyPixelFast(int x, int y, gxCanvas* src, int src_x, int src_y);
+
+	//DEVICE LOSS
+	void backup();
+	void restore();
 	bool attachZBuffer();
 	void releaseZBuffer();
-
 	void restoreZBuffer();
 
-	bool clip(RECT* d)          const;
+	bool clip(RECT* d) const;
 	bool clip(RECT* d, RECT* s) const;
-	void damage(const RECT& r)  const;
+	void damage(const RECT& r) const;
 	void damageD3D(const RECT& r) const;
 	void damageScene(const RECT& r) const;
 	bool pushAllD3D() const;
+	bool getSDLDirtyRect(RECT& out)const {
+		if (!sdlDirtyValid) return false;
+		out = sdlDirtyRect;
+		return true;
+	}
+	void clearSDLDirty()const { sdlDirtyValid = false; }
 
 	void set2DEffect(gxEffect* effect);
 	gxEffect* get2DEffect() const;
 
-	IDirect3DSurface9* surf;             // the "active" surf
-	IDirect3DSurface9* z_surf;           // depth/stencil surf
+	void setCubeMode(int mode);
+	void setCubeFace(int face);
 
-private:
-	int   flags, cube_mode, cube_face;
-
-	IDirect3DSurface9* plain_surf;   // non text offscreen surf
-	IDirect3DTexture9* tex;
-	IDirect3DCubeTexture9* cube_tex;
-
-	IDirect3DSurface9* cube_surfs[6];
-
-	mutable IDirect3DSurface9* t_surf;
-
-	mutable int cm_pitch;
-	mutable unsigned* cm_mask;
-
-	gxEffect* effect2D;
-	gxFont* font;
-	RECT viewport;
-	int origin_x, origin_y, handle_x, handle_y;
-
-	void updateBitMask(const RECT& r) const;
-	bool lockImpl(bool ro)const;
-	bool lockD3DRO() const;
-	void allocCPUStore(int w, int h) const;
-	void sizeCPUStore(int w, int h) const;
-	bool ensureTemp(int w, int h, int fmt) const;
-	bool pullD3D() const;
-	bool pushRectD3D(const RECT& r) const;
-	void damageImpl(const RECT& r, bool cpuSource) const;
-
-	mutable int blit_batch_depth;
-	mutable bool blit_batch_active;
-	mutable void* blit_batch_saved;
-
-	/***** GX INTERFACE *****/
-public:
 	enum {
 		CANVAS_TEX_RGB = 0x0001,
 		CANVAS_TEX_ALPHA = 0x0002,
@@ -137,87 +161,48 @@ public:
 		CUBESPACE_CAMERA = 4
 	};
 
-	void fillRect(const RECT& r, unsigned argb);
+private:
+	void allocCPUStore(int w, int h) const;
+	void sizeCPUStore(int w, int h) const;
+	bool syncFromGpu() const;
+	bool lockImpl(bool ro)const;
+	void updateBitMask(const RECT& r) const;
+	void damageImpl(const RECT& r, bool cpuSource) const;
+	static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const RECT& src_r, bool solid);
+	bool ensureTemp(int w, int h, int fmt) const;
+	bool pushRectD3D(const RECT& r) const;
 
-	//MANIPULATORS
-	void setFont(gxFont* font);
-	void setMask(unsigned argb);
-	void setColor(unsigned argb);
-	void setClsColor(unsigned argb);
-	void setOrigin(int x, int y);
-	void setHandle(int x, int y);
-	void setViewport(int x, int y, int w, int h);
+	int   flags, cube_mode, cube_face;
 
-	void cls();
-	void plot(int x, int y);
-	void line(int x, int y, int x2, int y2);
-	void rect(int x, int y, int w, int h, bool solid);
-	void rectBlend(int x, int y, int w, int h, unsigned argb);
-	void oval(int x, int y, int w, int h, bool solid);
-	void text(int x, int y, const std::string& t);
-	void blit(int x, int y, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, bool solid);
+	IDirect3DSurface9* plain_surf; // non-text offscreen surf
+	IDirect3DTexture9* tex; // opaque handles kept for 3D
+	IDirect3DCubeTexture9* cube_tex;
+	IDirect3DSurface9* cube_surfs[6];
+	mutable IDirect3DSurface9* t_surf = nullptr;
 
-	void blitstretch(int x, int y, int w, int h, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, bool solid);//for CopyRectStretch
+	mutable int  mod_cnt;
+	mutable bool gpuNewer;
+	mutable bool cpuTouched;
+	mutable bool mipmapNeeded;
+	mutable int  remip_cnt;
 
-	void blitAlpha(int x, int y, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, unsigned color_argb, bool filter = false);//for anti-aliased fonts
+	mutable int  locked_pitch, locked_cnt, lock_mod_cnt;
+	mutable unsigned char* locked_surf;
+	mutable bool lock_ro;
 
-	void blitTForm(int x, int y, gxCanvas* src, int src_x, int src_y, int src_w, int src_h, float mat[2][2], bool filter);
+	mutable RECT sdlDirtyRect;
+	mutable bool sdlDirtyValid;
 
-	bool collide(int x, int y, const gxCanvas* src, int src_x, int src_y, bool solid)const;
-	bool rect_collide(int x, int y, int rect_x, int rect_y, int rect_w, int rect_h, bool solid)const;
+	mutable int cm_pitch;
+	mutable unsigned* cm_mask;
 
-	void beginBlitBatch() const;
-	void endBlitBatch() const;
+	gxEffect* effect2D;
+	gxFont* font;
+	RECT viewport;
+	int origin_x, origin_y, handle_x, handle_y;
 
-	bool lock()const;
-	bool lockRO()const;
-	bool ensureCPUBits()const;
-	void releaseCPUBitsIfUnused()const;
-	bool isLocked()const { return locked_cnt > 0; }
-	bool getSDLDirtyRect(RECT& out)const {
-		if (!sdlDirtyValid) return false;
-		out = sdlDirtyRect;
-		return true;
-	}
-	void clearSDLDirty()const { sdlDirtyValid = false; }
-	unsigned char* getLockedSurf()const { return locked_surf; }
-	int getLockedPitch()const { return locked_pitch; }
-	void setPixel(int x, int y, unsigned argb);
-	void setPixelFast(int x, int y, unsigned argb) {
-		format.setPixel(locked_surf + y * locked_pitch + x * format.getPitch(), argb);
-		++mod_cnt;
-	}
-	void copyPixel(int x, int y, gxCanvas* src, int src_x, int src_y);
-	void copyPixelFast(int x, int y, gxCanvas* src, int src_x, int src_y);
-	unsigned getPixel(int x, int y)const;
-	unsigned getPixelFast(int x, int y)const {
-		return format.getPixel(locked_surf + y * locked_pitch + x * format.getPitch());
-	};
-	void unlock()const;
-
-	void setCubeMode(int mode);
-	void setCubeFace(int face);
-
-	int logical_w, logical_h;
-	void setLogicalSize(int w, int h) { logical_w = w; logical_h = h; }
-
-	//ACCESSORS
-	int getWidth()const;
-	int getHeight()const;
-	int getDepth()const;
-	int getFlags()const { return flags; }
-	int cubeMode()const { return cube_mode; }
-	int getCubeFace()const { return cube_face; }
-	void getOrigin(int* x, int* y)const;
-	void getHandle(int* x, int* y)const;
-	void getViewport(int* x, int* y, int* w, int* h)const;
-	unsigned getMask()const;
-	bool hasMask()const { return has_mask; }
-	void copyMaskFrom(const gxCanvas* src) { mask_surf = src->mask_surf; has_mask = src->has_mask; }
-	unsigned getColor()const;
-	unsigned getClsColor()const;
-	IDirect3DBaseTexture9* getTexSurface() const;
-	void setMipmapNeeded(bool needed) const { mipmapNeeded = needed; }
+	unsigned mask_surf, color_surf, color_argb, clsColor_surf;
+	bool has_mask;
 };
 
 #endif
