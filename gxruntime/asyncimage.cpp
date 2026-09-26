@@ -5,6 +5,17 @@
 #include <SDL3_image/SDL_image.h>
 
 #include <chrono>
+#include <unordered_map>
+
+namespace {
+struct ImageCache {
+	std::mutex mutex;
+	std::unordered_map<std::string, std::shared_ptr<const DecodedImage>> map;
+	size_t bytes = 0;
+	static constexpr size_t kMaxBytes = 256u * 1024u * 1024u;
+};
+ImageCache& imageCache() { static ImageCache c; return c; }
+}
 
 AsyncImageLoader& AsyncImageLoader::instance() {
 	static AsyncImageLoader loader;
@@ -19,6 +30,21 @@ std::unique_ptr<DecodedImage> DecodeImageFile(const std::string& file, std::stri
 		}
 		return nullptr;
 	};
+
+	{
+		ImageCache& c = imageCache();
+		std::unique_lock<std::mutex> lock(c.mutex);
+		auto it = c.map.find(file);
+		if (it != c.map.end() && it->second) {
+			auto out = std::make_unique<DecodedImage>();
+			out->w = it->second->w;
+			out->h = it->second->h;
+			out->hasAlpha = it->second->hasAlpha;
+			try { out->rgba = it->second->rgba; }
+			catch (...) { return nullptr; }
+			return out;
+		}
+	}
 
 	SDL_Surface* surf = IMG_Load(file.c_str());
 	if (!surf) return fail("Load failed");
@@ -92,6 +118,22 @@ std::unique_ptr<DecodedImage> DecodeImageFile(const std::string& file, std::stri
 		px += 4;
 	}
 	img->hasAlpha = hasAlpha;
+
+	{
+		ImageCache& c = imageCache();
+		std::unique_lock<std::mutex> lock(c.mutex);
+		size_t sz = img->rgba.size() + sizeof(DecodedImage);
+		if (c.bytes + sz > ImageCache::kMaxBytes) { c.map.clear(); c.bytes = 0; }
+		try {
+			auto stored = std::make_shared<DecodedImage>();
+			stored->w = img->w;
+			stored->h = img->h;
+			stored->hasAlpha = img->hasAlpha;
+			stored->rgba = img->rgba;
+			c.map[file] = stored;
+			c.bytes += sz;
+		} catch (...) {}
+	}
 
 	return img;
 }

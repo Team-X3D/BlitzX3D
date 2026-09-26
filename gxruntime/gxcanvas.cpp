@@ -7,6 +7,7 @@
 #include "sdlgpu/sdl_gpu_texture.h"
 #include "sdlgpu/sdl_gpu_text.h"
 #include <SDL3/SDL_log.h>
+#include <emmintrin.h>
 
 extern gxRuntime* gx_runtime;
 
@@ -58,13 +59,19 @@ static bool clip(const RECT& viewport, RECT* d, RECT* s) {
 }
 
 static inline void fillRectRows(unsigned char* base, int basePitch, int w, int h, unsigned nat, int pitch) {
+    if (pitch == 4) {
+        __m128i v = _mm_set1_epi32((int)nat);
+        int m = w & ~3, tail = w & 3;
+        for (int y = 0; y < h; ++y) {
+            unsigned* p = (unsigned*)(base + y * basePitch);
+            for (int x = 0; x < m; x += 4) _mm_storeu_si128((__m128i*)(p + x), v);
+            for (int x = 0; x < tail; ++x) p[m + x] = nat;
+        }
+        return;
+    }
     for (int y = 0; y < h; ++y) {
         unsigned char* row = base + y * basePitch;
-        if (pitch == 4) {
-            unsigned* p = (unsigned*)row;
-            for (int x = 0; x < w; ++x) p[x] = nat;
-        }
-        else if (pitch == 2) {
+        if (pitch == 2) {
             unsigned short val = (unsigned short)nat;
             unsigned short* p = (unsigned short*)row;
             for (int x = 0; x < w; ++x) p[x] = val;

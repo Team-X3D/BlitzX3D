@@ -13,6 +13,7 @@
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_properties.h>
+#include <emmintrin.h>
 
 namespace sdlgpu {
 
@@ -116,22 +117,37 @@ static void ConvertCanvasRectToRGBA(const PixelFormat& fmt,
 	if (!srcBits || !dst || !w || !h || srcPitch <= 0) return;
 	if (fmt.is8888()) {
 		unsigned fill = fmt.hasAlphaMask() ? 0u : 0xff000000u;
+		__m128i vFill = _mm_set1_epi32((int)fill);
+		__m128i mKeep = _mm_set1_epi32((int)0xff00ff00u);
+		__m128i mR = _mm_set1_epi32((int)0x00ff0000u);
+		__m128i mB = _mm_set1_epi32((int)0x000000ffu);
+		__m128i mRGB = _mm_set1_epi32((int)0x00ffffffu);
+		__m128i mAhi = _mm_set1_epi32((int)0xff000000u);
+		__m128i vCls = _mm_set1_epi32((int)clsRgb);
+		unsigned m = w & ~3u;
 		for (unsigned y = 0; y < h; ++y) {
 			const unsigned* s = (const unsigned*)(srcBits + (size_t)(y0 + y) * (size_t)srcPitch + (size_t)x0 * 4);
 			unsigned* d = (unsigned*)(dst + (size_t)y * (size_t)dstPitch);
-			if (!keyCls) {
-				for (unsigned x = 0; x < w; ++x) {
-					unsigned argb = s[x] | fill;
-					d[x] = (argb & 0xff00ff00u) | ((argb & 0x00ff0000u) >> 16) | ((argb & 0x000000ffu) << 16);
+			unsigned x = 0;
+			for (; x < m; x += 4) {
+				__m128i v = _mm_or_si128(_mm_loadu_si128((const __m128i*)(s + x)), vFill);
+				__m128i out = _mm_or_si128(_mm_and_si128(v, mKeep),
+					_mm_or_si128(_mm_srli_epi32(_mm_and_si128(v, mR), 16),
+						_mm_slli_epi32(_mm_and_si128(v, mB), 16)));
+				if (keyCls) {
+					__m128i eq = _mm_cmpeq_epi32(_mm_and_si128(v, mRGB), vCls);
+					out = _mm_or_si128(_mm_and_si128(out, mRGB), _mm_andnot_si128(eq, mAhi));
 				}
+				_mm_storeu_si128((__m128i*)(d + x), out);
 			}
-			else {
-				for (unsigned x = 0; x < w; ++x) {
-					unsigned argb = s[x] | fill;
-					unsigned out = (argb & 0xff00ff00u) | ((argb & 0x00ff0000u) >> 16) | ((argb & 0x000000ffu) << 16);
+			for (; x < w; ++x) {
+				unsigned argb = s[x] | fill;
+				unsigned out = (argb & 0xff00ff00u) | ((argb & 0x00ff0000u) >> 16) | ((argb & 0x000000ffu) << 16);
+				if (keyCls) {
 					bool match = (argb & 0x00ffffffu) == clsRgb;
-					d[x] = (out & 0x00ffffffu) | (match ? 0x00000000u : 0xff000000u);
+					out = (out & 0x00ffffffu) | (match ? 0x00000000u : 0xff000000u);
 				}
+				d[x] = out;
 			}
 		}
 		return;

@@ -441,9 +441,14 @@ public:
 		return Line(t, (*this) * (q.o + q.d) - t);
 	}
 	Box operator*(const Box& q)const {
-		Box t((*this * q.corner(0)));
-		for (int k = 1; k < 8; ++k) t.update(*this * q.corner(k));
-		return t;
+		Vector c((q.a.x + q.b.x) * .5f, (q.a.y + q.b.y) * .5f, (q.a.z + q.b.z) * .5f);
+		Vector e((q.b.x - q.a.x) * .5f, (q.b.y - q.a.y) * .5f, (q.b.z - q.a.z) * .5f);
+		Vector nc = (*this) * c;
+		Vector ne(
+			fabsf(m.i.x) * e.x + fabsf(m.j.x) * e.y + fabsf(m.k.x) * e.z,
+			fabsf(m.i.y) * e.x + fabsf(m.j.y) * e.y + fabsf(m.k.y) * e.z,
+			fabsf(m.i.z) * e.x + fabsf(m.j.z) * e.y + fabsf(m.k.z) * e.z);
+		return Box(nc - ne, nc + ne);
 	}
 	Transform& operator*(const Transform& q)const {
 		Transform& t = alloc_tmp();

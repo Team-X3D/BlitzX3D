@@ -46,6 +46,26 @@ MeshCollider::MeshCollider(const std::vector<Vertex>& verts, const std::vector<T
 	tree = createNode(ts);
 	tri_centres.clear();
 	tri_centres.shrink_to_fit();
+	triBoxes.reserve(triangles.size());
+	for (size_t k = 0; k < triangles.size(); ++k) {
+		const MeshCollider::Triangle& t = triangles[k];
+		Box b(vertices[t.verts[0]].coords);
+		b.update(vertices[t.verts[1]].coords);
+		b.update(vertices[t.verts[2]].coords);
+		triBoxes.push_back(b);
+	}
+}
+
+static bool isRigid(const Matrix& m) {
+	const float e = 1e-4f;
+	float ix = m.i.x * m.i.x + m.i.y * m.i.y + m.i.z * m.i.z;
+	float jx = m.j.x * m.j.x + m.j.y * m.j.y + m.j.z * m.j.z;
+	float kx = m.k.x * m.k.x + m.k.y * m.k.y + m.k.z * m.k.z;
+	if (fabsf(ix - 1) > e || fabsf(jx - 1) > e || fabsf(kx - 1) > e) return false;
+	if (fabsf(m.i.x * m.j.x + m.i.y * m.j.y + m.i.z * m.j.z) > e) return false;
+	if (fabsf(m.i.x * m.k.x + m.i.y * m.k.y + m.i.z * m.k.z) > e) return false;
+	if (fabsf(m.j.x * m.k.x + m.j.y * m.k.y + m.j.z * m.k.z) > e) return false;
+	return true;
 }
 
 MeshCollider::~MeshCollider() {
@@ -59,9 +79,48 @@ bool MeshCollider::collide(const Line& line, float radius, Collision* curr_coll,
 	//create local box
 	Box box(line);
 	box.expand(radius);
-	Box local_box = -t * box;
+	Transform inv = -t;
+	Box local_box = inv * box;
 
+	if (isRigid(t.m)) {
+		Line local_line = inv * line;
+		bool hit = collideLocal(local_box, local_line, radius, curr_coll, tree);
+		if (hit) curr_coll->normal = t.m * curr_coll->normal;
+		return hit;
+	}
 	return collide(local_box, line, radius, t, curr_coll, tree);
+}
+
+bool MeshCollider::collideLocal(const Box& line_box, const Line& local_line, float radius, Collision* curr_coll, Node* node) {
+	if (!line_box.overlaps(node->box)) {
+		return false;
+	}
+
+	bool hit = false;
+	if (!node->triangles.size()) {
+		if (node->left) hit |= collideLocal(line_box, local_line, radius, curr_coll, node->left);
+		if (node->right) hit |= collideLocal(line_box, local_line, radius, curr_coll, node->right);
+		return hit;
+	}
+
+	stats3d[0] += node->triangles.size();
+
+	for (size_t k = 0; k < node->triangles.size(); ++k) {
+		int ti = node->triangles[k];
+		if (!triBoxes[ti].overlaps(line_box)) continue;
+
+		const Triangle& tri = triangles[ti];
+		if (!curr_coll->triangleCollide(local_line, radius,
+			vertices[tri.verts[0]].coords,
+			vertices[tri.verts[1]].coords,
+			vertices[tri.verts[2]].coords)) continue;
+
+		curr_coll->surface = tri.surface;
+		curr_coll->index = tri.index;
+
+		hit = true;
+	}
+	return hit;
 }
 
 bool MeshCollider::collide(const Box& line_box, const Line& line, float radius, const Transform& tform, Collision* curr_coll, MeshCollider::Node* node) {
@@ -78,18 +137,14 @@ bool MeshCollider::collide(const Box& line_box, const Line& line, float radius, 
 
 	stats3d[0] += node->triangles.size();
 
-	for (int k = 0; k < node->triangles.size(); ++k) {
+	for (size_t k = 0; k < node->triangles.size(); ++k) {
+		int ti = node->triangles[k];
+		if (!triBoxes[ti].overlaps(line_box)) continue;
 
-		const Triangle& tri = triangles[node->triangles[k]];
+		const Triangle& tri = triangles[ti];
 		const Vector& t_v0 = vertices[tri.verts[0]].coords;
 		const Vector& t_v1 = vertices[tri.verts[1]].coords;
 		const Vector& t_v2 = vertices[tri.verts[2]].coords;
-
-		//tri box
-		Box tri_box(t_v0);
-		tri_box.update(t_v1);
-		tri_box.update(t_v2);
-		if (!tri_box.overlaps(line_box)) continue;
 
 		if (!curr_coll->triangleCollide(line, radius, tform * t_v0, tform * t_v1, tform * t_v2)) continue;
 

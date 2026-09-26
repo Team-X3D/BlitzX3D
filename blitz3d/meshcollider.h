@@ -34,11 +34,13 @@ private:
 
 	Node* tree;
 	std::vector<Node*> leaves;
+	std::vector<Box> triBoxes;
 
 	Box nodeBox(const std::vector<int>& tris);
 	Node* createLeaf(const std::vector<int>& tris);
 	Node* createNode(const std::vector<int>& tris);
 	bool collide(const Box& box, const Line& line, float radius, const Transform& tform, Collision* curr_coll, Node* node);
+	bool collideLocal(const Box& line_box, const Line& local_line, float radius, Collision* curr_coll, Node* node);
 };
 
 #endif

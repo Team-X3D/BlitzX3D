@@ -157,7 +157,7 @@ VSOut shadeMesh(float3 lPos, float3 lNrm, float4 vcol, float2 uv, float2 uv1)
 	o.uv = (texGen.x > 0.5) ? sph : baseUv0;
 	o.uv1 = (texGen.y > 0.5) ? sph : uv1;
 
-	float dist = abs(dot(worldPos.xyz - eyePos.xyz, viewZ.xyz));
+	float dist = distance(worldPos.xyz, eyePos.xyz);
 	float f = 0.0;
 	if (fogParams.w > 0.5 && fogParams.w < 1.5) {
 		float span = max(fogParams.y - fogParams.x, 1e-6);
