@@ -39,65 +39,9 @@ Need help, have a question, or found a problem?
 * [**SCP – Treachery**](https://www.moddb.com/mods/treachery)
 * [**YOU ARE NOT IMPORTANT**](https://www.moddb.com/mods/you-are-not-important)
 
-<table>
-  <tr>
-    <td align="center">
-      <img
-        src="https://github.com/user-attachments/assets/5d8a96fb-757a-439a-b2e6-aa7df22818e4"
-        width="400"
-        height="225"
-        style="object-fit: cover;"
-      />
-      <br />
-      <b>SCP – Containment Breach Ultimate Edition Reborn 1.6</b>
-    </td>
-    <td align="center">
-      <img
-        src="https://github.com/user-attachments/assets/931cc3fb-85f9-4cfc-a498-78ba3b36e72b"
-        width="400"
-        height="225"
-        style="object-fit: cover;"
-      />
-      <br />
-      <b>SCP – Terror Hunt</b>
-    </td>
-    <td align="center">
-      <img
-        src="https://github.com/user-attachments/assets/632a8ca7-0809-481a-8576-be22d758f3d1"
-        width="400"
-        height="225"
-        style="object-fit: cover;"
-      />
-      <br />
-      <b>SCP – Containment Breach Amended</b>
-    </td>
-    <td align="center">
-      <img
-        src="https://github.com/user-attachments/assets/38e30707-45a6-4bdb-a2c9-68ba96cb8f6a"
-        width="400"
-        height="225"
-        style="object-fit: cover;"
-      />
-      <br />
-      <b>YOU ARE NOT IMPORTANT</b>
-    </td>
-  </tr>
-</table>
-
-<table>
-  <tr>
-    <td align="center">
-      <img
-        src="https://github.com/user-attachments/assets/93e66689-5b9c-4c4f-a1c2-ebd72b11c68f"
-        width="400"
-        height="225"
-        style="object-fit: cover;"
-      />
-      <br />
-      <b>SCP – Treachery</b>
-    </td>
-  </tr>
-</table>
+### Verified & total support for
+* [**Stranded II**](https://www.unrealsoftware.de/game_stranded2.php)
+* [**Hard Time**](https://www.mdickie.com/prev_hardtime.htm)
 
 ---
 
