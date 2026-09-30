@@ -658,7 +658,7 @@ std::vector<std::string>* Parser::parseFuncPtrParamTags() {
 			case OBJECT: t = "@"; toker->next(); break;
 			default:
 				t = parseTypeTag();
-				if (!t.size()) t = "%";
+				if (!t.size()) exp("parameter type");
 			}
 			tags->push_back(t);
 			if (toker->curr() != ',') break;
