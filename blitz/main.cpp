@@ -62,13 +62,44 @@ static void err(const std::string& t) {
 	exit(-1);
 }
 
-static void printErrors(const std::vector<Ex>& errors) {
-	for (const Ex& x : errors) {
-		std::string file = '\"' + x.file + '\"';
-		int p = x.pos < 0 ? 0 : x.pos;
-		int row = ((p >> 16) & 65535) + 1, col = (p & 65535) + 1;
-		std::cout << file << ":" << row << ":" << col << ":" << row << ":" << col << ":" << x.ex << std::endl;
+static void printSourceExcerpt(const std::string& file, int row, int col) {
+	std::ifstream in(file, std::ios::binary);
+	if (!in.good()) return;
+
+	std::string line;
+	for (int r = 0; r < row; ++r) {
+		if (!std::getline(in, line)) return;
 	}
+	if (!line.empty() && line.back() == '\r') line.pop_back();
+
+	static const size_t MAX_SHOWN = 200;
+	bool truncated = line.size() > MAX_SHOWN;
+	std::string shown = truncated ? line.substr(0, MAX_SHOWN) + "..." : line;
+
+	std::string num = std::to_string(row);
+	std::string pad(num.size(), ' ');
+
+	std::cout << " " << num << " | " << shown << std::endl;
+
+	std::string caret;
+	for (int i = 1; i < col && i <= (int)line.size(); ++i) {
+		caret += line[i - 1] == '\t' ? '\t' : ' ';
+	}
+	std::cout << " " << pad << " | " << caret << "^" << std::endl;
+}
+
+static void printError(const Ex& x) {
+	int p = x.pos < 0 ? 0 : x.pos;
+	int row = ((p >> 16) & 65535) + 1, col = (p & 65535) + 1;
+
+	std::cout << '\"' << x.file << '\"' << ":" << row << ":" << col << ":" << row << ":" << col << ":" << x.ex << std::endl;
+
+	if (x.pos >= 0 && !x.file.empty()) printSourceExcerpt(x.file, row, col);
+}
+
+static void printErrors(const std::vector<Ex>& errors) {
+	for (const Ex& x : errors) printError(x);
+	if (errors.size() > 1) std::cout << errors.size() << " errors." << std::endl;
 }
 
 static void deploySidecarDlls(const std::string& out_file, bool quiet, bool veryquiet) {
@@ -335,9 +366,7 @@ int _cdecl main(int argc, char* argv[]) {
 	}
 	catch (Ex& x) {
 
-		std::string file = '\"' + x.file + '\"';
-		int row = ((x.pos >> 16) & 65535) + 1, col = (x.pos & 65535) + 1;
-		std::cout << file << ":" << row << ":" << col << ":" << row << ":" << col << ":" << x.ex << std::endl;
+		printError(x);
 		exit(-1);
 	}
 

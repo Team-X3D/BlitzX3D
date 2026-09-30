@@ -7,12 +7,24 @@
 #include "preprocessor.h"
 
 static const int TEXTLIMIT = 1024 * 1024 - 1;
+static const int MAX_NESTING = 1000;
 
 enum {
 	STMTS_PROG, STMTS_BLOCK, STMTS_LINE
 };
 
 static bool isTerm(int c) { return c == ':' || c == '\n'; }
+
+struct NestGuard {
+	int& depth;
+	NestGuard(int& d) :depth(d) {
+		if (++depth > MAX_NESTING) {
+			--depth;
+			throw Ex("Too many nested expressions or blocks");
+		}
+	}
+	~NestGuard() { --depth; }
+};
 
 Parser::Parser(Toker& t) :toker(&t), main_toker(&t) {
 }
@@ -195,6 +207,8 @@ StmtSeqNode* Parser::parseStmtSeq(int scope, bool debug) {
 
 void Parser::parseStmtSeq(StmtSeqNode* stmts, int scope, bool debug) {
 
+	NestGuard nest(depth);
+
 	for (;;) {
 		while (toker->curr() == ':' || (scope != STMTS_LINE && toker->curr() == '\n')) toker->next();
 		StmtNode* result = 0;
@@ -238,48 +252,7 @@ void Parser::parseStmtSeq(StmtSeqNode* stmts, int scope, bool debug) {
 		{
 			std::string ident = toker->text();
 			toker->next();
-			if (experimentalSyntaxEnabled) {
-				result = parseIdentStatement(ident, debug);
-			}
-			else {
-			std::string tag = parseTypeTag();
-			if (arrayDecls.find(ident) == arrayDecls.end()
-				&& toker->curr() != '=' && toker->curr() != '\\' && toker->curr() != '['
-				) {
-				//must be a function
-				ExprSeqNode* exprs;
-				if (toker->curr() == '(') {
-					//ugly lookahead for optional '()' around statement params
-					int nest = 1, k;
-					for (k = 1;; ++k) {
-						int c = toker->lookAhead(k);
-						if (isTerm(c)) ex(MultiLang::mismatched_brackets);
-						else if (c == '(') ++nest;
-						else if (c == ')' && !--nest) break;
-					}
-					if (isTerm(toker->lookAhead(++k))) {
-						toker->next();
-						exprs = parseExprSeq();
-						if (toker->curr() != ')') exp("')'");
-						toker->next();
-					}
-					else exprs = parseExprSeq();
-				}
-				else exprs = parseExprSeq();
-				if ((ident != "debuglog" && ident != "stop") || debug) {
-					CallNode* call = new CallNode(ident, tag, exprs);
-					result = new ExprStmtNode(call);
-				}
-				else { result = 0; }
-			}
-			else {
-				//must be a var
-				std::unique_ptr<VarNode> var(parseVar(ident, tag));
-				if (toker->curr() != '=') exp(MultiLang::variable_assignment);
-				toker->next(); ExprNode* expr = parseExpr(false);
-				result = new AssNode(var.release(), expr);
-			}
-			}
+			result = parseIdentStatement(ident, debug);
 		}
 		break;
 		case IS:
@@ -970,6 +943,7 @@ ExprNode* Parser::parseSelectExpr() {
 }
 
 ExprNode* Parser::parseExpr(bool opt) {
+	NestGuard nest(depth);
 	if (toker->curr() == NOT) {
 		toker->next();
 		ExprNode* expr = parseExpr1(false);
@@ -1077,6 +1051,7 @@ ExprNode* Parser::parseExpr6(bool opt) {
 }
 
 ExprNode* Parser::parseUniExpr(bool opt) {
+	NestGuard nest(depth);
 	ExprNode* result = 0;
 	std::string t;
 
@@ -1161,7 +1136,7 @@ ExprNode* Parser::parseUniExpr(bool opt) {
 
 ExprNode* Parser::parsePrimary(bool opt) {
 	std::unique_ptr<ExprNode> expr;
-	std::string t, ident, tag;
+	std::string t, ident;
 	ExprNode* result = 0;
 	int n, k;
 
@@ -1249,25 +1224,7 @@ ExprNode* Parser::parsePrimary(bool opt) {
 	case IDENT:
 		ident = toker->text();
 		toker->next();
-		if (experimentalSyntaxEnabled) {
-			result = parsePrimaryIdent(ident);
-		}
-		else {
-			tag = parseTypeTag();
-			if (toker->curr() == '(' && arrayDecls.find(ident) == arrayDecls.end()) {
-				//must be a func
-				toker->next();
-				std::unique_ptr<ExprSeqNode> exprs(parseExprSeq());
-				if (toker->curr() != ')') exp("')'");
-				toker->next();
-				result = new CallNode(ident, tag, exprs.release());
-			}
-			else {
-				//must be a var
-				VarNode* var = parseVar(ident, tag);
-				result = new VarExprNode(var);
-			}
-		}
+		result = parsePrimaryIdent(ident);
 		break;
 	case DO:
 	case LOOP:

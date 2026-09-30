@@ -638,7 +638,7 @@ void Toker::nextline()
         }
         tokes.push_back(Toke(c, from, ++k));
     }
-    if (!tokes.size()) exit(0);
+    if (tokes.empty()) tokes.push_back(Toke('\n', 0, 1));
 }
 
 int Toker::next()

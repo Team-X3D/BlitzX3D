@@ -20,6 +20,7 @@ public:
 private:
 	std::string incfile;
 	std::set<std::string> included;
+	int depth = 0;
 	Toker* toker, * main_toker;
 	std::map<std::string, DimNode*> arrayDecls;
 	std::vector<DeclVarNode*> withStack;
