@@ -38,7 +38,10 @@ static inline void debugFile(bbFile* f, const char* function) {
 
 static inline void debugDir(gxDir* d, const char* function) {
 	if (!gx_filesys->verifyDir(d)) {
-		ErrorLog(function, MultiLang::directory_not_exist);
+		// durhh...... only log fatal eerorrs in debug builds... i think i'm smarht!
+		errorfunc = function;
+		errorlog = MultiLang::directory_not_exist;
+		RTEX(MultiLang::directory_not_exist);
 	}
 }
 
