@@ -254,8 +254,8 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	}
 
 	DWORD valueIndex = 0;
-	LPWSTR valueName = new WCHAR[maxValueNameSize];
-	LPBYTE valueData = new BYTE[maxValueDataSize];
+	LPWSTR valueName = new WCHAR[maxValueNameSize + 1];
+	LPBYTE valueData = new BYTE[maxValueDataSize + sizeof(WCHAR)];
 	DWORD valueNameSize, valueDataSize, valueType;
 	std::wstring wsFontFile;
 
@@ -263,8 +263,8 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	do {
 
 		wsFontFile.clear();
-		valueDataSize = maxValueDataSize;
-		valueNameSize = maxValueNameSize;
+		valueDataSize = maxValueDataSize + sizeof(WCHAR);
+		valueNameSize = maxValueNameSize + 1;
 
 		result = RegEnumValueW(hKey, valueIndex, valueName, &valueNameSize, 0, &valueType, valueData, &valueDataSize);
 
@@ -279,7 +279,10 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 		// Found a match
 		if (_wcsnicmp(wsFaceName.c_str(), wsValueName.c_str(), wsFaceName.length()) == 0) {
 
-			wsFontFile.assign((LPWSTR)valueData, valueDataSize);
+			size_t wlen = valueDataSize / sizeof(WCHAR);
+			wsFontFile.assign((LPWSTR)valueData, wlen);
+			size_t nullPos = wsFontFile.find(L'\0');
+			if (nullPos != std::wstring::npos) wsFontFile.resize(nullPos);
 			break;
 		}
 	} while (result != ERROR_NO_MORE_ITEMS);

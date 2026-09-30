@@ -129,14 +129,12 @@ gxTimer* bbCreateTimer(int hertz) {
 
 int bbWaitTimer(gxTimer* t) {
     int n = t->wait();
-    delete t;
     if (!gx_runtime->idle()) RTEX(0);
     return n;
 }
 
 void bbFreeTimer(gxTimer* t) {
     gx_runtime->freeTimer(t);
-    delete t;
 }
 
 std::string utf16_to_utf8(std::u16string&& utf16_string) {
