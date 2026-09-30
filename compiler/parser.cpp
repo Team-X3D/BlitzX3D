@@ -655,7 +655,18 @@ std::vector<std::string>* Parser::parseFuncPtrParamTags() {
 			case BBINT: t = "%"; toker->next(); break;
 			case BBFLOAT: t = "#"; toker->next(); break;
 			case BBSTR: t = "$"; toker->next(); break;
-			case OBJECT: t = "@"; toker->next(); break;
+			case OBJECT:
+				if (toker->lookAhead(1) == '.') {
+					toker->next();
+					toker->next();
+					t = parseIdent();
+				} else {
+					t = "@"; toker->next();
+				}
+				break;
+			case IDENT:
+				t = parseIdent();
+				break;
 			default:
 				t = parseTypeTag();
 				if (!t.size()) exp("parameter type");
