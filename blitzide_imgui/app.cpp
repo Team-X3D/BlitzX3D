@@ -399,7 +399,8 @@ void App::mainloop() {
 		if (keywordsLoaded)
 			drawIde = true;
 
-		if (drawIde || focused || drawIdeAtomic.exchange(false))
+		bool requested = drawIdeAtomic.exchange(false);
+		if (drawIde || focused || requested)
 			frame();
 
 		SDL_WaitEventTimeout(nullptr, 16);
@@ -2114,62 +2115,64 @@ void App::compile(const std::vector<std::string> args) {
 	}
 	appendOutput(">>> " + cmd + "\n");
 	std::string output;
-	bool running = true;
-	int code = -1;
-	
-	std::thread outputUpdateThread([this, &output, &code, &running]() {
-		std::streampos lastLineIndex = 0;
-		while (running)
-		{
-			std::unique_lock<std::mutex> lock(processUpdateMutex);
-			processUpdated.wait(lock, [&running] { return processOutputChanged || !running; });
-			processOutputChanged = false;
-			lock.unlock();
+	ProcessOutput progress;
 
+	std::thread outputUpdateThread([this, &output, &progress]() {
+		size_t consumed = 0;
+		for (;;) {
+			std::string ready;
 			std::vector<std::string> newLines;
+			bool done = false;
 			{
-				std::stringstream ss(output);
-				std::string line;
-				std::streampos pos = ss.tellg();
-				while (std::getline(ss, line, '\n'))
-				{
-					if (pos == std::streampos(-1)) // idk saw this online and i just copied it, but seems to work
-						pos = output.length();
-					if (pos >= lastLineIndex) {
-						if (!line.empty() && line.back() == '\r') line.pop_back();
-						newLines.push_back(line);
-						lastLineIndex = ss.tellg();
-						if (lastLineIndex == std::streampos(-1))
-							lastLineIndex = output.length();
-					}
-					pos = ss.tellg();
+				std::unique_lock<std::mutex> lock(progress.mutex);
+				progress.cv.wait(lock, [&progress] { return progress.changed || progress.done; });
+				progress.changed = false;
+				size_t end;
+				while ((end = output.find('\n', consumed)) != std::string::npos) {
+					std::string line = output.substr(consumed, end - consumed);
+					consumed = end + 1;
+					if (!line.empty() && line.back() == '\r') line.pop_back();
+					ready += line;
+					ready += '\n';
+					newLines.push_back(std::move(line));
 				}
+				if (progress.done && consumed < output.size()) {
+					std::string line = output.substr(consumed);
+					consumed = output.size();
+					if (!line.empty() && line.back() == '\r') line.pop_back();
+					ready += line;
+					ready += '\n';
+					newLines.push_back(std::move(line));
+				}
+				done = progress.done;
 			}
-			{
-				std::lock_guard<std::mutex> lock(outputMutex);
+			if (!ready.empty()) {
+				{
+					std::lock_guard<std::mutex> lock(outputMutex);
+					this->output += ready;
+				}
 				for (const auto& line : newLines)
-					this->output += line + '\n';
+					parseOutputLine(line);
+				this->drawIdeAtomic = true;
 			}
-			for (const auto& line : newLines)
-				parseOutputLine(line);
-
-			this->drawIdeAtomic = true;
+			if (done) break;
 		}
-		if (code != 0) compileOK = false;
-		else if (!publishIconPath.empty() && !publishExePath.empty()) {
-			if (applyIconToExe(publishExePath, publishIconPath)) {
-				appendOutput("Icon applied to executable.\n");
-			}
-			else {
-				appendOutput("Warning: could not apply icon to executable.\n");
-			}
-		}
-		this->drawIdeAtomic = true;
-		this->compiling = false;
 	});
 
-	runProcess(args, output, &code, &running);
+	runProcess(args, output, nullptr, &progress);
 	if (outputUpdateThread.joinable()) outputUpdateThread.join();
+
+	if (progress.exitCode != 0) compileOK = false;
+	else if (!publishIconPath.empty() && !publishExePath.empty()) {
+		if (applyIconToExe(publishExePath, publishIconPath)) {
+			appendOutput("Icon applied to executable.\n");
+		}
+		else {
+			appendOutput("Warning: could not apply icon to executable.\n");
+		}
+	}
+	this->drawIdeAtomic = true;
+	this->compiling = false;
 }
 
 void App::appendOutput(const std::string& text) {

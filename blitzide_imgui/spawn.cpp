@@ -14,15 +14,36 @@
 #include <cstring>
 #endif
 
-int runProcess(const std::vector<std::string>& args, std::string& output, int* exitCode, bool* running) {
+int runProcess(const std::vector<std::string>& args, std::string& output, int* exitCode, ProcessOutput* progress) {
 	output.clear();
 	if (exitCode) *exitCode = -1;
-	if (running) *running = true;
-	
+
+	auto finish = [&](int code) {
+		if (progress) {
+			std::lock_guard<std::mutex> lock(progress->mutex);
+			progress->exitCode = code;
+			progress->done = true;
+			progress->cv.notify_one();
+		}
+		if (exitCode) *exitCode = code;
+	};
+
+	auto append = [&](const char* data, size_t count) {
+		if (progress) {
+			std::lock_guard<std::mutex> lock(progress->mutex);
+			output.append(data, count);
+			progress->changed = true;
+			progress->cv.notify_one();
+		}
+		else {
+			output.append(data, count);
+		}
+	};
+
 #if defined(_WIN32)
 	HANDLE g_hChildStd_OUT_Rd = NULL, g_hChildStd_OUT_Wr = NULL;
 	SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
-	if (!CreatePipe(&g_hChildStd_OUT_Rd, &g_hChildStd_OUT_Wr, &sa, 0)) return -1;
+	if (!CreatePipe(&g_hChildStd_OUT_Rd, &g_hChildStd_OUT_Wr, &sa, 0)) { finish(-1); return -1; }
 	SetHandleInformation(g_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0);
 
 	STARTUPINFOA si = { sizeof(si) };
@@ -35,45 +56,35 @@ int runProcess(const std::vector<std::string>& args, std::string& output, int* e
 	std::vector<char> mutableCmd(cmdline.begin(), cmdline.end());
 	mutableCmd.push_back('\0');
 	if (!CreateProcessA(NULL, mutableCmd.data(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-		if (running) *running = false;
 		CloseHandle(g_hChildStd_OUT_Rd);
 		CloseHandle(g_hChildStd_OUT_Wr);
+		finish(-1);
 		return -1;
 	}
 	CloseHandle(g_hChildStd_OUT_Wr);
 
 	char buf[4096];
 	DWORD n = 0;
-	while (ReadFile(g_hChildStd_OUT_Rd, buf, sizeof(buf), &n, NULL) && n) {
-		{
-			std::lock_guard<std::mutex> lock(processUpdateMutex);
-			output.append(buf, n);
-			processOutputChanged = true;
-		}
-		processUpdated.notify_one();
-	}
+	while (ReadFile(g_hChildStd_OUT_Rd, buf, sizeof(buf), &n, NULL) && n)
+		append(buf, n);
 	CloseHandle(g_hChildStd_OUT_Rd);
 
 	WaitForSingleObject(pi.hProcess, INFINITE);
 	DWORD code = 0;
 	GetExitCodeProcess(pi.hProcess, &code);
-	{
-		std::lock_guard<std::mutex> lock(processUpdateMutex);
-		if (running) *running = false;
-	}
-	processUpdated.notify_one();
-	if (exitCode) *exitCode = (int)code;
 	CloseHandle(pi.hThread);
 	CloseHandle(pi.hProcess);
+	finish((int)code);
 	return 0;
 #else
 	int pipefd[2];
-	if (pipe(pipefd) == -1) return -1;
+	if (pipe(pipefd) == -1) { finish(-1); return -1; }
 
 	pid_t pid = fork();
 	if (pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
+		finish(-1);
 		return -1;
 	}
 	if (pid == 0) {
@@ -90,13 +101,12 @@ int runProcess(const std::vector<std::string>& args, std::string& output, int* e
 	close(pipefd[1]);
 	char buf[4096];
 	ssize_t n;
-	while ((n = read(pipefd[0], buf, sizeof(buf))) > 0) {
-		output.append(buf, n);
-	}
+	while ((n = read(pipefd[0], buf, sizeof(buf))) > 0)
+		append(buf, (size_t)n);
 	close(pipefd[0]);
 	int status = 0;
 	waitpid(pid, &status, 0);
-	if (exitCode) *exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+	finish(WIFEXITED(status) ? WEXITSTATUS(status) : -1);
 	return 0;
 #endif
 }
