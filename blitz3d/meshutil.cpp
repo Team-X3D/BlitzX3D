@@ -199,6 +199,103 @@ MeshModel* MeshUtil::createCone(const Brush& b, int segs, bool solid) {
 	return m;
 }
 
+namespace {
+
+struct DecalPoint {
+	Vector p;	// box local pos
+	Vector n;	// world space normal
+};
+
+static float boxPlaneDist(const Vector& p, int plane) {
+	switch (plane) {
+	case 0: return p.x + .5f;
+	case 1: return .5f - p.x;
+	case 2: return p.y + .5f;
+	case 3: return .5f - p.y;
+	case 4: return p.z + .5f;
+	default: return .5f - p.z;
+	}
+}
+
+static std::vector<DecalPoint> clipAgainstBox(const std::vector<DecalPoint>& poly, int plane) {
+	std::vector<DecalPoint> out;
+	int n = (int)poly.size();
+	for (int i = 0; i < n; ++i) {
+		const DecalPoint& a = poly[i];
+		const DecalPoint& b = poly[(i + 1) % n];
+		float da = boxPlaneDist(a.p, plane);
+		float db = boxPlaneDist(b.p, plane);
+		if (da >= 0) out.push_back(a);
+		if ((da >= 0) != (db >= 0)) {
+			float t = da / (da - db);
+			DecalPoint c;
+			c.p = a.p + (b.p - a.p) * t;
+			c.n = (a.n + (b.n - a.n) * t).normalized();
+			out.push_back(c);
+		}
+	}
+	return out;
+}
+
+}
+
+int MeshUtil::projectDecal(MeshModel* dest, const Brush& b, MeshModel* source,
+	const Transform& source_world, const Transform& box_world) {
+	Transform box_inv = -box_world;
+	Transform src_to_local = box_inv * source_world;
+	Matrix normal_src = source_world.m.cofactor();
+	Matrix normal_to_local = box_inv.m;
+	//nudge to stop z-fighting, a proper fix is a depth bias render state but i don't really care!
+	const float eps = .001f;
+
+	Surface* surf = dest->findSurface(b);
+	if (!surf) surf = dest->createSurface(b);
+
+	int added = 0;
+	const MeshModel::SurfaceList& surfaces = source->getSurfaces();
+	for (size_t s = 0; s < surfaces.size(); ++s) {
+		Surface* src = surfaces[s];
+		int ntri = src->numTriangles();
+		for (int t = 0; t < ntri; ++t) {
+			const Surface::Triangle& tri = src->getTriangle(t);
+			const Surface::Vertex* sv[3] = {
+				&src->getVertex(tri.verts[0]),
+				&src->getVertex(tri.verts[1]),
+				&src->getVertex(tri.verts[2])
+			};
+
+			std::vector<DecalPoint> poly(3);
+			for (int i = 0; i < 3; ++i) {
+				poly[i].p = src_to_local * sv[i]->coords;
+				poly[i].n = (normal_to_local * (normal_src * sv[i]->normal)).normalized();
+			}
+
+			for (int plane = 0; plane < 6 && poly.size() >= 3; ++plane) {
+				poly = clipAgainstBox(poly, plane);
+			}
+			if (poly.size() < 3) continue;
+
+			for (size_t i = 1; i + 1 < poly.size(); ++i) {
+				if (surf->numVertices() + 3 > 65535) return added;
+				Surface::Triangle out;
+				for (int k = 0; k < 3; ++k) {
+					const DecalPoint& d = poly[k == 0 ? 0 : (k == 1 ? i : i + 1)];
+					Surface::Vertex v;
+					v.coords = d.p + d.n * eps;
+					v.normal = d.n;
+					v.tex_coords[0][0] = v.tex_coords[1][0] = d.p.x + .5f;
+					v.tex_coords[0][1] = v.tex_coords[1][1] = .5f - d.p.y;
+					out.verts[k] = surf->numVertices();
+					surf->addVertex(v);
+				}
+				surf->addTriangle(out);
+				++added;
+			}
+		}
+	}
+	return added;
+}
+
 void MeshUtil::lightMesh(MeshModel* m, const Vector& pos, const Vector& rgb, float range) {
 	if(range) {
 		float att = 1.0f / range;

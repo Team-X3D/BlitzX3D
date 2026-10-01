@@ -1418,6 +1418,44 @@ Entity* bbCreatePlane(int segs, Entity* p) {
 	return insertEntity(t, p);
 }
 
+////////////////////
+// DECAL COMMANDS //
+////////////////////
+static int projectDecalTree(MeshModel* dest, const Brush& b, Entity* e, const Transform& box) {
+	int n = 0;
+	if (Model* mo = e->getModel()) {
+		if (MeshModel* src = mo->getMeshModel()) {
+			n += MeshUtil::projectDecal(dest, b, src, e->getWorldTform(), box);
+		}
+	}
+	for (Entity* c = e->children(); c; c = c->successor()) {
+		n += projectDecalTree(dest, b, c, box);
+	}
+	return n;
+}
+
+Entity* bbCreateDecal(Texture* tex, Entity* p) {
+	debugParent(p, "CreateDecal");
+	if (tex) debugTexture(tex, "CreateDecal");
+	MeshModel* m = new MeshModel();
+	if (tex) m->setTexture(0, *tex, 0);
+	m->setBlend(gxScene::BLEND_ALPHA);
+	return insertEntity(m, p);
+}
+
+void bbProjectDecal(MeshModel* decal, Entity* source) {
+	debugMesh(decal, "ProjectDecal");
+	if (!source) { ErrorLog("ProjectDecal", MultiLang::parent_entity_not_exist); return; }
+	debugEntity(source, "ProjectDecal");
+	projectDecalTree(decal, decal->getBrush(), source, decal->getWorldTform());
+}
+
+void bbClearDecal(MeshModel* decal) {
+	debugMesh(decal, "ClearDecal");
+	const MeshModel::SurfaceList& surfs = decal->getSurfaces();
+	for (size_t k = 0; k < surfs.size(); ++k) surfs[k]->clear(true, true);
+}
+
 //////////////////
 // MD2 COMMANDS //
 //////////////////
@@ -2560,6 +2598,10 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("%CreateMirror%parent=0", bbCreateMirror);
 
 	rtSym("%CreatePlane%segments=1%parent=0", bbCreatePlane);
+
+	rtSym("%CreateDecal%texture=0%parent=0", bbCreateDecal);
+	rtSym("ProjectDecal%decal%source", bbProjectDecal);
+	rtSym("ClearDecal%decal", bbClearDecal);
 
 	rtSym("%CreateTerrain%grid_size%parent=0", bbCreateTerrain);
 	rtSym("%LoadTerrain$heightmap_file%parent=0", bbLoadTerrain);
