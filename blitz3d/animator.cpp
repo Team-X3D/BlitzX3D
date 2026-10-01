@@ -12,6 +12,9 @@ Animator::Animator(Animator* t) :_seqs(t->_seqs) {
 		_anims[k].keys = t->_anims[k].keys;
 	}
 
+	_rest = t->_rest;
+	_base.resize(_objs.size());
+
 	reset();
 }
 
@@ -19,18 +22,32 @@ Animator::Animator(Object* obj, int frames) {
 	addObjs(obj);
 	_anims.resize(_objs.size());
 	addSeq(frames);
+	captureRest();
 	reset();
 }
 
 Animator::Animator(const std::vector<Object*>& objs, int frames) :_objs(objs) {
 	_anims.resize(_objs.size());
 	addSeq(frames);
+	captureRest();
 	reset();
 }
 
 void Animator::reset() {
 	_seq = _mode = _seq_len = _time = _speed = _trans_time = _trans_speed = 0;
 	_blends.clear();
+	_hasBase = false;
+}
+
+void Animator::captureRest() {
+	_rest.resize(_objs.size());
+	_base.resize(_objs.size());
+	for (int k = 0; k < _objs.size(); ++k) {
+		Object* obj = _objs[k];
+		_rest[k].pos = obj->getLocalPosition(); _rest[k].p = true;
+		_rest[k].scl = obj->getLocalScale(); _rest[k].s = true;
+		_rest[k].rot = obj->getLocalRotation(); _rest[k].r = true;
+	}
 }
 
 void Animator::addObjs(Object* obj) {
@@ -81,25 +98,34 @@ void Animator::extractSeq(int first, int last, int seq) {
 
 void Animator::updateAnim() {
 
+	_base.resize(_objs.size());
+
 	for (int k = 0; k < _objs.size(); ++k) {
 
 		Object* obj = _objs[k];
 		const Animation& keys = _anims[k].keys[_seq];
+		Pose& bp = _base[k];
+		bp = Pose();
 
 		if (keys.numPositionKeys()) {
-			obj->setLocalPosition(keys.getPosition(_time));
+			bp.pos = keys.getPosition(_time); bp.p = true;
+			obj->setLocalPosition(bp.pos);
 		}
 		if (keys.numScaleKeys()) {
-			obj->setLocalScale(keys.getScale(_time));
+			bp.scl = keys.getScale(_time); bp.s = true;
+			obj->setLocalScale(bp.scl);
 		}
 		if (keys.numRotationKeys()) {
-			obj->setLocalRotation(keys.getRotation(_time));
+			bp.rot = keys.getRotation(_time); bp.r = true;
+			obj->setLocalRotation(bp.rot);
 		}
+		_hasBase = true;
 	}
 }
 
-int Animator::blend(int seq, float weight, int mode, float speed, float fade) {
+int Animator::blend(int seq, float weight, int mode, float speed, float fade, bool additive, int ref) {
 	if (seq < 0 || seq >= _seqs.size()) return -1;
+	if (ref < 0 || ref >= _seqs.size()) ref = seq;
 
 	for (int k = 0; k < _blends.size(); ++k) {
 		if (_blends[k].seq != seq) continue;
@@ -113,6 +139,8 @@ int Animator::blend(int seq, float weight, int mode, float speed, float fade) {
 		b.speed = speed;
 		b.weight = weight;
 		b.fade = fade;
+		b.additive = additive;
+		b.ref = ref;
 		return k;
 	}
 
@@ -127,6 +155,8 @@ int Animator::blend(int seq, float weight, int mode, float speed, float fade) {
 	b.weight = weight;
 	b.cur = fade > 0 ? 0 : weight;
 	b.fade = fade;
+	b.additive = additive;
+	b.ref = ref;
 	_blends.push_back(b);
 	return _blends.size() - 1;
 }
@@ -192,55 +222,118 @@ void Animator::updateBlend() {
 
 	for (int k = 0; k < _objs.size(); ++k) {
 		Object* obj = _objs[k];
+		const Pose& rest = _rest[k];
 
-		float p_tot = 0, s_tot = 0, r_tot = 0;
-		Vector p_sum, s_sum;
-		Quat r_sum;
+		Vector pos = rest.pos, scl = rest.scl;
+		Quat rot = rest.rot;
 		bool has_p = false, has_s = false, has_r = false;
 
-		//base pose comes from the current transform fduring a base transition
-		if (_mode & 0x8000) {
-			p_sum = obj->getLocalPosition(); p_tot = 1; has_p = true;
-			s_sum = obj->getLocalScale(); s_tot = 1; has_s = true;
-			r_sum = obj->getLocalRotation(); r_tot = 1; has_r = true;
+		if (_hasBase) {
+			const Pose& bp = _base[k];
+			if (bp.p) { pos = bp.pos; has_p = true; }
+			if (bp.s) { scl = bp.scl; has_s = true; }
+			if (bp.r) { rot = bp.rot; has_r = true; }
+
+			for (int j = 0; j < _blends.size(); ++j) {
+				const Blend& b = _blends[j];
+				if (b.additive || b.cur <= 0 || b.seq < 0 || b.seq >= _anims[k].keys.size()) continue;
+				const Animation& a = _anims[k].keys[b.seq];
+				float w = b.cur;
+
+				if (a.numPositionKeys()) {
+					pos += (a.getPosition(b.time) - pos) * w; has_p = true;
+				}
+				if (a.numScaleKeys()) {
+					scl += (a.getScale(b.time) - scl) * w; has_s = true;
+				}
+				if (a.numRotationKeys()) {
+					rot = rot.slerpTo(a.getRotation(b.time), w); has_r = true;
+				}
+			}
+		}
+		else {
+			float p_tot = 0, s_tot = 0, r_tot = 0;
+			Vector p_sum, s_sum;
+			Quat r_sum;
+
+			for (int j = 0; j < _blends.size(); ++j) {
+				const Blend& b = _blends[j];
+				if (b.additive || b.cur <= 0 || b.seq < 0 || b.seq >= _anims[k].keys.size()) continue;
+				const Animation& a = _anims[k].keys[b.seq];
+				float w = b.cur;
+
+				if (a.numPositionKeys()) {
+					p_sum += a.getPosition(b.time) * w; p_tot += w;
+				}
+				if (a.numScaleKeys()) {
+					s_sum += a.getScale(b.time) * w; s_tot += w;
+				}
+				if (a.numRotationKeys()) {
+					Quat q = a.getRotation(b.time);
+					if (r_tot <= 0) { r_sum = q; r_tot = w; }
+					else { r_tot += w; r_sum = r_sum.slerpTo(q, w / r_tot); }
+				}
+			}
+
+			if (p_tot > 0) { pos = p_sum / p_tot; has_p = true; }
+			if (s_tot > 0) { scl = s_sum / s_tot; has_s = true; }
+			if (r_tot > 0) { rot = r_sum.normalized(); has_r = true; }
 		}
 
 		for (int j = 0; j < _blends.size(); ++j) {
 			const Blend& b = _blends[j];
-			if (b.cur <= 0 || b.seq < 0 || b.seq >= _anims[k].keys.size()) continue;
+			if (!b.additive || b.cur <= 0 || b.seq < 0 || b.seq >= _anims[k].keys.size()) continue;
 			const Animation& a = _anims[k].keys[b.seq];
+			int ref = (b.ref >= 0 && b.ref < _anims[k].keys.size()) ? b.ref : b.seq;
+			const Animation& ra = _anims[k].keys[ref];
 			float w = b.cur;
 
 			if (a.numPositionKeys()) {
-				p_sum += a.getPosition(b.time) * w; p_tot += w; has_p = true;
+				Vector rp = ra.numPositionKeys() ? ra.getPosition(0) : rest.pos;
+				pos += (a.getPosition(b.time) - rp) * w; has_p = true;
 			}
 			if (a.numScaleKeys()) {
-				s_sum += a.getScale(b.time) * w; s_tot += w; has_s = true;
+				Vector rs = ra.numScaleKeys() ? ra.getScale(0) : rest.scl;
+				scl += (a.getScale(b.time) - rs) * w; has_s = true;
 			}
 			if (a.numRotationKeys()) {
-				Quat q = a.getRotation(b.time);
-				if (r_tot <= 0) { r_sum = q; r_tot = w; }
-				else { r_tot += w; r_sum = r_sum.slerpTo(q, w / r_tot); }
-				has_r = true;
+				Quat rq = ra.numRotationKeys() ? ra.getRotation(0) : Quat();
+				Quat d = Quat(rq.w, -rq.v) * a.getRotation(b.time);
+				d = d.normalized();
+				rot = (rot * Quat().slerpTo(d, w)).normalized(); has_r = true;
 			}
 		}
 
-		if (has_p && p_tot > 0) obj->setLocalPosition(p_sum / p_tot);
-		if (has_s && s_tot > 0) obj->setLocalScale(s_sum / s_tot);
-		if (has_r && r_tot > 0) obj->setLocalRotation(r_sum.normalized());
+		if (has_p) obj->setLocalPosition(pos);
+		if (has_s) obj->setLocalScale(scl);
+		if (has_r) obj->setLocalRotation(rot);
 	}
 }
 
 void Animator::updateTrans() {
 
+	_base.resize(_objs.size());
+
 	for (int k = 0; k < _objs.size(); ++k) {
 
 		Object* obj = _objs[k];
 		const Anim& anim = _anims[k];
+		Pose& bp = _base[k];
+		bp = Pose();
 
-		if (anim.pos) obj->setLocalPosition((anim.dest_pos - anim.src_pos) * _trans_time + anim.src_pos);
-		if (anim.scl) obj->setLocalScale((anim.dest_scl - anim.src_scl) * _trans_time + anim.src_scl);
-		if (anim.rot) obj->setLocalRotation(anim.src_rot.slerpTo(anim.dest_rot, _trans_time));
+		if (anim.pos) {
+			bp.pos = (anim.dest_pos - anim.src_pos) * _trans_time + anim.src_pos; bp.p = true;
+			obj->setLocalPosition(bp.pos);
+		}
+		if (anim.scl) {
+			bp.scl = (anim.dest_scl - anim.src_scl) * _trans_time + anim.src_scl; bp.s = true;
+			obj->setLocalScale(bp.scl);
+		}
+		if (anim.rot) {
+			bp.rot = anim.src_rot.slerpTo(anim.dest_rot, _trans_time); bp.r = true;
+			obj->setLocalRotation(bp.rot);
+		}
+		_hasBase = true;
 	}
 }
 
@@ -313,6 +406,8 @@ void Animator::animate(int mode, float speed, int seq, float trans) {
 void Animator::update(float elapsed) {
 
 	if (!_mode && _blends.empty()) return;
+
+	_hasBase = false;
 
 	if (_mode & 0x8000) {
 		_trans_time += _trans_speed * elapsed;

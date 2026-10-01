@@ -31,7 +31,7 @@ public:
 
 	void update(float elapsed);
 
-	int blend(int seq, float weight, int mode, float speed, float fade);
+	int blend(int seq, float weight, int mode, float speed, float fade, bool additive = false, int ref = -1);
 	void stopBlend(int seq);
 	float blendWeight(int seq)const;
 	int numBlends()const { return _blends.size(); }
@@ -60,13 +60,21 @@ private:
 		Anim() :pos(false), scl(false), rot(false) {}
 	};
 
+	struct Pose {
+		Vector pos, scl;
+		Quat rot;
+		bool p, s, r;
+		Pose() :p(false), s(false), r(false) {}
+	};
+
 	struct Blend {
-		int seq, mode, len;
+		int seq, mode, len, ref;
+		bool additive;
 		float time, speed;
 		float weight;
 		float cur;
 		float fade;
-		Blend() :seq(-1), mode(0), len(0), time(0), speed(1), weight(0), cur(0), fade(0) {}
+		Blend() :seq(-1), mode(0), len(0), ref(-1), additive(false), time(0), speed(1), weight(0), cur(0), fade(0) {}
 	};
 
 	std::vector<Seq> _seqs;
@@ -74,12 +82,16 @@ private:
 	std::vector<Anim> _anims;
 	std::vector<Object*> _objs;
 	std::vector<Blend> _blends;
+	std::vector<Pose> _rest;
+	std::vector<Pose> _base;
+	bool _hasBase;
 
 	int _seq, _mode, _seq_len;
 	float _time, _speed, _trans_time, _trans_speed;
 
 	void reset();
 	void addObjs(Object* obj);
+	void captureRest();
 	void updateAnim();
 	void updateBlend();
 	void advanceBlends(float elapsed);

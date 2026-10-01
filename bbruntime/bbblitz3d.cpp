@@ -1810,10 +1810,10 @@ int  bbAnimating(Object* o) {
 	return 0;
 }
 
-int  bbBlendAnim(Object* o, int seq, float weight, int mode, float speed, float fade) {
+int  bbBlendAnim(Object* o, int seq, float weight, int mode, float speed, float fade, int additive, int ref) {
 	debugObject(o, "BlendAnim");
 	if (Animator* anim = o->getAnimator()) {
-		return anim->blend(seq, weight, mode, speed, fade);
+		return anim->blend(seq, weight, mode, speed, fade, additive != 0, ref);
 	}
 	ErrorLog("BlendAnim", MultiLang::entity_no_animations);
 	return -1;
@@ -2683,7 +2683,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("#AnimTime%entity", bbAnimTime);
 	rtSym("%AnimLength%entity", bbAnimLength);
 	rtSym("%Animating%entity", bbAnimating);
-	rtSym("%BlendAnim%entity%sequence#weight=1%mode=1#speed=1#fade=0", bbBlendAnim);
+	rtSym("%BlendAnim%entity%sequence#weight=1%mode=1#speed=1#fade=0%additive=0%ref=-1", bbBlendAnim);
 	rtSym("StopAnimBlend%entity%sequence", bbStopAnimBlend);
 	rtSym("#AnimBlendWeight%entity%sequence", bbAnimBlendWeight);
 	rtSym("%CountAnimBlends%entity", bbCountAnimBlends);
