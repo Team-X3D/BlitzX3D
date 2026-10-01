@@ -191,6 +191,7 @@ private:
 	unsigned long long lastDiskCheck = 0;
 	bool focused = false;
 	bool drawIde = false;
+	std::atomic<bool> drawIdeAtomic = false;
 
 	SDL_Event event;
 };

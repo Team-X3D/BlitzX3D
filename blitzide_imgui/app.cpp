@@ -399,9 +399,9 @@ void App::mainloop() {
 		if (keywordsLoaded)
 			drawIde = true;
 
-		if (drawIde || focused)
+		if (drawIde || focused || drawIdeAtomic.exchange(false))
 			frame();
-		
+
 		SDL_WaitEventTimeout(nullptr, 16);
 
 		drawIde = false;
@@ -2153,7 +2153,7 @@ void App::compile(const std::vector<std::string> args) {
 			for (const auto& line : newLines)
 				parseOutputLine(line);
 
-			this->drawIde = true;
+			this->drawIdeAtomic = true;
 		}
 		if (code != 0) compileOK = false;
 		else if (!publishIconPath.empty() && !publishExePath.empty()) {
@@ -2164,7 +2164,7 @@ void App::compile(const std::vector<std::string> args) {
 				appendOutput("Warning: could not apply icon to executable.\n");
 			}
 		}
-		this->drawIde = true;
+		this->drawIdeAtomic = true;
 		this->compiling = false;
 	});
 
