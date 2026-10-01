@@ -55,7 +55,7 @@ well as third-party components. Those portions remain licensed under their
 respective original licenses and are not relicensed by BlitzX3D.
 
 Original contributions to BlitzX3D by Chris A. (krimbopple) are licensed under
-the MIT License (see LICENSE).
+the AGPL-3.0 License (see LICENSE).
 
 
 ---
