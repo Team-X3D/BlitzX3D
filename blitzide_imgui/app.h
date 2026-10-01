@@ -82,7 +82,7 @@ private:
 
 	void build(bool exec, bool publish);
 	Prefs::CompileOptions effectiveCompileOptions();
-	void compile(const std::vector<std::string>& args);
+	void compile(const std::vector<std::string> args);
 	void appendOutput(const std::string& text);
 	void parseOutputLine(const std::string& line);
 	void processPendingGoto();
@@ -142,7 +142,6 @@ private:
 	bool matchCase = false;
 
 	std::string output;
-	std::vector<std::string> outputLines;
 	std::string outputView;
 	std::thread compileThread;
 	std::atomic<bool> compiling{ false };
@@ -192,6 +191,7 @@ private:
 	unsigned long long lastDiskCheck = 0;
 	bool focused = false;
 	bool drawIde = false;
+	std::atomic<bool> drawIdeAtomic = false;
 
 	SDL_Event event;
 };
