@@ -14,10 +14,11 @@
 #include <cstring>
 #endif
 
-int runProcess(const std::vector<std::string>& args, std::string& output, int* exitCode) {
+int runProcess(const std::vector<std::string>& args, std::string& output, int* exitCode, bool* running) {
 	output.clear();
 	if (exitCode) *exitCode = -1;
-
+	if (running) *running = true;
+	
 #if defined(_WIN32)
 	HANDLE g_hChildStd_OUT_Rd = NULL, g_hChildStd_OUT_Wr = NULL;
 	SECURITY_ATTRIBUTES sa = { sizeof(sa), NULL, TRUE };
@@ -34,6 +35,7 @@ int runProcess(const std::vector<std::string>& args, std::string& output, int* e
 	std::vector<char> mutableCmd(cmdline.begin(), cmdline.end());
 	mutableCmd.push_back('\0');
 	if (!CreateProcessA(NULL, mutableCmd.data(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+		if (running) *running = false;
 		CloseHandle(g_hChildStd_OUT_Rd);
 		CloseHandle(g_hChildStd_OUT_Wr);
 		return -1;
@@ -43,13 +45,23 @@ int runProcess(const std::vector<std::string>& args, std::string& output, int* e
 	char buf[4096];
 	DWORD n = 0;
 	while (ReadFile(g_hChildStd_OUT_Rd, buf, sizeof(buf), &n, NULL) && n) {
-		output.append(buf, n);
+		{
+			std::lock_guard<std::mutex> lock(processUpdateMutex);
+			output.append(buf, n);
+			processOutputChanged = true;
+		}
+		processUpdated.notify_one();
 	}
 	CloseHandle(g_hChildStd_OUT_Rd);
 
 	WaitForSingleObject(pi.hProcess, INFINITE);
 	DWORD code = 0;
 	GetExitCodeProcess(pi.hProcess, &code);
+	{
+		std::lock_guard<std::mutex> lock(processUpdateMutex);
+		if (running) *running = false;
+	}
+	processUpdated.notify_one();
 	if (exitCode) *exitCode = (int)code;
 	CloseHandle(pi.hThread);
 	CloseHandle(pi.hProcess);

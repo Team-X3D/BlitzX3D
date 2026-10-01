@@ -906,7 +906,6 @@ void App::drawOutput() {
 		if (!compiling) {
 			std::lock_guard<std::mutex> lock(outputMutex);
 			output.clear();
-			outputLines.clear();
 		}
 	}
 	ImGui::End();
@@ -2101,11 +2100,12 @@ void App::build(bool exec, bool publish) {
 		std::vector<std::string> extra = splitCommandLine(prefs.cmd_line);
 		args.insert(args.end(), extra.begin(), extra.end());
 	}
-	compile(args);
+
+	if (compileThread.joinable()) compileThread.join();
+	compileThread = std::thread(&App::compile, this, std::move(args));
 }
 
-void App::compile(const std::vector<std::string>& args) {
-	if (compileThread.joinable()) compileThread.join();
+void App::compile(const std::vector<std::string> args) {
 	compileOK = true;
 	std::string cmd;
 	for (size_t k = 0; k < args.size(); ++k) {
@@ -2113,30 +2113,48 @@ void App::compile(const std::vector<std::string>& args) {
 		cmd += args[k];
 	}
 	appendOutput(">>> " + cmd + "\n");
-
-	compileThread = std::thread([this, args]() {
-		std::string output;
-		int code = runProcess(args, output);
-
-		std::vector<std::string> newLines;
+	std::string output;
+	bool running = true;
+	int code = -1;
+	
+	std::thread outputUpdateThread([this, &output, &code, &running]() {
+		std::streampos lastLineIndex = 0;
+		while (running)
 		{
-			std::stringstream ss(output);
-			std::string line;
-			while (std::getline(ss, line, '\n')) {
-				if (!line.empty() && line.back() == '\r') line.pop_back();
-				newLines.push_back(line);
+			std::unique_lock<std::mutex> lock(processUpdateMutex);
+			processUpdated.wait(lock, [&running] { return processOutputChanged || !running; });
+			processOutputChanged = false;
+			lock.unlock();
+
+			std::vector<std::string> newLines;
+			{
+				std::stringstream ss(output);
+				std::string line;
+				std::streampos pos = ss.tellg();
+				while (std::getline(ss, line, '\n'))
+				{
+					if (pos == std::streampos(-1)) // idk saw this online and i just copied it, but seems to work
+						pos = output.length();
+					if (pos >= lastLineIndex) {
+						if (!line.empty() && line.back() == '\r') line.pop_back();
+						newLines.push_back(line);
+						lastLineIndex = ss.tellg();
+						if (lastLineIndex == std::streampos(-1))
+							lastLineIndex = output.length();
+					}
+					pos = ss.tellg();
+				}
 			}
-		}
-
-		{
-			std::lock_guard<std::mutex> lock(outputMutex);
-			this->output += output;
+			{
+				std::lock_guard<std::mutex> lock(outputMutex);
+				for (const auto& line : newLines)
+					this->output += line + '\n';
+			}
 			for (const auto& line : newLines)
-				this->outputLines.push_back(line);
-		}
-		for (const auto& line : newLines)
-			parseOutputLine(line);
+				parseOutputLine(line);
 
+			this->drawIde = true;
+		}
 		if (code != 0) compileOK = false;
 		else if (!publishIconPath.empty() && !publishExePath.empty()) {
 			if (applyIconToExe(publishExePath, publishIconPath)) {
@@ -2146,20 +2164,17 @@ void App::compile(const std::vector<std::string>& args) {
 				appendOutput("Warning: could not apply icon to executable.\n");
 			}
 		}
-		drawIde = true;
-		compiling = false;
+		this->drawIde = true;
+		this->compiling = false;
 	});
+
+	runProcess(args, output, &code, &running);
+	if (outputUpdateThread.joinable()) outputUpdateThread.join();
 }
 
 void App::appendOutput(const std::string& text) {
 	std::lock_guard<std::mutex> lock(outputMutex);
 	output += text;
-	std::stringstream ss(text);
-	std::string line;
-	while (std::getline(ss, line, '\n')) {
-		if (!line.empty() && line.back() == '\r') line.pop_back();
-		outputLines.push_back(line);
-	}
 }
 
 void App::parseOutputLine(const std::string& line) {
