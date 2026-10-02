@@ -2255,18 +2255,16 @@ BBStr* bbInput(BBStr* prompt)
             if (n != tc)
             {
                 tc = n;
+                c->blit(0, curs_y, p_canvas, 0, 0, c->getWidth(), curr_font->getHeight(), true);
+                c->text(curs_x, curs_y, str);
                 if (!(tc & 1))
                 {	//cursor ON
                     c->setColor(curr_clsColor ^ 0xffffff);
                     c->rect(cx, curs_y, cw, curr_font->getHeight(), true);
-                    c->setColor(curr_clsColor);
-                }
-                else
-                {			//cursor OFF
-                    c->blit(cx, curs_y, p_canvas, cx, 0, cw, curr_font->getHeight(), true);
                     c->setColor(curr_color);
+                    c->text(cx, curs_y, str.substr(curs, 1));
                 }
-                c->text(cx, curs_y, str.substr(curs, 1));
+                gx_graphics->flip(false);
             }
             if (key = gx_keyboard->getKey())
             {
