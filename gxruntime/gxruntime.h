@@ -42,6 +42,7 @@ public:
     float scale_x = .0f, scale_y = .0f;
 
     void flip(bool vwait);
+    void pumpMessages();
     void moveMouse(int x, int y);
     LRESULT windowProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l);
 

@@ -238,11 +238,7 @@ void gxRuntime::resetInput() {
 void gxRuntime::acquireInput() {
 	if(!input) return;
 	if(gfx_mode == GMODE_EXCLUSIVE) {
-		if(use_di) {
-			use_di = input->acquire();
-		}
-		else {
-		}
+		use_di = input->acquire();
 	}
 	input->reset();
 }
@@ -402,15 +398,33 @@ void gxRuntime::paint() {
 // FLIP //
 //////////
 
-void gxRuntime::flip(bool vwait) {
-	MSG msg;
-	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-		if (!run_flag) {
-			return;
+void gxRuntime::pumpMessages() {
+	for (;;) {
+		MSG msg;
+		if (!PeekMessageW(&msg, NULL, 0, 0, 0)) return;
+		switch (msg.message) {
+			case WM_STOP:
+				PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE);
+				if (!suspended) forceSuspend();
+				break;
+			case WM_RUN:
+				PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE);
+				if (suspended) forceResume();
+				break;
+			case WM_END:
+				PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE);
+				debugger = 0;
+				run_flag = false;
+				return;
+			default:
+				return;
 		}
 	}
+}
+
+void gxRuntime::flip(bool vwait) {
+	pumpMessages();
+	if (!run_flag) return;
 
 	if (!graphics || !d3dDevice) return;
 
