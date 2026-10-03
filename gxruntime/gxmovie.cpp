@@ -89,6 +89,14 @@ bool gxMovie::openStream(const std::string& file) {
 	src_w = codec_ctx->width;
 	src_h = codec_ctx->height;
 	rgba_stride = src_w * 4;
+
+	AVStream* vstream = fmt_ctx->streams[video_stream_index];
+	if (vstream->duration != AV_NOPTS_VALUE) {
+		duration = vstream->duration * av_q2d(vstream->time_base);
+	}
+	else if (fmt_ctx->duration != AV_NOPTS_VALUE) {
+		duration = fmt_ctx->duration / (double)AV_TIME_BASE;
+	}
 	{
 		std::lock_guard<std::mutex> lock(frame_mutex);
 		front_rgba.assign((size_t)rgba_stride * src_h, 0);
@@ -138,6 +146,23 @@ void gxMovie::decodeThreadMain() {
 	playback_start = std::chrono::steady_clock::now();
 
 	while (!quit_requested.load()) {
+		if (seek_requested.load()) {
+			double target = seek_target.load();
+			if (target < 0.0) target = 0.0;
+			if (duration > 0.0 && target > duration) target = duration;
+			int64_t ts = (int64_t)(target / av_q2d(tb));
+			if (av_seek_frame(fmt_ctx, video_stream_index, ts, AVSEEK_FLAG_BACKWARD) >= 0) {
+				avcodec_flush_buffers(codec_ctx);
+				eof_reached = false;
+				playing = true;
+				have_first_pts = false;
+				first_pts_seconds = target;
+				playback_start = std::chrono::steady_clock::now();
+				current_pts = target;
+			}
+			seek_requested = false;
+		}
+
 		int read_ret = av_read_frame(fmt_ctx, packet);
 		if (read_ret < 0) {
 			eof_reached = true;
@@ -192,6 +217,7 @@ void gxMovie::decodeThreadMain() {
 				has_frame = true;
 				++frame_serial;
 				front_frame_pts = target_seconds;
+				current_pts = target_seconds;
 			}
 		}
 	}
@@ -199,6 +225,13 @@ void gxMovie::decodeThreadMain() {
 	av_frame_free(&frame);
 	av_frame_free(&rgba_frame);
 	av_packet_free(&packet);
+}
+
+void gxMovie::setTime(double seconds) {
+	if (seconds < 0.0) seconds = 0.0;
+	if (duration > 0.0 && seconds > duration) seconds = duration;
+	seek_target = seconds;
+	seek_requested = true;
 }
 
 bool gxMovie::draw(gxCanvas* dest, int x, int y, int w, int h) {

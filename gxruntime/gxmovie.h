@@ -37,6 +37,9 @@ public:
 	bool isPlaying() const { return playing.load(); }
 	int getWidth()const { return src_w; }
 	int getHeight()const { return src_h; }
+	double getTime() const { return current_pts.load(); }	//seconds
+	double getLength() const { return duration; }			//seconds
+	void setTime(double seconds);
 
 private:
 	gxGraphics* gfx;
@@ -46,6 +49,11 @@ private:
 	std::atomic<bool> valid{ false };
 	std::atomic<bool> quit_requested{ false };
 	std::atomic<bool> eof_reached{ false };
+	std::atomic<bool> seek_requested{ false };
+	std::atomic<double> seek_target{ 0.0 };
+	std::atomic<double> current_pts{ 0.0 };
+
+	double duration = 0.0;
 
 	std::mutex frame_mutex;
 	std::vector<unsigned char> front_rgba;

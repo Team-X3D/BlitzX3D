@@ -114,6 +114,18 @@ int bbChannelPlaying(gxChannel* channel) {
 	return channel ? channel->isPlaying() : 0;
 }
 
+int bbChannelPosition(gxChannel* channel) {
+	return channel ? (int)(channel->getPosition() * 1000.0) : 0;
+}
+
+int bbChannelLength(gxChannel* channel) {
+	return channel ? (int)(channel->getLength() * 1000.0) : 0;
+}
+
+void bbSetChannelPosition(gxChannel* channel, int position) {
+	if (channel) channel->setPosition(position / 1000.0);
+}
+
 gxSound* bbLoad3DSound(BBStr* f) {
 	return loadSound(f, true);
 }
@@ -147,6 +159,9 @@ void audio_link(void(*rtSym)(const char*, void*)) {
 	rtSym("ChannelVolume%channel#volume", bbChannelVolume);
 	rtSym("ChannelPan%channel#pan", bbChannelPan);
 	rtSym("%ChannelPlaying%channel", bbChannelPlaying);
+	rtSym("%ChannelPosition%channel", bbChannelPosition);
+	rtSym("%ChannelLength%channel", bbChannelLength);
+	rtSym("SetChannelPosition%channel%position", bbSetChannelPosition);
 	rtSym("%Load3DSound$filename", bbLoad3DSound);
 	rtSym("SetMasterVolume#volume", bbSetMasterVolume);
 	rtSym("SetReverb#in_gain#reverb_mix#reverb_time#high_freq_ratio", bbSetReverb);

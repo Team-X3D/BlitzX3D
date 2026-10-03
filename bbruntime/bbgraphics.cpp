@@ -1346,6 +1346,21 @@ int bbMoviePlaying(gxMovie* movie)
     return movie->isPlaying();
 }
 
+int bbMovieTime(gxMovie* movie)
+{
+    return (int)(movie->getTime() * 1000.0);
+}
+
+int bbMovieLength(gxMovie* movie)
+{
+    return (int)(movie->getLength() * 1000.0);
+}
+
+void bbSeekMovie(gxMovie* movie, int time)
+{
+    movie->setTime(time / 1000.0);
+}
+
 void bbCloseMovie(gxMovie* movie)
 {
     gx_graphics->closeMovie(movie);
@@ -2515,6 +2530,9 @@ void graphics_link(void (*rtSym)(const char* sym, void* pc))
     rtSym("%MovieWidth%movie", bbMovieWidth);
     rtSym("%MovieHeight%movie", bbMovieHeight);
     rtSym("%MoviePlaying%movie", bbMoviePlaying);
+    rtSym("%MovieTime%movie", bbMovieTime);
+    rtSym("%MovieLength%movie", bbMovieLength);
+    rtSym("SeekMovie%movie%time", bbSeekMovie);
     rtSym("CloseMovie%movie", bbCloseMovie);
 
     rtSym("%LoadImage$bmpfile", bbLoadImage);

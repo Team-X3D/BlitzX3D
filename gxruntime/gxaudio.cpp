@@ -41,6 +41,24 @@ struct SoundChannel : public gxChannel {
 		BASS_ChannelSet3DPosition(channel, &p, 0, &v);
 		BASS_Apply3D();
 	}
+	double getPosition() {
+		if (BASS_ChannelIsActive(channel) == BASS_ACTIVE_STOPPED) return 0.0;
+		return BASS_ChannelBytes2Seconds(channel, BASS_ChannelGetPosition(channel, BASS_POS_BYTE));
+	}
+	double getLength() {
+		if (BASS_ChannelIsActive(channel) == BASS_ACTIVE_STOPPED) return 0.0;
+		return BASS_ChannelBytes2Seconds(channel, BASS_ChannelGetLength(channel, BASS_POS_BYTE));
+	}
+	void setPosition(double seconds) {
+		if (seconds < 0.0) seconds = 0.0;
+		if (BASS_ChannelIsActive(channel) == BASS_ACTIVE_STOPPED) return;
+		QWORD len = BASS_ChannelGetLength(channel, BASS_POS_BYTE);
+		if (len > 0) {
+			double length = BASS_ChannelBytes2Seconds(channel, len);
+			if (seconds > length) seconds = length;
+		}
+		BASS_ChannelSetPosition(channel, BASS_ChannelSeconds2Bytes(channel, seconds), BASS_POS_BYTE);
+	}
 	bool isPlaying() {
 		return BASS_ChannelIsActive(channel) != BASS_ACTIVE_STOPPED;
 	}
@@ -84,6 +102,21 @@ struct StreamChannel : public StaticChannel {
 		BASS_ChannelSetAttribute(channel, BASS_ATTRIB_PAN, pan);
 	}
 	void set3d(const float pos[3], const float vel[3]) {
+	}
+	double getPosition() {
+		return BASS_ChannelBytes2Seconds(stream, BASS_ChannelGetPosition(stream, BASS_POS_BYTE));
+	}
+	double getLength() {
+		return BASS_ChannelBytes2Seconds(stream, BASS_ChannelGetLength(stream, BASS_POS_BYTE));
+	}
+	void setPosition(double seconds) {
+		if (seconds < 0.0) seconds = 0.0;
+		QWORD len = BASS_ChannelGetLength(stream, BASS_POS_BYTE);
+		if (len > 0) {
+			double length = BASS_ChannelBytes2Seconds(stream, len);
+			if (seconds > length) seconds = length;
+		}
+		BASS_ChannelSetPosition(stream, BASS_ChannelSeconds2Bytes(stream, seconds), BASS_POS_BYTE);
 	}
 	bool isPlaying() {
 		return channel && BASS_ChannelIsActive(channel) != BASS_ACTIVE_STOPPED;
