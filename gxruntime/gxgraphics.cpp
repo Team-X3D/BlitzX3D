@@ -361,9 +361,9 @@ bool gxGraphics::setDarkMode(bool mode) {
 	if (!hwnd || !IsWindow(hwnd)) return false;
 
 	BOOL DARK_MODE = mode ? TRUE : FALSE;
-	if (DwmSetWindowAttribute(hwnd, 20, &DARK_MODE, sizeof(DARK_MODE)) != S_OK) return false;
-	if (DwmSetWindowAttribute(hwnd, 19, &DARK_MODE, sizeof(DARK_MODE)) != S_OK) return false;
-	return true;
+	HRESULT hr = DwmSetWindowAttribute(hwnd, 20, &DARK_MODE, sizeof(DARK_MODE));
+	if (FAILED(hr)) hr = DwmSetWindowAttribute(hwnd, 19, &DARK_MODE, sizeof(DARK_MODE));
+	return SUCCEEDED(hr);
 }
 
 gxCanvas* gxGraphics::getFrontCanvas()const {
