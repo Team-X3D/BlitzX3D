@@ -1,6 +1,7 @@
 #include "std.h"
 #include "meshmodel.h"
 #include "meshcollider.h"
+#include "world.h"
 
 extern gxGraphics* gx_graphics;
 extern gxRuntime* gx_runtime;
@@ -350,6 +351,12 @@ MeshCollider* MeshModel::getCollider()const {
 
 Surface* MeshModel::findSurface(const Brush& b)const {
 	return rep->findSurface(b);
+}
+
+Box MeshModel::getWorldBounds() const {
+	MeshCollider* c = getCollider();
+	if (!c) return Box();
+	return getWorldTform() * c->getBox();
 }
 
 bool MeshModel::collide(const Line& line, float radius, Collision* curr_coll, const Transform& t) {

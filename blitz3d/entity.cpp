@@ -61,7 +61,7 @@ void Entity::insert() {
 
 Entity::Entity() :
 	_succ(0), _pred(0), _parent(0), _children(0), _last_child(0),
-	_visible(true), _enabled(true),
+	_visible(true), _enabled(true), _world_rev(0),
 	local_scl(1, 1, 1),
 	invalid(0) {
 	insert();
@@ -69,7 +69,7 @@ Entity::Entity() :
 
 Entity::Entity(const Entity& e) :
 	_succ(0), _pred(0), _parent(0), _children(0), _last_child(0),
-	_name(e._name), _visible(e._visible), _enabled(e._enabled),
+	_name(e._name), _visible(e._visible), _enabled(e._enabled), _world_rev(0),
 	local_pos(e.local_pos),
 	local_scl(e.local_scl),
 	local_rot(e.local_rot),
@@ -83,6 +83,7 @@ Entity::~Entity() {
 }
 
 void Entity::invalidateWorld() {
+	++_world_rev;
 	if (invalid & INVALID_WORLDTFORM) return;
 	invalid |= INVALID_WORLDTFORM;
 	for (Entity* e = _children; e; e = e->_succ) {

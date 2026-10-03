@@ -37,6 +37,57 @@ static void enumVisible() {
 	}
 }
 
+struct LosEntry {
+	Object* obj;
+	Box box;
+	unsigned rev;
+};
+static std::vector<LosEntry> _los_entries;
+static unsigned _los_enum_rev = ~0u;
+static int _los_scene = -1;
+
+static void enumObscurers() {
+	unsigned rev = Entity::enumRevision();
+	int scene = g_sceneManager.currentSceneId;
+	if(rev != _los_enum_rev || scene != _los_scene) {
+		_los_enum_rev = rev; _los_scene = scene;
+		_los_entries.clear();
+		for(Object* o : _enabled) {
+			if(!o->getPickGeometry() || !o->getObscurer()) continue;
+			LosEntry e;
+			e.obj = o;
+			e.rev = ~0u;
+			_los_entries.push_back(e);
+		}
+	}
+	for(LosEntry& e : _los_entries) {
+		unsigned r = e.obj->worldRevision();
+		if(e.rev == r) continue;
+		e.box = e.obj->getWorldBounds();
+		e.rev = r;
+	}
+}
+
+static bool segmentHitsBox(const Line& l, const Box& b) {
+	float tmin = 0.0f, tmax = 1.0f;
+	for(int i = 0; i < 3; ++i) {
+		float o = l.o[i], d = l.d[i];
+		float mn = b.a[i], mx = b.b[i];
+		if(d > -1e-9f && d < 1e-9f) {
+			if(o < mn || o > mx) return false;
+		}
+		else {
+			float inv = 1.0f / d;
+			float t1 = (mn - o) * inv, t2 = (mx - o) * inv;
+			if(t1 > t2) { float t = t1; t1 = t2; t2 = t; }
+			if(t1 > tmin) tmin = t1;
+			if(t2 < tmax) tmax = t2;
+			if(tmin > tmax) return false;
+		}
+	}
+	return true;
+}
+
 /******************************* Update *******************************/
 
 static std::unordered_map<int, std::vector<Object*>> _objsByType;
@@ -110,6 +161,7 @@ switch(method) {
 bool World::checkLOS(Object* src, Object* dest) {
 
 	enumEnabled();
+	enumObscurers();
 
 	Collision curr_coll;
 
@@ -117,9 +169,10 @@ bool World::checkLOS(Object* src, Object* dest) {
 	const Vector& dp = dest->getWorldPosition();
 	Line line(sp, dp - sp);
 
-	for (Object* obj : _enabled) {
-		if (obj == src || obj == dest || !obj->getPickGeometry() || !obj->getObscurer())
-			continue;
+	for (const LosEntry& e : _los_entries) {
+		Object* obj = e.obj;
+		if (obj == src || obj == dest) continue;
+		if (!e.box.empty() && !segmentHitsBox(line, e.box)) continue;
 		if (hitTest(line, 0, obj, obj->getWorldTform(), obj->getPickGeometry(), &curr_coll))
 			return false;
 	}

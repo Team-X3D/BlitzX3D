@@ -76,16 +76,19 @@ public:
 	static Entity* orphans() { return _orphans; }
 
 	static unsigned enumRevision() { return _enum_rev; }
+	unsigned worldRevision() const { return _world_rev; }
 
 	void setScene(int id) { if(sceneId != id) { sceneId = id; bumpEnum(); } }
 	int getScene() const { return sceneId; }
+protected:
+	static void bumpEnum() { ++_enum_rev; }
 private:
 	Entity* _succ, * _pred, * _parent, * _children, * _last_child;
 
 	static Entity* _orphans, * _last_orphan;
 
 	static unsigned _enum_rev;
-	static void bumpEnum() { ++_enum_rev; }
+	unsigned _world_rev;
 	
 	int sceneId = 0;
 	bool _visible, _enabled, _pinned = false;

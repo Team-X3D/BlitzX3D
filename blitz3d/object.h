@@ -36,8 +36,8 @@ public:
 	void setCollisionRadii(const Vector& radii);
 	void setCollisionBox(const Box& box);
 	void setOrder(int n) { order = n; }
-	void setPickGeometry(int n) { pick_geom = n; }
-	void setObscurer(bool t) { obscurer = t; }
+	void setPickGeometry(int n) { if(pick_geom != n) { pick_geom = n; bumpEnum(); } }
+	void setObscurer(bool t) { if(obscurer != t) { obscurer = t; bumpEnum(); } }
 	void setAnimation(const Animation& t) { anim = t; }
 	void setAnimator(Animator* t);
 
@@ -45,6 +45,7 @@ public:
 
 	//overridables!
 	virtual bool collide(const Line& line, float radius, ::Collision* curr_coll, const Transform& t) { return false; }
+	virtual Box getWorldBounds() const { return Box(); }
 	virtual void capture();
 	virtual void animate(float e);
 	virtual bool beginRender(float tween);

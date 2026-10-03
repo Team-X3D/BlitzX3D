@@ -20,6 +20,7 @@ public:
 
 	//Object interface
 	virtual bool collide(const Line& line, float radius, Collision* curr_coll, const Transform& t);
+	virtual Box getWorldBounds() const;
 
 	//Model interface
 	virtual void setRenderBrush(const Brush& b);

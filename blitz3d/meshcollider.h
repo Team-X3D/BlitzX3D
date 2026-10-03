@@ -18,6 +18,8 @@ public:
 	//sphere collision
 	bool collide(const Line& line, float radius, Collision* curr_coll, const Transform& tform);
 
+	const Box& getBox()const { return tree->box; }
+
 	bool intersects(const MeshCollider& c, const Transform& t)const;
 
 private:
