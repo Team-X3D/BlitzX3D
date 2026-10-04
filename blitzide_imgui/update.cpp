@@ -15,7 +15,7 @@
 #include <wininet.h>
 #endif
 
-static const char* VERSION_URL = "https://krimbopple.xyz/BlitzX3D/version.txt";
+static const char* RELEASE_API_URL = "https://api.github.com/repos/krimbopple/BlitzX3D/releases/latest";
 static const char* RELEASES_URL = "https://github.com/krimbopple/BlitzX3D/releases";
 
 static std::thread updateThread;
@@ -54,6 +54,30 @@ static bool isNewer(const std::string& remote, const std::string& local) {
 	return false;
 }
 
+static bool extractTagName(const std::string& json, std::string& tag) {
+	const std::string key = "\"tag_name\"";
+	size_t p = json.find(key);
+	if (p == std::string::npos) return false;
+	p = json.find('"', json.find(':', p + key.size()));
+	if (p == std::string::npos) return false;
+	size_t e = json.find('"', p + 1);
+	if (e == std::string::npos) return false;
+	tag = json.substr(p + 1, e - p - 1);
+	return !tag.empty();
+}
+
+static bool findVersionToken(const std::string& s, std::string& ver) {
+	for (size_t i = 0; i + 1 < s.size(); ++i) {
+		if ((s[i] == 'V' || s[i] == 'v') && isdigit((unsigned char)s[i + 1])) {
+			size_t j = i + 1;
+			while (j < s.size() && (isdigit((unsigned char)s[j]) || s[j] == '.')) ++j;
+			ver = s.substr(i + 1, j - (i + 1));
+			return !ver.empty();
+		}
+	}
+	return false;
+}
+
 static bool fetchRemoteVersion(std::string& out) {
 	out.clear();
 #if defined(_WIN32)
@@ -64,7 +88,7 @@ static bool fetchRemoteVersion(std::string& out) {
 	InternetSetOptionA(hInet, INTERNET_OPTION_SEND_TIMEOUT, &timeout, sizeof(timeout));
 	InternetSetOptionA(hInet, INTERNET_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
 	DWORD flags = INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_PRAGMA_NOCACHE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_SECURE;
-	HINTERNET hUrl = InternetOpenUrlA(hInet, VERSION_URL, NULL, 0, flags, 0);
+	HINTERNET hUrl = InternetOpenUrlA(hInet, RELEASE_API_URL, NULL, 0, flags, 0);
 	if (!hUrl) { InternetCloseHandle(hInet); return false; }
 	char buff[256];
 	DWORD read = 0;
@@ -76,7 +100,7 @@ static bool fetchRemoteVersion(std::string& out) {
 	InternetCloseHandle(hUrl);
 	InternetCloseHandle(hInet);
 #else
-	FILE* p = popen("curl -s --max-time 4 '" VERSION_URL "' 2>/dev/null || wget -q -O - -T 4 '" VERSION_URL "' 2>/dev/null", "r");
+	FILE* p = popen("curl -s --max-time 4 '" RELEASE_API_URL "' 2>/dev/null || wget -q -O - -T 4 '" RELEASE_API_URL "' 2>/dev/null", "r");
 	if (!p) return false;
 	char buff[256];
 	size_t n;
@@ -87,11 +111,9 @@ static bool fetchRemoteVersion(std::string& out) {
 	}
 	pclose(p);
 #endif
-	while (out.size() && (out.back() == '\r' || out.back() == '\n' || out.back() == ' ' || out.back() == '\t')) out.pop_back();
-	size_t start = out.find_first_not_of(" \t\r\n");
-	if (start == std::string::npos) { out.clear(); return false; }
-	out = out.substr(start);
-	return !out.empty();
+	std::string tag;
+	if (!extractTagName(out, tag) || !findVersionToken(tag, out)) { out.clear(); return false; }
+	return true;
 }
 
 void startUpdateCheck(App* app) {
@@ -123,30 +145,35 @@ void App::drawUpdateDialog() {
 	ImGuiViewport* vp = ImGui::GetMainViewport();
 	ImVec2 center = ImVec2(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + vp->WorkSize.y * 0.5f);
 	ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-	if (ImGui::BeginPopupModal("BlitzX3D Update", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
-		ImGui::Text("A new version of BlitzX3D is available!");
-		ImGui::Spacing();
-		ImGui::TextWrapped("You are running %s. Version %s is available on GitHub.", BLITZIDE_VERSION, remoteVersion.c_str());
-		ImGui::Spacing();
-		bool ignore = updateIgnore;
-		ImGui::Checkbox("Don't remind me again for this version", &ignore);
-		updateIgnore = ignore;
-		ImGui::Spacing();
-		if (ImGui::Button("View Releases", ImVec2(-1, 0))) {
-			App::openUrl(RELEASES_URL);
-			if (ignore) { prefs.ignore_version_update = remoteVersion; prefs.close(); }
-			updateOpen = false;
-			ImGui::CloseCurrentPopup();
-		}
-		ImGui::Spacing();
-		if (ImGui::Button("Later", ImVec2(-1, 0))) {
-			if (ignore) { prefs.ignore_version_update = remoteVersion; prefs.close(); }
-			updateOpen = false;
-			ImGui::CloseCurrentPopup();
-		}
-		ImGui::EndPopup();
+
+	bool open = true;
+	bool close = false;
+	if (!ImGui::BeginPopupModal("BlitzX3D Update", &open, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
+		updateOpen = false;
+		return;
 	}
-	else {
+
+	ImGui::Text("A new version of BlitzX3D is available!");
+	ImGui::Spacing();
+	ImGui::TextWrapped("You are running %s. Version %s is available on GitHub.", BLITZIDE_VERSION, remoteVersion.c_str());
+	ImGui::Spacing();
+	ImGui::Checkbox("Don't remind me again for this version", &updateIgnore);
+	ImGui::Spacing();
+	if (ImGui::Button("View Releases", ImVec2(-1, 0))) {
+		App::openUrl(RELEASES_URL);
+		close = true;
+	}
+	ImGui::Spacing();
+	if (ImGui::Button("Later", ImVec2(-1, 0))) {
+		close = true;
+	}
+	if (ImGui::IsKeyPressed(ImGuiKey_Escape)) close = true;
+
+	if (close) ImGui::CloseCurrentPopup();
+	ImGui::EndPopup();
+
+	if (close || !open) {
+		if (updateIgnore) { prefs.ignore_version_update = remoteVersion; prefs.close(); }
 		updateOpen = false;
 	}
 }
