@@ -104,8 +104,9 @@ int UDPStream::recv() {
 		int n = ::select(0, &fd, 0, 0, &tv);
 		if (!n) return 0;
 		if (n != 1) { e = -1; return 0; }
-		unsigned long sz = -1;
+		unsigned long sz = 0;
 		if (ioctlsocket(sock, FIONREAD, &sz)) { e = -1; return 0; }
+		if (sz > 65535) sz = 65535;
 		in_buf.resize(sz); in_get = 0;
 		int len = sizeof(in_addr);
 		n = ::recvfrom(sock, (char*)in_buf.data(), sz, 0, (sockaddr*)&in_addr, &len);
@@ -225,10 +226,10 @@ int TCPStream::write(const char* buff, int size) {
 }
 
 int TCPStream::avail() {
-	unsigned long t;
+	unsigned long t = 0;
 	int n = ::ioctlsocket(sock, FIONREAD, &t);
 	if (n == SOCKET_ERROR) { e = -1; return 0; }
-	return t;
+	return (int)t;
 }
 
 int TCPStream::eof() {
@@ -307,7 +308,7 @@ int bbCountHostIPs(BBStr* host) {
 }
 
 int bbHostIP(int index) {
-	if (index<1 || index>host_ips.size()) {
+	if (index<1 || index>(int)host_ips.size()) {
 		ErrorLog("HostIP", MultiLang::host_out_of_range);
 	}
 	return host_ips[index - 1];
@@ -371,9 +372,9 @@ void bbUDPTimeouts(int rt) {
 }
 
 BBStr* bbDottedIP(int ip) {
-	return new BBStr(
-		itoa((ip >> 24) & 255) + "." + itoa((ip >> 16) & 255) + "." +
-		itoa((ip >> 8) & 255) + "." + itoa(ip & 255));
+	unsigned u = (unsigned)ip;
+	return new BBStr(std::to_string((u >> 24) & 255) + "." + std::to_string((u >> 16) & 255) + "." +
+		std::to_string((u >> 8) & 255) + "." + std::to_string(u & 255));
 }
 
 static int findHostIP(const std::string& t) {
@@ -423,6 +424,7 @@ void bbCloseTCPStream(TCPStream* p) {
 }
 
 TCPServer* bbCreateTCPServer(int port) {
+	if (!socks_ok) return 0;
 	SOCKET s = ::socket(AF_INET, SOCK_STREAM, 0);
 	if (s != INVALID_SOCKET) {
 		sockaddr_in addr = { AF_INET,htons(port) };
@@ -484,13 +486,13 @@ BBStr* bbParseDomainTXT(BBStr* txt, BBStr* name) {
 
 BBStr* bbGetDomainTXT(BBStr* domain) {
 	PDNS_RECORD pResult = NULL;
-	DnsQuery_A(domain->c_str(), DNS_TYPE_TEXT, DNS_QUERY_BYPASS_CACHE, NULL, &pResult, NULL);
-	if (!pResult) {
-		delete domain;
+	DNS_STATUS status = DnsQuery_A(domain->c_str(), DNS_TYPE_TEXT, DNS_QUERY_BYPASS_CACHE, NULL, &pResult, NULL);
+	delete domain;
+	if (status || !pResult || !pResult->Data.TXT.pStringArray || !pResult->Data.TXT.pStringArray[0]) {
+		if (pResult) DnsRecordListFree(pResult, DnsFreeRecordListDeep);
 		return new BBStr("");
 	}
 	std::string record = pResult->Data.TXT.pStringArray[0];
-	delete domain;
 	DnsRecordListFree(pResult, DnsFreeRecordListDeep);
 	return new BBStr(record);
 }
