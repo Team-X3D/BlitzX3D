@@ -2106,6 +2106,8 @@ void bbResizeImage(bbImage* i, float w, float h)
     if (iw < 1) iw = 1;
     if (ih < 1) ih = 1;
 
+    i->saveOrigPixels();
+
     const std::vector<gxCanvas*>& f = i->getFrames();
     for (int k = 0; k < (int)f.size(); ++k)
     {
@@ -2141,6 +2143,9 @@ void bbResizeImage(bbImage* i, float w, float h)
         i->replaceFrame(k, t);
         t->backup();
     }
+
+    i->origWidth = iw;
+    i->origHeight = ih;
 }
 
 void bbRotateImage(bbImage* i, float d)
