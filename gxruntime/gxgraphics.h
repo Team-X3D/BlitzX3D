@@ -31,7 +31,6 @@ public:
 	
 	FT_Library ftLibrary;
 
-	bool running_on_wine;
 	bool mask565 = false;
 
 	gxGraphics(gxRuntime* runtime, IDirect3DDevice9Ex* device, IDirect3DSurface9* front, IDirect3DSurface9* back, bool d3d);

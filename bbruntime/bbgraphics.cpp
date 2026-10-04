@@ -1313,7 +1313,7 @@ int bbStringHeight(BBStr* str)
 }
 
 BBStr* bbFontPath(BBStr* facename) {
-    return new BBStr(gx_graphics->running_on_wine ? "" : UTF8::getSystemFontFile(facename->c_str()).c_str());
+    return new BBStr(UTF8::getSystemFontFile(facename->c_str()).c_str());
 }
 
 gxMovie* bbOpenMovie(BBStr* s)
