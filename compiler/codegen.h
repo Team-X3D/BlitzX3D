@@ -37,6 +37,7 @@ public:
 	std::ostream& out;
 	bool debug;
 	Codegen(std::ostream& out, bool debug) :out(out), debug(debug) {}
+	virtual ~Codegen() {}
 
 	virtual void enter(const std::string& l, int frameSize) = 0;
 	virtual void code(TNode* code) = 0;

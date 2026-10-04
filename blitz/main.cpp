@@ -21,6 +21,7 @@
 #include "../compiler/parser.h"
 #include "../compiler/assem_x86/assem_x86.h"
 #include "../compiler/codegen_x86/codegen_x86.h"
+#include "../compiler/codegen_llvm/codegen_llvm.h"
 #include "../bbruntime_dll/bbruntime_dll.h"
 
 #undef environ
@@ -205,6 +206,7 @@ int _cdecl main(int argc, char* argv[]) {
 	bool versinfo = false;
 	bool nolaa = false;
 	bool encrypt = false;
+	bool llvmbackend = false;
 
 	for (int k = 1; k < argc; ++k) {
 		std::string t = argv[k];
@@ -253,6 +255,9 @@ int _cdecl main(int argc, char* argv[]) {
 		}
 		else if (t == "-encrypt") {
 			encrypt = true;
+		}
+		else if (t == "-llvm") {
+			llvmbackend = true;
 		}
 		else {
 			if (in_file.size() || t[0] == '-' || t[0] == '+') usageErr();
@@ -349,9 +354,17 @@ int _cdecl main(int argc, char* argv[]) {
 		if (!veryquiet) std::cout << "Translating..." << std::endl;
 		qstreambuf qbuf;
 		std::iostream asmcode(&qbuf);
-		Codegen_x86 codegen(asmcode, debug);
+		Codegen* codegen = llvmbackend ? (Codegen*)new Codegen_llvm(asmcode, debug) : (Codegen*)new Codegen_x86(asmcode, debug);
+		prog->translate(codegen, userFuncs);
+		delete codegen;
 
-		prog->translate(&codegen, userFuncs);
+		if (llvmbackend) {
+			std::cout << std::string(qbuf.data(), qbuf.size()) << std::endl;
+			delete prog;
+			delete environ;
+			closeLibs();
+			return 0;
+		}
 
 		if (dumpasm) {
 			std::cout << std::endl << std::string(qbuf.data(), qbuf.size()) << std::endl;
