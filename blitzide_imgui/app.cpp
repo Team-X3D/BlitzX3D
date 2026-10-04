@@ -347,7 +347,6 @@ bool App::init(int argc, char* argv[]) {
 }
 
 void App::shutdown() {
-	if (compileThread.joinable()) compileThread.join();
 	if (keywordThread.joinable()) keywordThread.join();
 
 	if (currentIndex >= 0) {
