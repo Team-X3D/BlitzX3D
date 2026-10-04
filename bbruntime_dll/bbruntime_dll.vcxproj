@@ -97,7 +97,7 @@
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32</AdditionalLibraryDirectories>
       <DelayLoadDLLs>d3dx9_43.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
@@ -161,7 +161,7 @@
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
       <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32</AdditionalLibraryDirectories>
