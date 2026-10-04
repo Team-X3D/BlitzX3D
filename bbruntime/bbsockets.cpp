@@ -517,6 +517,23 @@ int bbDownloadFile(BBStr* url, BBStr* file) {
 	return result;
 }
 
+int bbHttpStatus(BBStr* url) {
+	HINTERNET hInternet = InternetOpenA("Blitz3D", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+	if (!hInternet) { delete url; return 0; }
+
+	HINTERNET hUrl = InternetOpenUrlA(hInternet, url->c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+	delete url;
+	if (!hUrl) { InternetCloseHandle(hInternet); return 0; }
+
+	DWORD status = 0, len = sizeof(status);
+	if (!HttpQueryInfoA(hUrl, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, &status, &len, NULL))
+		status = 0;
+
+	InternetCloseHandle(hUrl);
+	InternetCloseHandle(hInternet);
+	return (int)status;
+}
+
 void sockets_link(void(*rtSym)(const char*, void*)) {
 	rtSym("$DottedIP%IP", bbDottedIP);
 	rtSym("%CountHostIPs$host_name", bbCountHostIPs);
@@ -545,4 +562,5 @@ void sockets_link(void(*rtSym)(const char*, void*)) {
 	rtSym("$ParseDomainTXT$txt$name", bbParseDomainTXT);
 
 	rtSym("%DownloadFile$url$file", bbDownloadFile);
+	rtSym("%HttpStatus$url", bbHttpStatus);
 }
