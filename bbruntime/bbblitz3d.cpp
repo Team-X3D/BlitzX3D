@@ -985,6 +985,52 @@ int  bbAddTriangle(Surface* s, int v0, int v1, int v2) {
 	return s->numTriangles() - 1;
 }
 
+static Vector particle_axis_x(1, 0, 0);
+static Vector particle_axis_y(0, 1, 0);
+
+void  bbParticleBasis(float xx, float xy, float xz, float yx, float yy, float yz) {
+	particle_axis_x = Vector(xx, xy, xz);
+	particle_axis_y = Vector(yx, yy, yz);
+}
+
+void  bbAddParticle(Surface* s, float x, float y, float z, float sx, float sy, float angle, float r, float g, float b, float a) {
+	if (r < 0)r = 0; else if (r > 255)r = 255;
+	if (g < 0)g = 0; else if (g > 255)g = 255;
+	if (b < 0)b = 0; else if (b > 255)b = 255;
+	a *= 255; if (a < 0)a = 0; else if (a > 255)a = 255;
+	unsigned argb = (int(a) << 24) | (int(r) << 16) | (int(g) << 8) | int(b);
+
+	float rad = angle * (float)dtor;
+	float c = cosf(rad), sn = sinf(rad);
+	Vector ex = (particle_axis_x * c + particle_axis_y * sn) * sx;
+	Vector ey = (particle_axis_y * c - particle_axis_x * sn) * sy;
+	Vector ctr(x, y, z);
+
+	Vector pts[4] = {
+		ctr + ex - ey,
+		ctr - ex - ey,
+		ctr + ex + ey,
+		ctr - ex + ey
+	};
+	static const float uvs[4][2] = { { 0,0 }, { 1,0 }, { 0,1 }, { 1,1 } };
+
+	int base = s->numVertices();
+	for (int k = 0; k < 4; ++k) {
+		Surface::Vertex v;
+		v.coords = pts[k];
+		v.normal = Vector(0, 0, 0);
+		v.color = argb;
+		v.tex_coords[0][0] = v.tex_coords[1][0] = uvs[k][0];
+		v.tex_coords[0][1] = v.tex_coords[1][1] = uvs[k][1];
+		s->addVertex(v);
+	}
+	Surface::Triangle t0, t1;
+	t0.verts[0] = base; t0.verts[1] = base + 1; t0.verts[2] = base + 2;
+	t1.verts[0] = base + 2; t1.verts[1] = base + 1; t1.verts[2] = base + 3;
+	s->addTriangle(t0);
+	s->addTriangle(t1);
+}
+
 void  bbVertexCoords(Surface* s, int n, float x, float y, float z) {
 	s->setCoords(n, Vector(x, y, z));
 }
@@ -2512,6 +2558,8 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("PaintSurface%surface%brush", bbPaintSurface);
 	rtSym("%AddVertex%surface#x#y#z#u=0#v=0#w=1", bbAddVertex);
 	rtSym("%AddTriangle%surface%v0%v1%v2", bbAddTriangle);
+	rtSym("ParticleBasis#xx#xy#xz#yx#yy#yz", bbParticleBasis);
+	rtSym("AddParticle%surface#x#y#z#sx#sy#angle#red#green#blue#alpha=1", bbAddParticle);
 	rtSym("VertexCoords%surface%index#x#y#z", bbVertexCoords);
 	rtSym("VertexNormal%surface%index#nx#ny#nz", bbVertexNormal);
 	rtSym("VertexColor%surface%index#red#green#blue#alpha=1", bbVertexColor);
