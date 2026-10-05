@@ -144,7 +144,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="cryptseed.h" />
     <ClInclude Include="image_util.h" />
     <ClInclude Include="linker.h" />
     <ClInclude Include="std.h" />

@@ -569,11 +569,9 @@ void App::menuBar() {
 		ImGui::Separator();
 		bool* optNoAutoDecl = &prefs.prg_noautodecl;
 		bool* optExperimental = &prefs.prg_experimental;
-		bool* optEncrypt = &prefs.prg_encrypt;
 		if (prefs.projectOptionsActive) {
 			optNoAutoDecl = &prefs.projectOptions.noautodecl;
 			optExperimental = &prefs.projectOptions.experimental;
-			optEncrypt = &prefs.projectOptions.encrypt;
 		}
 		auto persistOpts = [&]() { if (prefs.projectOptionsActive) prefs.saveProjectOptions(projectPath); };
 		bool optsChanged = false;
@@ -589,7 +587,6 @@ void App::menuBar() {
 			if (ImGui::MenuItem("Very quiet", nullptr, &prefs.prg_veryquiet) && prefs.prg_veryquiet)
 				prefs.prg_quiet = true;
 			ImGui::MenuItem("Dump keys", nullptr, &prefs.prg_dumpkeys);
-			if (ImGui::MenuItem("Encrypt", nullptr, optEncrypt)) optsChanged = true;
 			ImGui::EndMenu();
 		}
 		if (optsChanged) persistOpts();
@@ -2018,7 +2015,6 @@ void App::drawPaneBackground() {
 Prefs::CompileOptions App::effectiveCompileOptions() {
 	Prefs::CompileOptions co;
 	co.noautodecl = prefs.prg_noautodecl;
-	co.encrypt = prefs.prg_encrypt;
 	co.experimental = prefs.prg_experimental;
 	if (projectOpen && !projectPath.empty()) {
 		if (!prefs.projectOptionsActive) {
@@ -2067,7 +2063,6 @@ void App::build(bool exec, bool publish) {
 	if (prefs.prg_nolaa) args.push_back("-nlaa");
 	if (co.noautodecl) args.push_back("-noautodecl");
 	if (co.experimental) args.push_back("-experimental");
-	if (co.encrypt) args.push_back("-encrypt");
 
 	if (publish) {
 		std::string exe = publishExePath.empty() ? src_file : publishExePath;

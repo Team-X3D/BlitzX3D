@@ -22,7 +22,6 @@
 #pragma comment(lib, "Shell32.lib")
 #include <shellapi.h>
 #include <commctrl.h>
-#include "../linker/cryptseed.h"
 
 static void writeMiniDump(EXCEPTION_POINTERS* pExp) {
 	char path[MAX_PATH];
@@ -390,23 +389,6 @@ static int findSym(const std::string& t) {
 	return 0;
 }
 
-static void* findSectionData(const char* sectionName, DWORD* pSize) {
-	HMODULE hMod = GetModuleHandle(nullptr);
-	PIMAGE_DOS_HEADER pDos = (PIMAGE_DOS_HEADER)hMod;
-	if (pDos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
-	PIMAGE_NT_HEADERS pNt = (PIMAGE_NT_HEADERS)((BYTE*)pDos + pDos->e_lfanew);
-	if (pNt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
-	PIMAGE_SECTION_HEADER pSection = IMAGE_FIRST_SECTION(pNt);
-	for (int i = 0; i < pNt->FileHeader.NumberOfSections; ++i) {
-		if (memcmp(pSection->Name, sectionName, 8) == 0) {
-			*pSize = pSection->Misc.VirtualSize;
-			return (BYTE*)hMod + pSection->VirtualAddress;
-		}
-		pSection++;
-	}
-	return nullptr;
-}
-
 static void link() {
 
 	while (const char* sc = runtime->nextSym()) {
@@ -429,35 +411,16 @@ static void link() {
 		runtime_syms["_f" + tolower(t)] = runtime->symValue(sc);
 	}
 
-	DWORD sectionSize = 0;
-	void* pSectionData = findSectionData(".b3dmod", &sectionSize);
 	void* p = nullptr;
 	size_t dataSize = 0;
 
-	if (pSectionData && sectionSize >= 8) {
-		char* dataPtr = (char*)pSectionData;
-		uint32_t salt = *(uint32_t*)dataPtr;  dataPtr += 4;
-		uint32_t storedKey = *(uint32_t*)dataPtr;  dataPtr += 4;
-		uint32_t key = storedKey ^ b3dMixKey(RUNTIME_KEY_SEED, salt);
-		p = dataPtr;
-		dataSize = sectionSize - 8;
-		uint32_t* pData = (uint32_t*)p;
-		for (size_t i = 0; i < dataSize / 4; ++i) {
-			pData[i] ^= key;
-		}
-		for (size_t i = (dataSize / 4) * 4; i < dataSize; ++i) {
-			((char*)p)[i] ^= (char)(key >> ((i % 4) * 8));
-		}
-	}
-	else {
-		HRSRC hres = FindResource(0, MAKEINTRESOURCE(1111), RT_RCDATA);
-		if (!hres) fail();
-		HGLOBAL hglo = LoadResource(0, hres);
-		if (!hglo) fail();
-		p = LockResource(hglo);
-		if (!p) fail();
-		dataSize = SizeofResource(0, hres);
-	}
+	HRSRC hres = FindResource(0, MAKEINTRESOURCE(1111), RT_RCDATA);
+	if (!hres) fail();
+	HGLOBAL hglo = LoadResource(0, hres);
+	if (!hglo) fail();
+	p = LockResource(hglo);
+	if (!p) fail();
+	dataSize = SizeofResource(0, hres);
 
 	int sz = *(int*)p; p = (int*)p + 1;
 

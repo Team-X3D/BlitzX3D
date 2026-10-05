@@ -22,6 +22,5 @@ _release/*.ttf
 */objs/*
 *.zip
 temp
-linker/cryptseed.h
 llvm
 blitzide_imgui/bin

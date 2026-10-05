@@ -8,8 +8,6 @@ public:
 	virtual void* link(Module* libs) = 0;
 	virtual bool createExe(const char* exe_file, const char* dll_file, bool laa) = 0;
 
-	virtual void setEncryption(bool enable) = 0;
-
 	virtual int getPC() = 0;
 
 	virtual void emit(int byte) = 0;

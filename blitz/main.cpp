@@ -204,7 +204,6 @@ int _cdecl main(int argc, char* argv[]) {
 	bool dumpkeys = false, dumphelp = false, showhelp = false, dumpasm = false;
 	bool versinfo = false;
 	bool nolaa = false;
-	bool encrypt = false;
 
 	for (int k = 1; k < argc; ++k) {
 		std::string t = argv[k];
@@ -250,9 +249,6 @@ int _cdecl main(int argc, char* argv[]) {
 		}
 		else if (t == "-experimental") {
 			experimentalSyntaxEnabled = true;
-		}
-		else if (t == "-encrypt") {
-			encrypt = true;
 		}
 		else {
 			if (in_file.size() || t[0] == '-' || t[0] == '+') usageErr();
@@ -374,8 +370,6 @@ int _cdecl main(int argc, char* argv[]) {
 
 	if (out_file.size()) {
 		if (!veryquiet) std::cout << "Creating executable \"" << out_file << "\"..." << std::endl;
-
-		module->setEncryption(encrypt);
 
 		if (!module->createExe(out_file.c_str(), (home + "/bin/runtime.dll").c_str(), nolaa)) {
 			err("Error creating executable!");
