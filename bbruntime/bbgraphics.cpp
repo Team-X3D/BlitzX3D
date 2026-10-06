@@ -1650,7 +1650,7 @@ void bbDrawImage(bbImage* i, int x, int y, int frame)
     int w = c->getWidth(), h = c->getHeight();
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int hx, hy; c->getHandle(&hx, &hy);
@@ -1682,7 +1682,7 @@ void bbDrawBlock(bbImage* i, int x, int y, int frame)
     gxCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int w = c->getWidth(), h = c->getHeight();
@@ -1745,7 +1745,7 @@ void bbDrawImageRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_
     gxCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int hx, hy; c->getHandle(&hx, &hy);
@@ -1784,7 +1784,7 @@ void bbDrawBlockRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_
     gxCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int hx, hy; c->getHandle(&hx, &hy);
