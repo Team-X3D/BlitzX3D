@@ -828,15 +828,23 @@ TNode* ObjectHandleNode::translate(Codegen* g) {
 // Address of  //
 /////////////////
 ExprNode* AddrOfNode::semant(Environ* e) {
-	var->semant(e);
-	if(var->sem_type->structType()) {
-		ex(MultiLang::addressof_not_supported_for_type);
+	if (IdentVarNode* iv = dynamic_cast<IdentVarNode*>(var)) {
+		if (Decl* d = e->findDecl(iv->ident)) {
+			if (d->kind & DECL_ARRAY) {
+				sem_array = true;
+				array_ident = iv->ident;
+				sem_type = Type::int_type;
+				return this;
+			}
+		}
 	}
+	var->semant(e);
 	sem_type = Type::int_type;
 	return this;
 }
 
 TNode* AddrOfNode::translate(Codegen* g) {
+	if (sem_array) return global("_a" + array_ident);
 	return var->translate(g);
 }
 

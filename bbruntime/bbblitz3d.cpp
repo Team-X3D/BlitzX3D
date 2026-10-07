@@ -38,6 +38,7 @@ std::unordered_set<Texture*> texture_set;
 struct EntityInfo {
 	std::string name;
 	bool alive;
+	std::string filename;
 };
 static std::unordered_map<Entity*, EntityInfo> entity_map;
 
@@ -209,7 +210,7 @@ static void collapseMesh(MeshModel* mesh, Entity* e) {
 
 static void insert(Entity* e) {
 	//if (debug) entity_set.insert(e);
-	entity_map[e] = { "", true };
+	entity_map[e] = { "", true, "" };
 	e->setVisible(true);
 	e->setEnabled(true);
 	e->getObject()->reset();
@@ -221,7 +222,7 @@ static void insert(Entity* e) {
 static Entity* insertEntity(Entity* e, Entity* p) {
 	e->setParent(p);
 	insert(e);
-	entity_map[e] = { "", true };
+	entity_map[e] = { "", true, "" };
 	return e;
 }
 
@@ -231,6 +232,7 @@ static void nameEntityFromFile(Entity* e, const std::string& file) {
 	auto it = entity_map.find(e);
 	if (it != entity_map.end()) {
 		it->second.name = e->getName();
+		it->second.filename = file;
 	}
 }
 
@@ -460,9 +462,24 @@ int bbAvailVirtual() {
 //////////////////////
 
 //Note: modify canvas->backup() to NOT release backup image!
+typedef BBStr* (*BBPathMutator)(BBStr*);
+static BBPathMutator pathMutator = nullptr;
+
+void bbSetTextureLoadPathMutator(void* handler) {
+	pathMutator = reinterpret_cast<BBPathMutator>(handler);
+}
+
+static std::string applyPathMutator(const std::string& path) {
+	if (!pathMutator) return path;
+	BBStr* r = pathMutator(new BBStr(path));
+	std::string out = r ? *r : path;
+	delete r;
+	return out;
+}
+
 Texture* bbLoadTexture(BBStr* file, int flags) {
 	debug3d("LoadTexture");
-	std::string path = *file;
+	std::string path = applyPathMutator(*file);
 	delete file;
 	Texture* t = new Texture(path, flags);
 	if (!t->valid()) { delete t; return 0; }
@@ -472,7 +489,7 @@ Texture* bbLoadTexture(BBStr* file, int flags) {
 
 Texture* bbLoadAnimTexture(BBStr* file, int flags, int w, int h, int first, int cnt) {
 	debug3d("LoadAnimTexture");
-	Texture* t = new Texture(*file, flags, w, h, first, cnt);
+	Texture* t = new Texture(applyPathMutator(*file), flags, w, h, first, cnt);
 	delete file;
 	if (!t->valid()) {
 		delete t;
@@ -496,6 +513,18 @@ void bbFreeTexture(Texture* t) {
 	if (!t) return;
 	debugTexture(t, "FreeTexture");
 	if (texture_set.erase(t)) delete t;
+}
+
+int bbGetTexturesCount() {
+	return (int)texture_set.size();
+}
+
+Texture* bbGetTexture(int id) {
+	if (id < 0) return 0;
+	for (Texture* t : texture_set) {
+		if (id-- == 0) return t;
+	}
+	return 0;
 }
 
 void bbTextureBlend(Texture* t, int blend) {
@@ -616,7 +645,7 @@ Brush* bbCreateBrush(float r, float g, float b) {
 
 Brush* bbLoadBrush(BBStr* file, int flags, float u_scale, float v_scale) {
 	debug3d("LoadBrush");
-	Texture t(*file, flags);
+	Texture t(applyPathMutator(*file), flags);
 	delete file; if (!t.getCanvas(0)) return 0;
 	if (u_scale != 1 || v_scale != 1) t.setScale(1 / u_scale, 1 / v_scale);
 	Brush* br = bbCreateBrush(255, 255, 255);
@@ -628,6 +657,18 @@ void  bbFreeBrush(Brush* b) {
 	if (!b) return;
 	debugBrush(b, "FreeBrush");
 	if (brush_set.erase(b)) delete b;
+}
+
+int bbGetBrushesCount() {
+	return (int)brush_set.size();
+}
+
+Brush* bbGetBrush(int id) {
+	if (id < 0) return 0;
+	for (Brush* b : brush_set) {
+		if (id-- == 0) return b;
+	}
+	return 0;
 }
 
 void  bbBrushColor(Brush* br, float r, float g, float b) {
@@ -645,6 +686,11 @@ void  bbBrushShininess(Brush* b, float n) {
 	b->setShininess(n);
 }
 
+void bbBrushMaterial(Brush* b, float roughness, float metallic) {
+	debugBrush(b, "BrushMaterial");
+	b->setMaterial(roughness, metallic);
+}
+
 void  bbBrushTexture(Brush* b, Texture* t, int frame, int index) {
 	debugBrush(b, "BrushTexture");
 	debugTexture(t, "BrushTexture");
@@ -658,9 +704,25 @@ Texture* bbGetBrushTexture(Brush* b, int index) {
 	return tex;
 }
 
+Texture* bbGetEntityTexture(Model* m, int index) {
+	debugModel(m, "GetEntityTexture");
+	Texture* tex = new Texture(m->getBrush().getTexture(index));
+	texture_set.insert(tex);
+	return tex;
+}
+
+gxCanvas* bbGetEntityTextureBuffer(Model* m, int tid, int bid) {
+	return bbTextureBuffer(bbGetEntityTexture(m, tid), bid);
+}
+
 void  bbBrushBlend(Brush* b, int blend) {
 	debugBrush(b, "BrushBlend");
 	b->setBlend(blend);
+}
+
+int bbGetBrushBlend(Brush* b) {
+	debugBrush(b, "GetBrushBlend");
+	return b->getBlend();
 }
 
 void  bbBrushFX(Brush* b, int fx) {
@@ -852,6 +914,17 @@ void bbMeshCullBox(MeshModel* m, float x, float y, float z, float width, float h
 	m->setCullBox(Box(Vector(x, y, z), Vector(x + width, y + height, z + depth)));
 }
 
+void bbGetMeshBox(MeshModel* m, float* x, float* y, float* z, float* width, float* height, float* depth) {
+	debugMesh(m, "GetMeshBox");
+	Box box = m->getWorldBounds();
+	if (x) *x = box.a.x;
+	if (y) *y = box.a.y;
+	if (z) *z = box.a.z;
+	if (width) *width = box.b.x - box.a.x;
+	if (height) *height = box.b.y - box.a.y;
+	if (depth) *depth = box.b.z - box.a.z;
+}
+
 //EFFECTS
 
 gxEffect* bbLoadEffect(BBStr* filename) {
@@ -892,6 +965,14 @@ void bbSetEffectFloat(gxEffect* effect, BBStr* name, float value) {
 	if (!gx_graphics->verifyEffect(effect)) { delete name; return; }
 	effect->setFloat(*name, value);
 	delete name;
+}
+
+void bbEffectBool(gxEffect* effect, BBStr* name, int value) {
+	bbSetEffectFloat(effect, name, value ? 1.0f : 0.0f);
+}
+
+void bbEffectInt(gxEffect* effect, BBStr* name, int value) {
+	bbSetEffectFloat(effect, name, (float)value);
 }
 
 void bbSetEffectVector(gxEffect* effect, BBStr* name, float x, float y, float z, float w) {
@@ -1207,6 +1288,43 @@ void  bbCameraFogMode(Camera* c, int mode) {
 	c->setFogMode(mode);
 }
 
+void bbCameraCullMode(Camera* c, int mode) {
+	debugCamera(c, "CameraCullMode");
+	c->setCullMode(mode);
+}
+
+void bbCameraDepthBias(Camera* c, float bias, float slope) {
+	debugCamera(c, "CameraDepthBias");
+	c->setDepthBias(bias, slope);
+}
+
+void bbCameraReverseZ(Camera* c, int enable) {
+	debugCamera(c, "CameraReverseZ");
+	c->setReverseZ(enable);
+}
+
+void bbCameraColorWrite(Camera* c, int enable) {
+	debugCamera(c, "CameraColorWrite");
+	c->setColorWrite(enable);
+}
+
+Matrix* bbCameraMatrix(Camera* c, int typ, float tween) {
+	debugCamera(c, "CameraMatrix");
+	static Matrix mat;
+	mat = c->getRenderTform().m;
+	return &mat;
+}
+
+void bbSetScissorRect(int enable, int x, int y, int width, int height) {
+	debug3d("SetScissorRect");
+	gx_scene->setScissorRect(enable != 0, x, y, width, height);
+}
+
+void bbSetTextureDivisor(int div) {
+	debug3d("SetTextureDivisor");
+	gx_scene->setTextureDivisor(div);
+}
+
 int  bbCameraProject(Camera* c, float x, float y, float z) {
 	debugCamera(c, "CameraProject");
 	Vector v = -c->getWorldTform() * Vector(x, y, z);
@@ -1377,6 +1495,11 @@ void  bbLightColor(Light* light, float r, float g, float b) {
 void  bbLightRange(Light* light, float range) {
 	debugLight(light, "LightRange");
 	light->setRange(range);
+}
+
+float bbGetLightRange(Light* light) {
+	debugLight(light, "GetLightRange");
+	return light->getGxLight()->d3d_light.Range;
 }
 
 void  bbLightConeAngles(Light* light, float inner, float outer) {
@@ -1759,6 +1882,20 @@ Entity* bbFindChild(Entity* e, BBStr* t) {
 	return e;
 }
 
+Entity* bbFindMesh(BBStr* file) {
+	std::string f = *file;
+	delete file;
+	std::string base = filenamefile(f);
+	for (auto& kv : entity_map) {
+		if (!kv.second.alive) continue;
+		if (kv.second.filename == f || kv.second.filename == base || kv.second.name == base) {
+			Model* mm = kv.first->getModel();
+			if (mm && mm->getMeshModel()) return kv.first;
+		}
+	}
+	return 0;
+}
+
 ////////////////////////
 // ANIMATION COMMANDS //
 ////////////////////////
@@ -1911,6 +2048,11 @@ void  bbEntityShininess(Model* m, float shininess) {
 	m->setShininess(shininess);
 }
 
+void bbEntityMaterial(Model* m, float roughness, float metallic) {
+	debugModel(m, "EntityMaterial");
+	m->setMaterial(roughness, metallic);
+}
+
 void  bbEntityTexture(Model* m, Texture* t, int frame, int index) {
 	debugModel(m, "EntityTexture");
 	debugTexture(t, "EntityTexture");
@@ -1925,6 +2067,31 @@ void  bbEntityBlend(Model* m, int blend) {
 void  bbEntityFX(Model* m, int fx) {
 	debugModel(m, "EntityFX");
 	m->setFX(fx);
+}
+
+int bbEntityColorR(Model* m) {
+	debugModel(m, "EntityColorR");
+	return (int)(m->getBrush().getColor().x * 255.0f);
+}
+
+int bbEntityColorG(Model* m) {
+	debugModel(m, "EntityColorG");
+	return (int)(m->getBrush().getColor().y * 255.0f);
+}
+
+int bbEntityColorB(Model* m) {
+	debugModel(m, "EntityColorB");
+	return (int)(m->getBrush().getColor().z * 255.0f);
+}
+
+float bbGetEntityAlpha(Model* m) {
+	debugModel(m, "GetEntityAlpha");
+	return m->getBrush().getAlpha();
+}
+
+int bbGetEntityBlend(Model* m) {
+	debugModel(m, "GetEntityBlend");
+	return m->getBrush().getBlend();
 }
 
 void  bbEntityAutoFade(Model* m, float nr, float fr) {
@@ -2098,6 +2265,16 @@ int  bbGetEntityType(Object* o) {
 	return o->getCollisionType();
 }
 
+void bbMaskEntity(Object* o, int mask) {
+	debugObject(o, "MaskEntity");
+	o->setMask(mask);
+}
+
+int bbEntityMask(Object* o) {
+	debugObject(o, "EntityMask");
+	return o->getMask();
+}
+
 void  bbEntityRadius(Object* o, float x_radius, float y_radius) {
 	debugObject(o, "EntityRadius");
 	Vector radii(x_radius, y_radius ? y_radius : x_radius, x_radius);
@@ -2109,6 +2286,23 @@ void  bbEntityBox(Object* o, float x, float y, float z, float w, float h, float 
 	Box b(Vector(x, y, z));
 	b.update(Vector(x + w, y + h, z + d));
 	o->setCollisionBox(b);
+}
+
+void bbGetEntityBox(Object* o, float* x, float* y, float* z, float* width, float* height, float* depth) {
+	debugObject(o, "GetEntityBox");
+	const Box& b = o->getCollisionBox();
+	if (x) *x = b.a.x;
+	if (y) *y = b.a.y;
+	if (z) *z = b.a.z;
+	if (width) *width = b.b.x - b.a.x;
+	if (height) *height = b.b.y - b.a.y;
+	if (depth) *depth = b.b.z - b.a.z;
+}
+
+void bbGetEntityPickMode(Object* o, int* pickGeometry, int* obscurer) {
+	debugObject(o, "GetEntityPickMode");
+	if (pickGeometry) *pickGeometry = o->getPickGeometry();
+	if (obscurer) *obscurer = o->getObscurer() ? 1 : 0;
 }
 
 Object* bbEntityCollided(Object* o, int type) {
@@ -2289,6 +2483,12 @@ void  bbNameEntity(Entity* e, BBStr* t) {
 BBStr* bbEntityName(Entity* e) {
 	debugEntity(e, "EntityName");
 	return new BBStr(e->getName());
+}
+
+BBStr* bbEntityFilename(Entity* e) {
+	debugEntity(e, "EntityFilename");
+	auto it = entity_map.find(e);
+	return new BBStr(it != entity_map.end() ? it->second.filename : "");
 }
 
 BBStr* bbEntityClass(Entity* e) {
@@ -2475,12 +2675,17 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("RenderEntity%entity%camera#tween=1", bbRenderEntity);
 	rtSym("%ActiveTextures", bbActiveTextures);
 	rtSym("%TrisRendered", bbTrisRendered);
+	rtSym("ScissorRect%enable%x=0%y=0%width=0%height=0", bbSetScissorRect);
+	rtSym("TextureDivisor%div", bbSetTextureDivisor);
 	rtSym("#Stats3D%type", bbStats3D);
 
 	rtSym("%CreateTexture%width%height%flags=0%frames=1", bbCreateTexture);
 	rtSym("%LoadTexture$file%flags=1", bbLoadTexture);
+	rtSym("SetTextureLoadPathMutator%handler", bbSetTextureLoadPathMutator);
 	rtSym("%LoadAnimTexture$file%flags%width%height%first%count", bbLoadAnimTexture);
 	rtSym("FreeTexture%texture", bbFreeTexture);
+	rtSym("%GetTexture%id", bbGetTexture);
+	rtSym("%GetTexturesCount", bbGetTexturesCount);
 	rtSym("TextureBlend%texture%blend", bbTextureBlend);
 	rtSym("TextureCoords%texture%coords", bbTextureCoords);
 	rtSym("TextureBumpEnvMat%texture%x%y#envmat", bbTextureBumpEnvMat);
@@ -2492,6 +2697,8 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("SetEntityEffect%entity%effect", bbSetEntityEffect);
 	rtSym("SetBrushEffect%brush%effect", bbSetBrushEffect);
 	rtSym("SetEffectFloat%effect$name#value", bbSetEffectFloat);
+	rtSym("EffectBool%effect$name%value", bbEffectBool);
+	rtSym("EffectInt%effect$name%value", bbEffectInt);
 	rtSym("SetEffectVector%effect$name#x#y#z#w", bbSetEffectVector);
 	rtSym("SetEffectMatrix%effect$name#m11#m12#m13#m14#m21#m22#m23#m24#m31#m32#m33#m34#m41#m42#m43#m44", bbSetEffectMatrix);
 	rtSym("SetEffectTexture%effect$name%texture", bbSetEffectTexture);
@@ -2515,12 +2722,18 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("%CreateBrush#red=255#green=255#blue=255", bbCreateBrush);
 	rtSym("%LoadBrush$file%texture_flags=1#u_scale=1#v_scale=1", bbLoadBrush);
 	rtSym("FreeBrush%brush", bbFreeBrush);
+	rtSym("%GetBrush%id", bbGetBrush);
+	rtSym("%GetBrushesCount", bbGetBrushesCount);
 	rtSym("BrushColor%brush#red#green#blue", bbBrushColor);
 	rtSym("BrushAlpha%brush#alpha", bbBrushAlpha);
 	rtSym("BrushShininess%brush#shininess", bbBrushShininess);
+	rtSym("BrushMaterial%brush#roughness#metallic", bbBrushMaterial);
 	rtSym("BrushTexture%brush%texture%frame=0%index=0", bbBrushTexture);
 	rtSym("%GetBrushTexture%brush%index=0", bbGetBrushTexture);
+	rtSym("%GetEntityTexture%entity%index", bbGetEntityTexture);
+	rtSym("%GetEntityTextureBuffer%entity%index%frame=0", bbGetEntityTextureBuffer);
 	rtSym("BrushBlend%brush%blend", bbBrushBlend);
+	rtSym("%GetBrushBlend%brush", bbGetBrushBlend);
 	rtSym("BrushFX%brush%fx", bbBrushFX);
 
 	rtSym("%LoadMesh$file%parent=0", bbLoadMesh);
@@ -2549,6 +2762,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("%CountSurfaces%mesh", bbCountSurfaces);
 	rtSym("%GetSurface%mesh%surface_index", bbGetSurface);
 	rtSym("MeshCullBox%mesh#x#y#z#width#height#depth", bbMeshCullBox);
+	rtSym("GetMeshBox%mesh%x%y%z%width%height%depth", bbGetMeshBox);
 
 	rtSym("%CreateSurface%mesh%brush=0", bbCreateSurface);
 	rtSym("%GetSurfaceBrush%surface", bbGetSurfaceBrush);
@@ -2596,6 +2810,11 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("#GetCameraFogRangeFar%camera", bbGetCameraFogRangeFar);
 	rtSym("CameraFogDensity%camera#density", bbCameraFogDensity);
 	rtSym("CameraFogMode%camera%mode", bbCameraFogMode);
+	rtSym("CameraCullMode%camera%mode", bbCameraCullMode);
+	rtSym("CameraDepthBias%camera#bias#slope", bbCameraDepthBias);
+	rtSym("CameraReverseZ%camera%enable", bbCameraReverseZ);
+	rtSym("CameraColorWrite%camera%enable", bbCameraColorWrite);
+	rtSym("%CameraMatrix%camera%typ%tween=1", bbCameraMatrix);
 	rtSym("CameraProject%camera#x#y#z", bbCameraProject);
 	rtSym("#ProjectedX", bbProjectedX);
 	rtSym("#ProjectedY", bbProjectedY);
@@ -2622,6 +2841,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("%CreateLight%type=1%parent=0", bbCreateLight);
 	rtSym("LightColor%light#red#green#blue", bbLightColor);
 	rtSym("LightRange%light#range", bbLightRange);
+	rtSym("#GetLightRange%light", bbGetLightRange);
 	rtSym("LightConeAngles%light#inner_angle#outer_angle", bbLightConeAngles);
 
 	rtSym("%CreatePivot%parent=0", bbCreatePivot);
@@ -2691,10 +2911,14 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("ResetEntity%entity", bbResetEntity);
 	rtSym("EntityType%entity%collision_type%recursive=0", bbEntityType);
 	rtSym("EntityPickMode%entity%pick_geometry%obscurer=1", bbEntityPickMode);
+	rtSym("GetEntityPickMode%entity%pick_geometry%obscurer", bbGetEntityPickMode);
 	rtSym("%GetParent%entity", bbGetParent);
 	rtSym("%GetEntityType%entity", bbGetEntityType);
+	rtSym("MaskEntity%entity%mask", bbMaskEntity);
+	rtSym("%EntityMask%entity", bbEntityMask);
 	rtSym("EntityRadius%entity#x_radius#y_radius=0", bbEntityRadius);
 	rtSym("EntityBox%entity#x#y#z#width#height#depth", bbEntityBox);
+	rtSym("GetEntityBox%entity%x%y%z%width%height%depth", bbGetEntityBox);
 	rtSym("#EntityDistance%source_entity%destination_entity", bbEntityDistance);
 	rtSym("#EntityDistanceSquared%source_entity%destination_entity", bbEntityDistanceSquared);
 	rtSym("%EntityCollided%entity%type", bbEntityCollided);
@@ -2740,13 +2964,20 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("%CountChildren%entity", bbCountChildren);
 	rtSym("%GetChild%entity%index", bbGetChild);
 	rtSym("%FindChild%entity$name", bbFindChild);
+	rtSym("%FindMesh$file", bbFindMesh);
 
 	rtSym("PaintEntity%entity%brush", bbPaintEntity);
 	rtSym("EntityColor%entity#red#green#blue", bbEntityColor);
 	rtSym("EntityAlpha%entity#alpha", bbEntityAlpha);
 	rtSym("EntityShininess%entity#shininess", bbEntityShininess);
+	rtSym("EntityMaterial%entity#roughness#metallic", bbEntityMaterial);
 	rtSym("EntityTexture%entity%texture%frame=0%index=0", bbEntityTexture);
 	rtSym("EntityBlend%entity%blend", bbEntityBlend);
+	rtSym("%EntityColorR%entity", bbEntityColorR);
+	rtSym("%EntityColorG%entity", bbEntityColorG);
+	rtSym("%EntityColorB%entity", bbEntityColorB);
+	rtSym("#GetEntityAlpha%entity", bbGetEntityAlpha);
+	rtSym("%GetEntityBlend%entity", bbGetEntityBlend);
 	rtSym("EntityFX%entity%fx", bbEntityFX);
 	rtSym("EntityAutoFade%entity#near#far", bbEntityAutoFade);
 	rtSym("EntityOrder%entity%order", bbEntityOrder);
@@ -2758,6 +2989,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 
 	rtSym("NameEntity%entity$name", bbNameEntity);
 	rtSym("$EntityName%entity", bbEntityName);
+	rtSym("$EntityFilename%entity", bbEntityFilename);
 	rtSym("$EntityClass%entity", bbEntityClass);
 
 	rtSym("%MemoryLoad", bbMemoryLoad);

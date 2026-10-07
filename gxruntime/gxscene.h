@@ -109,7 +109,14 @@ public:
 	void setEyePosition(const float pos[3]);
 	void setRenderState(const RenderState& state);
 	void setEffect(gxEffect* effect);
+	void setCullMode(int mode);
+	void setDepthBias(float bias, float slope);
+	void setReverseZ(bool enable);
+	void setColorWrite(bool enable);
+	void setScissorRect(bool enable, int x, int y, int w, int h);
+	void setTextureDivisor(int div);
 	void setDepthTarget(gxCanvas* c) { depthTarget = c; }
+	gxCanvas* getDepthTarget() const { return depthTarget; }
 	void setBumpNormalize(bool enable) { bumpNormalize = enable; }
 
 	//rendering
@@ -129,6 +136,7 @@ public:
 
 	DWORD textureLodBias = 0;
 	int textureAnisotropic = 0;
+	int textureDivisor = 0;
 
 private:
 	gxCanvas* target;

@@ -215,6 +215,8 @@ struct ObjectHandleNode : public ExprNode {
 
 struct AddrOfNode : public ExprNode {
 	VarNode* var;
+	bool sem_array = false;
+	std::string array_ident;
 	AddrOfNode(VarNode* v) :var(v) {}
 	~AddrOfNode() { delete var; }
 	ExprNode* semant(Environ* e);

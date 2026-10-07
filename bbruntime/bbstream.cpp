@@ -154,6 +154,11 @@ void bbCopyStream(bbStream* s, bbStream* d, int buff_size) {
 	delete buff;
 }
 
+void bbFlushFile(bbStream* s) {
+	debugStream(s, "FlushFile");
+	s->flush();
+}
+
 bool stream_create() {
 	return true;
 }
@@ -178,4 +183,5 @@ void stream_link(void(*rtSym)(const char*, void*)) {
 	rtSym("WriteString%stream$string", bbWriteString);
 	rtSym("WriteLine%stream$string", bbWriteLine);
 	rtSym("CopyStream%src_stream%dest_stream%buffer_size=16384", bbCopyStream);
+	rtSym("FlushFile%stream", bbFlushFile);
 }

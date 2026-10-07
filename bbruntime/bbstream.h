@@ -23,6 +23,8 @@ public:
 
 	//returns EOF status
 	virtual int eof() = 0;
+
+	virtual void flush() {}
 };
 
 void debugStream(bbStream* s, const char* function);

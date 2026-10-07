@@ -113,6 +113,17 @@ void bbDelay(int ms) {
     if (!gx_runtime->delay(ms)) RTEX(0);
 }
 
+void bbSleep(int millisecs) {
+    ::Sleep(millisecs);
+}
+
+int bbDebuggerAttached() {
+    return debug ? 1 : 0;
+}
+
+void bbExceptionDialog(int enable) {
+}
+
 int bbMilliSecs() {
     return gx_runtime->getMilliSecs();
 }
@@ -300,6 +311,9 @@ void bbruntime_link(void (*rtSym)(const char* sym, void* pc)) {
     rtSym("ClearExceptionHandler", bbClearExceptionHandler);
     rtSym("ExecFile$command", bbExecFile);
     rtSym("Delay%millisecs", bbDelay);
+    rtSym("Sleep%millisecs", bbSleep);
+    rtSym("%DebuggerAttached", bbDebuggerAttached);
+    rtSym("ExceptionDialog%enable", bbExceptionDialog);
     rtSym("%MilliSecs", bbMilliSecs);
     rtSym("$CommandLine", bbCommandLine);
     rtSym("$SystemProperty$property", bbSystemProperty);
