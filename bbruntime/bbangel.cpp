@@ -8,6 +8,7 @@
 
 #include <deque>
 #include <functional>
+#include <vector>
 
 #include "bbangel_string_array_specilization.h"
 #include "bbruntime.h"
@@ -472,15 +473,28 @@ BBStr* bbGetDeclarations(asIScriptModule* module = nullptr)
 
 static void(*appMsgCallback)(int, int, int, BBStr*, BBStr*);
 
+struct PendingMessage { int type, row, col; std::string section, message; };
+static std::vector<PendingMessage> pendingMessages;
+
 static void messageCallback(const asSMessageInfo* msg, void* param)
 {
 	bbDebugLog(new BBStr(msg->message));
-	if (appMsgCallback) appMsgCallback(msg->type, msg->row, msg->col, new BBStr(msg->section), new BBStr(msg->message));
+	if (appMsgCallback)
+		appMsgCallback(msg->type, msg->row, msg->col, new BBStr(msg->section), new BBStr(msg->message));
+	else
+		pendingMessages.push_back({ msg->type, msg->row, msg->col,
+			msg->section ? msg->section : "", msg->message ? msg->message : "" });
 }
 
 void bbSetMessageCallback(void (*callback)(int, int, int, BBStr*, BBStr*))
 {
 	appMsgCallback = callback;
+	if (appMsgCallback)
+	{
+		for (const auto& m : pendingMessages)
+			appMsgCallback(m.type, m.row, m.col, new BBStr(m.section), new BBStr(m.message));
+		pendingMessages.clear();
+	}
 }
 
 static std::vector<std::pair<int, asDWORD>> script_args;
