@@ -2,6 +2,7 @@
 #include <scriptbuilder/scriptbuilder.h>
 #include <scriptarray/scriptarray.h>
 #include <scripthelper/scripthelper.h>
+#include <as_jit.h>
 
 #include "basic.h"
 
@@ -15,6 +16,7 @@
 
 static asIScriptEngine* engine;
 static asIScriptContext* ctx;
+static asCJITCompiler* jit = nullptr;
 CScriptBuilder builder;
 
 extern void bbDebugLog(BBStr* t);
@@ -874,6 +876,10 @@ bool angel_create()
 	if (engine->SetEngineProperty(asEP_BUILD_WITHOUT_LINE_CUES, true) < 0) { return false; }
 	if (engine->SetEngineProperty(asEP_ALLOW_IMPLICIT_HANDLE_TYPES, true) < 0) { return false; }
 
+	if (engine->SetEngineProperty(asEP_INCLUDE_JIT_INSTRUCTIONS, 1) < 0) { return false; }
+	jit = new asCJITCompiler(0);
+	if (engine->SetJITCompiler(jit) < 0) { return false; }
+
 	RegisterScriptArray(engine, true);
 
 	if (engine->RegisterObjectType("cstr", 0, asOBJ_REF | asOBJ_NOCOUNT | asOBJ_IMPLICIT_HANDLE) < 0) { return false; }
@@ -963,7 +969,10 @@ bool angel_create()
 bool angel_destroy()
 {
 	factories.clear();
-	return engine->ShutDownAndRelease() >= 0;
+	bool ok = engine->ShutDownAndRelease() >= 0;
+	delete jit;
+	jit = nullptr;
+	return ok;
 }
 
 void angel_link(void (*rtSym)(const char* sym, void* pc))

@@ -57,6 +57,7 @@
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <Optimization>Disabled</Optimization>
+      <ExceptionHandling>Sync</ExceptionHandling>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <MinimalRebuild>false</MinimalRebuild>
@@ -68,7 +69,7 @@
       <ProgramDataBaseFileName>.\angelscript\build\Debug\</ProgramDataBaseFileName>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <AdditionalIncludeDirectories>$(ProjectDir)angelscript\sdk\angelscript\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)angelscript\sdk\angelscript\include;$(ProjectDir)angelscript\sdk\angelscript\source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <ResourceCompile>
       <Culture>0x0409</Culture>
@@ -86,6 +87,7 @@
       <StringPooling>true</StringPooling>
       <FunctionLevelLinking>false</FunctionLevelLinking>
       <Optimization>MaxSpeed</Optimization>
+      <ExceptionHandling>Sync</ExceptionHandling>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;NDEBUG;_LIB;ANGELSCRIPT_EXPORT;_NO_DEBUG_HEAP=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -102,7 +104,7 @@
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <MinimalRebuild>false</MinimalRebuild>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
-      <AdditionalIncludeDirectories>$(ProjectDir)angelscript\sdk\angelscript\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)angelscript\sdk\angelscript\include;$(ProjectDir)angelscript\sdk\angelscript\source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <ResourceCompile>
       <Culture>0x0409</Culture>
@@ -115,9 +117,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="angelscript\sdk\angelscript\source\*.cpp" />
+    <ClCompile Include="vendor\angelscript-JIT\as_jit.cpp" />
+    <ClCompile Include="vendor\angelscript-JIT\virtual_asm_windows.cpp" />
+    <ClCompile Include="vendor\angelscript-JIT\virtual_asm_x86.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="angelscript\sdk\angelscript\include\*.h" />
+    <ClInclude Include="vendor\angelscript-JIT\as_jit.h" />
+    <ClInclude Include="vendor\angelscript-JIT\virtual_asm.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

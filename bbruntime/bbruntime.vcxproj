@@ -69,7 +69,7 @@
       <ProgramDataBaseFileName>.\Debug\</ProgramDataBaseFileName>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <CallingConvention>StdCall</CallingConvention>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on;..\vendor\angelscript-JIT</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
@@ -125,7 +125,7 @@
       <CallingConvention>StdCall</CallingConvention>
       <ExceptionHandling>Async</ExceptionHandling>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on;..\vendor\angelscript-JIT</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>
       </AdditionalOptions>
