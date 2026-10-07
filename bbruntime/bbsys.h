@@ -11,6 +11,8 @@ extern gxRuntime* gx_runtime;
 extern const char* errorfunc;
 extern const char* errorlog;
 
+bool angel_is_executing();
+
 void _bbReleaseEnter(const char* func);
 void _bbReleaseLeave();
 void _bbReleaseStmt(int pos, const char* file);
@@ -24,7 +26,7 @@ const char* bbReleaseFile();
 struct bbEx {
 	const char* err;
 	bbEx(const char* e) : err(e) {
-		if (e) gx_runtime->debugError(e);
+		if (e && !angel_is_executing()) gx_runtime->debugError(e);
 	}
 };
 

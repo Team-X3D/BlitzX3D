@@ -56,6 +56,7 @@ public:
 	virtual void setTexture(int i, const Texture& t, int f) { brush.setTexture(i, t, f); w_brush = true; }
 	virtual void setBlend(int n) { brush.setBlend(n); w_brush = true; }
 	virtual void setFX(int n) { brush.setFX(n); w_brush = true; }
+	virtual void setMaterial(float roughness, float metallic) { brush.setMaterial(roughness, metallic); w_brush = true; }
 
 	void setEffect(gxEffect* effect);
 

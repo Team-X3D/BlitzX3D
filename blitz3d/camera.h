@@ -25,6 +25,10 @@ public:
 	void setFogRange(float nr, float fr);
 	void setFogDensity(float den);
 	void setFogMode(int mode);
+	void setCullMode(int mode);
+	void setDepthBias(float bias, float slope);
+	void setReverseZ(int enable);
+	void setColorWrite(int enable);
 
 	//called by world
 	bool beginRenderFrame();
@@ -51,6 +55,9 @@ private:
 	float fog_nr = 1.0f, fog_fr = 1000.0f, fog_den = 1.0f;
 	int fog_mode;
 	float frustum_nr, frustum_fr;
+	int cull_mode = -1;
+	float depth_bias = 0, slope_bias = 0;
+	int reverse_z = 0, color_write = 1;
 	mutable float frustum_w, frustum_h;
 	mutable Frustum local_frustum;
 	mutable bool local_valid;

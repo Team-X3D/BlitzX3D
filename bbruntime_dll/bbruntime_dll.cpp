@@ -8,6 +8,7 @@
 #include <float.h>
 
 #include "../bbruntime/bbruntime.h"
+#include "../bbruntime/bbangel.h"
 
 #include "../gxruntime/gxutf8.h"
 
@@ -124,9 +125,11 @@ inline std::string replace_all(const std::string& string, const std::string& pat
 	return str;
 }
 
+static std::string mav_message;
+
 void throw_mav() {
 	if (ErrorMessagePool::memoryAccessViolation == 0) {
-		RTEX(MultiLang::memory_access_violation);
+		mav_message = MultiLang::memory_access_violation;
 	}
 	else {
 		std::string s = "";
@@ -144,8 +147,13 @@ void throw_mav() {
 			s = replace_all(s, "_AvailPhys_", to_string(gx_runtime->getAvailPhys()));
 			s = replace_all(s, "_AvailVirtual_", to_string(gx_runtime->getAvailVirtual()));
 		}
-		RTEX(UTF8::convertToAnsi(s).c_str());
+		s = replace_all(s, "_AS_Stacktrace_", getAngelStackTrace());
+		mav_message = UTF8::convertToAnsi(s);
 	}
+
+	if (!angel_is_executing() && bbCallExceptionHandler(mav_message.c_str())) return;
+
+	RTEX(mav_message.c_str());
 }
 
 static void rtSym(const char* sym, void* pc) {

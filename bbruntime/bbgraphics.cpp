@@ -30,6 +30,7 @@ class bbImage
 {
 public:
     int origWidth, origHeight;
+    std::string name;
     float drawScaleX = 1.0f;
     float drawScaleY = 1.0f;
     float tform[2][2] = { {1.0f, 0.0f},{0.0f, 1.0f} };
@@ -959,6 +960,38 @@ int bbBufferHeight(gxCanvas* buff)
     return (buff ? buff : gx_canvas)->getHeight();
 }
 
+int bbBufferDepth(gxCanvas* buff) {
+    if (buff) debugCanvas(buff, "BufferDepth");
+    return (buff ? buff : gx_canvas)->getDepth();
+}
+
+gxCanvas* bbDepthBuffer() {
+    return gx_scene ? gx_scene->getDepthTarget() : 0;
+}
+
+void bbDrawBuffer(gxCanvas* buff, int x, int y, int width, int height, int blending) {
+    debugCanvas(buff, "DrawBuffer");
+    if (!gx_canvas) return;
+    gx_canvas->blitstretch(x, y, width, height, buff, 0, 0, buff->getWidth(), buff->getHeight(), blending == 0);
+}
+
+bbImage* bbGetImage(int id) {
+    if (id < 0) return 0;
+    for (bbImage* i : image_set) {
+        if (id-- == 0) return i;
+    }
+    return 0;
+}
+
+int bbGetImagesCount() {
+    return (int)image_set.size();
+}
+
+BBStr* bbImageName(bbImage* i) {
+    debugImage(i, "ImageName");
+    return new BBStr(i->name);
+}
+
 int bbReadPixel(int x, int y, gxCanvas* buff)
 {
     if (buff) debugCanvas(buff, "ReadPixel");
@@ -1382,6 +1415,7 @@ bbImage* bbLoadImage(BBStr* s)
     std::vector<gxCanvas*> frames;
     frames.push_back(c);
     bbImage* i = new bbImage(frames);
+    i->name = path;
     image_set.insert(i);
     return i;
 }
@@ -1402,6 +1436,7 @@ bbImage* bbLoadImageFlag(BBStr* s, int flags)
     std::vector<gxCanvas*> frames;
     frames.push_back(c);
     bbImage* i = new bbImage(frames);
+    i->name = path;
     image_set.insert(i);
     return i;
 }
@@ -2483,6 +2518,12 @@ void graphics_link(void (*rtSym)(const char* sym, void* pc))
     rtSym("UnlockBuffer%buffer=0", bbUnlockBuffer);
     rtSym("%BufferWidth%buffer=0", bbBufferWidth);
     rtSym("%BufferHeight%buffer=0", bbBufferHeight);
+    rtSym("%BufferDepth%buffer=0", bbBufferDepth);
+    rtSym("%DepthBuffer", bbDepthBuffer);
+    rtSym("DrawBuffer%buffer%x%y%width%height%blending=1", bbDrawBuffer);
+    rtSym("%GetImage%id", bbGetImage);
+    rtSym("%GetImagesCount", bbGetImagesCount);
+    rtSym("$ImageName%image", bbImageName);
     rtSym("%ReadPixel%x%y%buffer=0", bbReadPixel);
     rtSym("WritePixel%x%y%argb%buffer=0", bbWritePixel);
     rtSym("%ReadPixelFast%x%y%buffer=0", bbReadPixelFast);

@@ -11,6 +11,7 @@ struct Brush::Rep {
 	Texture texs[gxScene::MAX_TEXTURES];
 	int tex_frame[gxScene::MAX_TEXTURES];
 	gxEffect* effect;
+	float roughness = 0.0f, metallic = 0.0f;
 	bool pinned = false;
 
 	static Rep* pool;
@@ -24,7 +25,8 @@ struct Brush::Rep {
 	}
 
 	Rep(const Rep& t) :
-		ref_cnt(1), blend(t.blend), max_tex(t.max_tex), rs(t.rs), blend_valid(t.blend_valid), effect(t.effect) {
+		ref_cnt(1), blend(t.blend), max_tex(t.max_tex), rs(t.rs), blend_valid(t.blend_valid), effect(t.effect),
+		roughness(t.roughness), metallic(t.metallic) {
 		for (int k = 0; k < max_tex; ++k) texs[k] = t.texs[k];
 		memcpy(tex_frame, t.tex_frame, sizeof(tex_frame));
 	}
@@ -151,6 +153,19 @@ float Brush::getAlpha()const {
 
 float Brush::getShininess()const {
 	return rep->rs.shininess;
+}
+
+void Brush::setMaterial(float roughness, float metallic) {
+	write()->roughness = roughness;
+	write()->metallic = metallic;
+}
+
+float Brush::getRoughness()const {
+	return rep->roughness;
+}
+
+float Brush::getMetallic()const {
+	return rep->metallic;
 }
 
 int Brush::getBlend()const {

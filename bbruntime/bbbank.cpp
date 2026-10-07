@@ -73,6 +73,11 @@ int bbBankSize(bbBank* b) {
 	return b->size;
 }
 
+int bbBankPointer(bbBank* b) {
+	if (!validBank(b, "BankPointer")) return 0;
+	return (int)b->data;
+}
+
 void  bbResizeBank(bbBank* b, int size) {
 	if (!validBank(b, "ResizeBank")) return;
 	if (size < 0) {
@@ -221,6 +226,7 @@ void bank_link(void(*rtSym)(const char*, void*)) {
 	rtSym("%CreateBank%size=0", bbCreateBank);
 	rtSym("FreeBank%bank", bbFreeBank);
 	rtSym("%BankSize%bank", bbBankSize);
+	rtSym("%BankPointer%bank", bbBankPointer);
 	rtSym("ResizeBank%bank%size", bbResizeBank);
 	rtSym("CopyBank%src_bank%src_offset%dest_bank%dest_offset%count", bbCopyBank);
 	rtSym("%PeekByte%bank%offset", bbPeekByte);

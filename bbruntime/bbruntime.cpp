@@ -1,6 +1,7 @@
 #include "std.h"
 #include "bbsys.h"
 #include "bbruntime.h"
+#include "bbangel.h"
 #include "../gxruntime/gxutf8.h"
 #include "../MultiLang/MultiLang.h"
 #include "../debugger/debugger.h"
@@ -67,6 +68,23 @@ void bbClearException() {
     errorlog = "";
 }
 
+typedef void (*BBExceptionHandler)(BBStr* message);
+static BBExceptionHandler appExceptionHandler = nullptr;
+
+void bbSetExceptionHandler(void* handler) {
+    appExceptionHandler = reinterpret_cast<BBExceptionHandler>(handler);
+}
+
+void bbClearExceptionHandler() {
+    appExceptionHandler = nullptr;
+}
+
+bool bbCallExceptionHandler(const char* message) {
+    if (!appExceptionHandler) return false;
+    appExceptionHandler(new BBStr(message ? message : ""));
+    return true;
+}
+
 BBStr* bbGetUserLanguage() {
     wchar_t buf[6]; // should enough
     GetUserDefaultLocaleName(buf, 6);
@@ -93,6 +111,17 @@ int bbGetGraphicsLevel() {
 
 void bbDelay(int ms) {
     if (!gx_runtime->delay(ms)) RTEX(0);
+}
+
+void bbSleep(int millisecs) {
+    ::Sleep(millisecs);
+}
+
+int bbDebuggerAttached() {
+    return debug ? 1 : 0;
+}
+
+void bbExceptionDialog(int enable) {
 }
 
 int bbMilliSecs() {
@@ -278,8 +307,13 @@ void bbruntime_link(void (*rtSym)(const char* sym, void* pc)) {
     rtSym("SetErrorMsg%pos$message", bbSetErrorMsg);
     rtSym("$GetException", bbGetException);
     rtSym("ClearException", bbClearException);
+    rtSym("SetExceptionHandler%handler", bbSetExceptionHandler);
+    rtSym("ClearExceptionHandler", bbClearExceptionHandler);
     rtSym("ExecFile$command", bbExecFile);
     rtSym("Delay%millisecs", bbDelay);
+    rtSym("Sleep%millisecs", bbSleep);
+    rtSym("%DebuggerAttached", bbDebuggerAttached);
+    rtSym("ExceptionDialog%enable", bbExceptionDialog);
     rtSym("%MilliSecs", bbMilliSecs);
     rtSym("$CommandLine", bbCommandLine);
     rtSym("$SystemProperty$property", bbSystemProperty);
@@ -318,6 +352,7 @@ void bbruntime_link(void (*rtSym)(const char* sym, void* pc)) {
     audio_link(rtSym);
     blitz3d_link(rtSym);
     userlibs_link(rtSym);
+    angel_link(rtSym);
 }
 
 //start up error
@@ -338,10 +373,12 @@ bool bbruntime_create() {
     INIT(input);
     INIT(audio);
     INIT(blitz3d);
+    INIT(angel);
     return true;
 }
 
 bool bbruntime_destroy() {
+    angel_destroy();
     userlibs_destroy();
     blitz3d_destroy();
     audio_destroy();
@@ -450,6 +487,8 @@ const char* bbruntime_run(gxRuntime* rt, void (*pc)(), bool dbg) {
 
 void bbruntime_panic(const wchar_t* err) {
     std::wstring msg = err ? err : L"";
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+    if (bbCallExceptionHandler(conv.to_bytes(msg).c_str())) return;
     if (bbReleaseFile() || bbReleaseDepth() > 0) {
         const char* file = bbReleaseFile();
         if (file && file[0]) {

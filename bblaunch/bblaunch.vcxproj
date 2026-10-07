@@ -172,6 +172,10 @@
       <Project>{c91984fa-1292-4172-9124-160b341c8d87}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="..\angelscript.vcxproj">
+      <Project>{a3f1e7c2-9b4d-4e6a-8c1f-2d5b7e9a0c34}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
     <ProjectReference Include="..\bbruntime_dll\bbruntime_dll.vcxproj">
       <Project>{41785d5a-2fd3-43a2-9469-f5d9cf927e1d}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>

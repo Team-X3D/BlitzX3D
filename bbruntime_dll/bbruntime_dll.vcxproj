@@ -194,6 +194,10 @@
       <Project>{c91984fa-1292-4172-9124-160b341c8d87}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="..\angelscript.vcxproj">
+      <Project>{a3f1e7c2-9b4d-4e6a-8c1f-2d5b7e9a0c34}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
     <ProjectReference Include="..\blitz3d\blitz3d.vcxproj">
       <Project>{60bb991f-8721-4a17-9f70-79d0ee5507fa}</Project>
     </ProjectReference>

@@ -56,7 +56,8 @@ struct CallNode : public ExprNode {
 struct CallPtrNode : public ExprNode {
 	std::string ident;
 	Decl* sem_decl;
-	CallPtrNode(const std::string& i) :ident(i), sem_decl(nullptr) {}
+	bool sem_isType;
+	CallPtrNode(const std::string& i) :ident(i), sem_decl(nullptr), sem_isType(false) {}
 	ExprNode* semant(Environ* e);
 	TNode* translate(Codegen* g);
 };
@@ -214,6 +215,8 @@ struct ObjectHandleNode : public ExprNode {
 
 struct AddrOfNode : public ExprNode {
 	VarNode* var;
+	bool sem_array = false;
+	std::string array_ident;
 	AddrOfNode(VarNode* v) :var(v) {}
 	~AddrOfNode() { delete var; }
 	ExprNode* semant(Environ* e);
@@ -224,6 +227,14 @@ struct OffsetOfNode : public ExprNode {
 	std::string typeIdent, fieldIdent;
 	int sem_offset;
 	OffsetOfNode(const std::string& t, const std::string& f) :typeIdent(t), fieldIdent(f), sem_offset(0) {}
+	ExprNode* semant(Environ* e);
+	TNode* translate(Codegen* g);
+};
+
+struct TypeFieldNode : public ExprNode {
+	std::string typeIdent, fieldIdent;
+	int sem_index;
+	TypeFieldNode(const std::string& t, const std::string& f) :typeIdent(t), fieldIdent(f), sem_index(0) {}
 	ExprNode* semant(Environ* e);
 	TNode* translate(Codegen* g);
 };

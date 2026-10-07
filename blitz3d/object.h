@@ -38,6 +38,7 @@ public:
 	void setOrder(int n) { order = n; }
 	void setPickGeometry(int n) { if(pick_geom != n) { pick_geom = n; bumpEnum(); } }
 	void setObscurer(bool t) { if(obscurer != t) { obscurer = t; bumpEnum(); } }
+	void setMask(int n) { mask = n; }
 	void setAnimation(const Animation& t) { anim = t; }
 	void setAnimator(Animator* t);
 
@@ -67,6 +68,7 @@ public:
 	const Transform& getPrevWorldTform()const;
 	int getPickGeometry()const { return pick_geom; }
 	int getObscurer()const { return obscurer; }
+	int getMask()const { return mask; }
 	Animation getAnimation()const { return anim; }
 	Animator* getAnimator()const { return animator; }
 	Object* getLastCopy()const { return last_copy; }
@@ -80,6 +82,7 @@ private:
 	Box coll_box;
 	int pick_geom;
 	bool obscurer;
+	int mask = 0;
 	float elapsed;
 	Vector velocity;
 	std::vector<gxChannel*> channels;
