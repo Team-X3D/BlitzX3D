@@ -750,28 +750,70 @@ const char* __cdecl strCStr(const BBStr*& str)
 	return str->c_str();
 }
 
+static void arrayIndexError()
+{
+	if (asIScriptContext* active = asGetActiveContext())
+		active->SetException("Array index out of bounds");
+}
+
 static void* __cdecl indexArray(void*** arr, int idx)
 {
+	if (arr == 0 || *arr == 0 || idx < 0)
+	{
+		arrayIndexError();
+		return 0;
+	}
 	return &(*arr)[idx];
 }
 
 static void* __cdecl indexDim1(BBArray* dim, int idx)
 {
+	if (dim == 0 || dim->data == 0 || idx < 0 || idx >= dim->scales[0])
+	{
+		arrayIndexError();
+		return 0;
+	}
 	return static_cast<int*>(dim->data) + idx;
 }
 
 static void* __cdecl indexDim2(BBArray* dim, int idx1, int idx2)
 {
-	return static_cast<int*>(dim->data) + idx2 * dim->scales[0] + idx1;
+	if (dim == 0 || dim->data == 0)
+	{
+		arrayIndexError();
+		return 0;
+	}
+	int len1 = dim->scales[0];
+	int len2 = len1 ? dim->scales[1] / len1 : 0;
+	if (idx1 < 0 || idx1 >= len1 || idx2 < 0 || idx2 >= len2)
+	{
+		arrayIndexError();
+		return 0;
+	}
+	return static_cast<int*>(dim->data) + idx2 * len1 + idx1;
 }
 
 static void* __cdecl indexDim3(BBArray* dim, int idx1, int idx2, int idx3)
 {
+	if (dim == 0 || dim->data == 0)
+	{
+		arrayIndexError();
+		return 0;
+	}
+	int len1 = dim->scales[0];
+	int len2 = len1 ? dim->scales[1] / len1 : 0;
+	int len3 = dim->scales[1] ? dim->scales[2] / dim->scales[1] : 0;
+	if (idx1 < 0 || idx1 >= len1 || idx2 < 0 || idx2 >= len2 || idx3 < 0 || idx3 >= len3)
+	{
+		arrayIndexError();
+		return 0;
+	}
 	return static_cast<int*>(dim->data) + idx3 * dim->scales[1] + idx2 * dim->scales[0] + idx1;
 }
 
 static void __cdecl reinitDim1(BBArray* dim, int len1)
 {
+	if (dim == 0 || len1 < 0) { arrayIndexError(); return; }
 	_bbUndimArray(dim);
 	dim->scales[0] = len1;
 	_bbDimArray(dim);
@@ -779,6 +821,7 @@ static void __cdecl reinitDim1(BBArray* dim, int len1)
 
 static void __cdecl reinitDim2(BBArray* dim, int len1, int len2)
 {
+	if (dim == 0 || len1 < 0 || len2 < 0) { arrayIndexError(); return; }
 	_bbUndimArray(dim);
 	dim->scales[0] = len1;
 	dim->scales[1] = len2;
@@ -787,6 +830,7 @@ static void __cdecl reinitDim2(BBArray* dim, int len1, int len2)
 
 static void __cdecl reinitDim3(BBArray* dim, int len1, int len2, int len3)
 {
+	if (dim == 0 || len1 < 0 || len2 < 0 || len3 < 0) { arrayIndexError(); return; }
 	_bbUndimArray(dim);
 	dim->scales[0] = len1;
 	dim->scales[1] = len2;
