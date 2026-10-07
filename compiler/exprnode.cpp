@@ -243,6 +243,10 @@ ExprNode* CallPtrNode::semant(Environ* env) {
 
 TNode* CallPtrNode::translate(Codegen* g) {
 	if (sem_isType) return global("_t" + ident);
+	if (sem_decl && (sem_decl->kind & DECL_FUNC)) {
+		FuncType* f = sem_decl->type->funcType();
+		if (f && f->userlib) usedfuncs.insert(ident);
+	}
 	return global("_f" + ident);
 }
 
