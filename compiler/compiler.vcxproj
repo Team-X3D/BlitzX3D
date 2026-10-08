@@ -177,6 +177,12 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Use</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">../std.h</PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="codegen_llvm\coff_loader.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Use</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">../std.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Use</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">../std.h</PrecompiledHeaderFile>
+    </ClCompile>
     <ClCompile Include="decl.cpp" />
     <ClCompile Include="declnode.cpp" />
     <ClCompile Include="environ.cpp" />
@@ -206,6 +212,7 @@
     <ClInclude Include="codegen_x86\codegen_x86.h" />
     <ClInclude Include="codegen_x86\tile.h" />
     <ClInclude Include="codegen_llvm\codegen_llvm.h" />
+    <ClInclude Include="codegen_llvm\coff_loader.h" />
     <ClInclude Include="decl.h" />
     <ClInclude Include="declnode.h" />
     <ClInclude Include="environ.h" />

@@ -33,12 +33,26 @@ private:
 		Val(const std::string& v = "0", Kind kind = K_INT) :v(v), kind(kind) {}
 	};
 
+	struct DataChunk {
+		enum { C_INT, C_BYTES, C_PAD };
+		int kind;
+		int offset;
+		int size;
+		int ival;
+		std::string ptr;
+		std::string bytes;
+	};
+
 	std::set<std::string> definedFuncs;
 	std::set<std::string> definedData;
 	std::set<std::string> refGlobals;
 	std::set<std::string> emittedGlobals;
 	std::set<std::string> emittedFuncs;
 	std::map<std::string, std::pair<bool, int> > externFuncs;
+
+	std::vector<DataChunk> dataChunks;
+	std::map<std::string, int> dataOffsets;
+	int dataSize;
 
 	std::set<int> usedLocals;
 	std::set<int> usedParams;
@@ -48,7 +62,6 @@ private:
 
 	int tmpCount;
 	int blockCount;
-	int dataCount;
 
 	bool inCode;
 	std::string funcName;
@@ -60,15 +73,15 @@ private:
 	bool skipNextJump;
 	std::string mainReturnLabel;
 
-	std::string pendingDataLabel;
-
 	bool finalized;
 	void finalize();
+
+	void dataLabel(const std::string& l);
+	void emitDataBlob();
 
 	std::string newTmp();
 	std::string newBlock();
 	std::string quoteName(const std::string& s);
-	std::string takeLabel(const std::string& explicitLabel);
 
 	void emitInstr(const std::string& s);
 	void emitTerm(const std::string& s);

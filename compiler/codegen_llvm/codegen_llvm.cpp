@@ -40,7 +40,8 @@ static std::string llvmEscape(const std::string& s) {
 }
 
 Codegen_llvm::Codegen_llvm(std::ostream& out, bool debug) :Codegen(out, debug) {
-	tmpCount = blockCount = dataCount = 0;
+	tmpCount = blockCount = 0;
+	dataSize = 0;
 	inCode = false;
 	blockOpen = false;
 	retFloat = false;
@@ -583,48 +584,103 @@ void Codegen_llvm::leave(TNode* cleanup, int pop_sz) {
 	inCode = false;
 }
 
+void Codegen_llvm::dataLabel(const std::string& l) {
+	if (l.empty()) return;
+	if (!dataOffsets.count(l)) dataOffsets[l] = dataSize;
+	definedData.insert(l);
+}
+
 void Codegen_llvm::label(const std::string& l) {
 	if (inCode) {
 		startBlock(l);
 	}
 	else {
-		pendingDataLabel = l;
+		dataLabel(l);
 	}
-}
-
-std::string Codegen_llvm::takeLabel(const std::string& explicitLabel) {
-	std::string n = explicitLabel;
-	if (n.empty()) {
-		if (!pendingDataLabel.empty()) n = pendingDataLabel;
-		else n = "dat" + std::to_string(dataCount++);
-	}
-	pendingDataLabel.clear();
-	while (definedData.count(n)) n += "_";
-	definedData.insert(n);
-	return n;
 }
 
 void Codegen_llvm::i_data(int i, const std::string& l) {
-	std::string n = takeLabel(l);
-	out << quoteName(n) << " = global i32 " << i << ", align 4\n";
+	dataLabel(l);
+	DataChunk c;
+	c.kind = DataChunk::C_INT;
+	c.offset = dataSize;
+	c.size = 4;
+	c.ival = i;
+	dataChunks.push_back(c);
+	dataSize += 4;
 }
 
 void Codegen_llvm::s_data(const std::string& s, const std::string& l) {
-	std::string n = takeLabel(l);
-	out << quoteName(n) << " = private unnamed_addr constant [" << (s.size() + 1) << " x i8] c\""
-		<< llvmEscape(s) << "\\00\", align 1\n";
+	dataLabel(l);
+	DataChunk c;
+	c.kind = DataChunk::C_BYTES;
+	c.offset = dataSize;
+	c.bytes = s + std::string(1, '\0');
+	c.size = (int)c.bytes.size();
+	dataChunks.push_back(c);
+	dataSize += c.size;
 }
 
 void Codegen_llvm::p_data(const std::string& p, const std::string& l) {
-	std::string n = takeLabel(l);
+	dataLabel(l);
 	refGlobals.insert(p);
-	out << quoteName(n) << " = global i32 ptrtoint (ptr " << quoteName(p) << " to i32), align 4\n";
+	DataChunk c;
+	c.kind = DataChunk::C_INT;
+	c.offset = dataSize;
+	c.size = 4;
+	c.ptr = p;
+	dataChunks.push_back(c);
+	dataSize += 4;
 }
 
 void Codegen_llvm::align_data(int n) {
+	if (n <= 1) return;
+	int pad = (n - (dataSize % n)) % n;
+	if (!pad) return;
+	DataChunk c;
+	c.kind = DataChunk::C_PAD;
+	c.offset = dataSize;
+	c.size = pad;
+	dataChunks.push_back(c);
+	dataSize += pad;
 }
 
 void Codegen_llvm::flush() {
+}
+
+// one connected block is required so descriptor field offsets stay valid >:D
+void Codegen_llvm::emitDataBlob() {
+	if (dataChunks.empty()) return;
+
+	std::string type = "<{ ", init = "<{ ";
+	for (size_t k = 0; k < dataChunks.size(); ++k) {
+		const DataChunk& c = dataChunks[k];
+		if (k) { type += ", "; init += ", "; }
+		if (c.kind == DataChunk::C_BYTES) {
+			std::string n = std::to_string(c.size);
+			type += "[" + n + " x i8]";
+			init += "[" + n + " x i8] c\"" + llvmEscape(c.bytes) + "\"";
+		}
+		else if (c.kind == DataChunk::C_PAD) {
+			std::string n = std::to_string(c.size);
+			type += "[" + n + " x i8]";
+			init += "[" + n + " x i8] zeroinitializer";
+		}
+		else {
+			type += "i32";
+			if (!c.ptr.empty()) init += "i32 ptrtoint (ptr " + quoteName(c.ptr) + " to i32)";
+			else init += "i32 " + std::to_string(c.ival);
+		}
+	}
+	type += " }>";
+	init += " }>";
+
+	out << quoteName("__bbdata") << " = global " << type << " " << init << ", align 4\n";
+
+	for (std::map<std::string, int>::iterator it = dataOffsets.begin(); it != dataOffsets.end(); ++it) {
+		out << quoteName(it->first) << " = alias i8, ptr getelementptr (i8, ptr "
+			<< quoteName("__bbdata") << ", i64 " << it->second << ")\n";
+	}
 }
 
 void Codegen_llvm::finalize() {
@@ -642,6 +698,8 @@ void Codegen_llvm::finalize() {
 		}
 		out << ")\n";
 	}
+
+	emitDataBlob();
 
 	for (std::set<std::string>::iterator it = refGlobals.begin(); it != refGlobals.end(); ++it) {
 		const std::string& name = *it;

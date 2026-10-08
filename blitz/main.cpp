@@ -22,9 +22,14 @@
 #include "../compiler/assem_x86/assem_x86.h"
 #include "../compiler/codegen_x86/codegen_x86.h"
 #include "../compiler/codegen_llvm/codegen_llvm.h"
+#include "../compiler/codegen_llvm/coff_loader.h"
 #include "../bbruntime_dll/bbruntime_dll.h"
 
 #undef environ
+
+static bool llvmResolveSymbol(const char* name, int* addr, void* ctx) {
+	return ((Module*)ctx)->findSymbol(name, addr);
+}
 
 static std::string verstr(int ver) {
 	return itoa((ver & 65535) / 1000) + "." + itoa((ver & 65535) % 1000);
@@ -328,6 +333,7 @@ int _cdecl main(int argc, char* argv[]) {
 	ProgNode* prog = 0;
 	Environ* environ = 0;
 	Module* module = 0;
+	void* llvmEntry = 0;
 
 	try {
 		//parse & semant
@@ -362,23 +368,29 @@ int _cdecl main(int argc, char* argv[]) {
 		prog->translate(codegen, userFuncs);
 		delete codegen;
 
-		if (llvmbackend) {
-			std::cout << std::string(qbuf.data(), qbuf.size()) << std::endl;
-			delete prog;
-			delete environ;
-			closeLibs();
-			return 0;
-		}
-
 		if (dumpasm) {
 			std::cout << std::endl << std::string(qbuf.data(), qbuf.size()) << std::endl;
 		}
 
-		//assemble
-		if (!veryquiet) std::cout << "Assembling..." << std::endl;
-		module = linkerLib->createModule();
-		Assem_x86 assem(asmcode, module);
-		assem.assemble();
+		if (llvmbackend) {
+			// the cooler assemble
+			std::string ir(qbuf.data(), qbuf.size());
+			std::string lerr;
+			llvmEntry = llvm_load_module(ir, llvmResolveSymbol, runtimeModule, lerr);
+			if (!llvmEntry) {
+				delete prog;
+				delete environ;
+				closeLibs();
+				err("LLVM backend error: " + lerr);
+			}
+		}
+		else {
+			//assemble
+			if (!veryquiet) std::cout << "Assembling..." << std::endl;
+			module = linkerLib->createModule();
+			Assem_x86 assem(asmcode, module);
+			assem.assemble();
+		}
 
 	}
 	catch (Ex& x) {
@@ -390,6 +402,8 @@ int _cdecl main(int argc, char* argv[]) {
 	delete prog;
 
 	if (out_file.size()) {
+		if (llvmbackend) err("-o is not supported with the LLVM backend yet");
+
 		if (!veryquiet) std::cout << "Creating executable \"" << out_file << "\"..." << std::endl;
 
 		if (!module->createExe(out_file.c_str(), (home + "/bin/runtime.dll").c_str(), nolaa)) {
@@ -401,13 +415,13 @@ int _cdecl main(int argc, char* argv[]) {
 		if (!veryquiet) std::cout << "Executable created succesfully." << std::endl;
 	}
 	else if (!compileonly) {
-		void* entry = module->link(runtimeModule);
+		void* entry = llvmEntry ? llvmEntry : module->link(runtimeModule);
 		if (!entry) return 0;
 
 		HMODULE dbgHandle = 0;
 		Debugger* debugger = 0;
 
-		if (debug) {
+		if (debug && module) {
 			dbgHandle = LoadLibrary((home + "/bin/debugger_imgui.dll").c_str());
 			if (dbgHandle) {
 				typedef Debugger* (_cdecl* GetDebugger)(Module*, Environ*);
