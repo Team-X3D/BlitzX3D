@@ -49,7 +49,6 @@ namespace {
 		bool connected;
 		int localId;
 		int authorityId;
-		int backend;
 		unsigned nextClientId;
 		NetPeerId hostTransport;
 		int lastSender;
@@ -61,7 +60,7 @@ namespace {
 
 		NetSession()
 			: transport(0), isHost(false), dedicated(false), connected(false),
-			localId(-1), authorityId(-1), backend(0), nextClientId(1),
+			localId(-1), authorityId(-1), nextClientId(1),
 			hostTransport(0), lastSender(-1) {
 		}
 
@@ -79,12 +78,6 @@ namespace {
 		if (!net_set.count(s)) {
 			ErrorLog(function, "Net Session does not exist");
 		}
-	}
-
-	INetTransport* makeTransport(int backend) {
-		if (backend == 0) return createDirectTransport();
-		if (backend == 1) return createSteamTransport();
-		return 0;
 	}
 
 	std::vector<char> buildRoster(NetSession* s) {
@@ -217,10 +210,9 @@ namespace {
 
 }
 
-static NetSession* bbNetCreateSession(int port, int dedicated, int backend) {
+static NetSession* bbNetCreateSession(int port, int dedicated) {
 	if (port < 0 || port > 65535) RTEX("Invalid network port");
-	INetTransport* t = makeTransport(backend);
-	if (!t) RTEX("Network backend is unavailable");
+	INetTransport* t = createDirectTransport();
 	if (!t->listen(port)) {
 		delete t;
 		RTEX("Failed to create listen session");
@@ -229,7 +221,6 @@ static NetSession* bbNetCreateSession(int port, int dedicated, int backend) {
 	s->transport = t;
 	s->isHost = true;
 	s->dedicated = dedicated != 0;
-	s->backend = backend;
 	s->localId = 0;
 	s->authorityId = 0;
 	s->roster.push_back(0);
@@ -237,19 +228,17 @@ static NetSession* bbNetCreateSession(int port, int dedicated, int backend) {
 	return s;
 }
 
-static NetSession* bbNetJoinSession(BBStr* host, int port, int backend) {
+static NetSession* bbNetJoinSession(BBStr* host, int port) {
 	std::string h = *host;
 	delete host;
 	if (port < 0 || port > 65535) RTEX("Invalid network port");
-	INetTransport* t = makeTransport(backend);
-	if (!t) RTEX("Network backend is unavailable");
+	INetTransport* t = createDirectTransport();
 	if (!t->connect(h.c_str(), port)) {
 		delete t;
 		RTEX("Failed to connect to session");
 	}
 	NetSession* s = new NetSession();
 	s->transport = t;
-	s->backend = backend;
 	s->authorityId = 0;
 	net_set.insert(s);
 	t->poll();
@@ -267,11 +256,6 @@ static int bbNetPoll(NetSession* s) {
 	debugNet(s, "NetPoll");
 	s->transport->poll();
 	return processEvents(s);
-}
-
-static int bbNetBackend(NetSession* s) {
-	debugNet(s, "NetBackend");
-	return s->backend;
 }
 
 static int bbNetSessionId(NetSession* s) {
@@ -363,11 +347,10 @@ bool net_destroy() {
 }
 
 void net_link(void (*rtSym)(const char* sym, void* pc)) {
-	rtSym("%NetCreateSession%port%dedicated=0%backend=0", bbNetCreateSession);
-	rtSym("%NetJoinSession$host%port%backend=0", bbNetJoinSession);
+	rtSym("%NetCreateSession%port%dedicated=0", bbNetCreateSession);
+	rtSym("%NetJoinSession$host%port", bbNetJoinSession);
 	rtSym("CloseNetSession%session", bbNetCloseSession);
 	rtSym("%NetPoll%session", bbNetPoll);
-	rtSym("%NetBackend%session", bbNetBackend);
 	rtSym("%NetSessionId%session", bbNetSessionId);
 	rtSym("%NetAuthorityId%session", bbNetAuthorityId);
 	rtSym("%NetIsAuthority%session", bbNetIsAuthority);

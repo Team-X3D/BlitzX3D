@@ -13,7 +13,6 @@
     <ClCompile Include="bbsockets.cpp" />
     <ClCompile Include="bbnet.cpp" />
     <ClCompile Include="bbnet_direct.cpp" />
-    <ClCompile Include="bbnet_steam.cpp" />
     <ClCompile Include="bbstream.cpp" />
     <ClCompile Include="bbstring.cpp" />
     <ClCompile Include="bbsys.cpp" />

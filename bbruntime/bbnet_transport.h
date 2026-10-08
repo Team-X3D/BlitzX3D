@@ -35,6 +35,5 @@ public:
 };
 
 INetTransport* createDirectTransport();
-INetTransport* createSteamTransport();
 
 #endif
