@@ -11,6 +11,9 @@
     <ClCompile Include="bbmath.cpp" />
     <ClCompile Include="bbruntime.cpp" />
     <ClCompile Include="bbsockets.cpp" />
+    <ClCompile Include="bbnet.cpp" />
+    <ClCompile Include="bbnet_direct.cpp" />
+    <ClCompile Include="bbnet_steam.cpp" />
     <ClCompile Include="bbstream.cpp" />
     <ClCompile Include="bbstring.cpp" />
     <ClCompile Include="bbsys.cpp" />
@@ -31,6 +34,8 @@
     <ClInclude Include="bbmath.h" />
     <ClInclude Include="bbruntime.h" />
     <ClInclude Include="bbsockets.h" />
+    <ClInclude Include="bbnet.h" />
+    <ClInclude Include="bbnet_transport.h" />
     <ClInclude Include="bbstream.h" />
     <ClInclude Include="bbstring.h" />
     <ClInclude Include="bbsys.h" />
