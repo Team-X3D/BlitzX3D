@@ -45,7 +45,12 @@ gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9
 
 	FT_Init_FreeType(&ftLibrary);
 
-	def_font = this->loadFont(UTF8::getSystemFontFile("Courier"), 12);
+	std::string defaultFontPath;
+	for (const char* face : { "Courier", "Courier New", "Arial", "Tahoma", "Microsoft Sans Serif" }) {
+		defaultFontPath = UTF8::getSystemFontFile(face);
+		if (!defaultFontPath.empty()) break;
+	}
+	def_font = defaultFontPath.empty() ? nullptr : this->loadFont(defaultFontPath, 12);
 	front_canvas->setFont(def_font);
 	back_canvas->setFont(def_font);
 
