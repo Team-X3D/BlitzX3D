@@ -31,7 +31,7 @@ Need help, have a question, or found a problem?
 - "Faster than old Blitz3D" 
 
 ### Used in
-* [**SCP – Containment Breach Multiplayer 1.3.0R**](https://store.steampowered.com/app/1782380/SCP_Containment_Breach_Multiplayer/)
+* [**SCP – Containment Breach Multiplayer v1.3R**](https://store.steampowered.com/app/1782380/SCP_Containment_Breach_Multiplayer/)
 * [**SCP – Containment Breach Ultimate Edition Reborn 1.6**](https://github.com/Jabka666/scpcb-ue-my/tree/1.5.x)
 * [**SCP – Containment Breach Faerov Mod**](https://www.moddb.com/mods/scp-containment-breach-faerov-mod)
 * [**SCP – Terror Hunt**](https://www.moddb.com/mods/scp-terror-hunt-mod)
@@ -75,11 +75,11 @@ the AGPL-3.0 License (see LICENSE).
   ```
   (Or clone with `git clone --recurse-submodules`.) SDL3 is linked statically, so no `SDL3.dll` needs to be shipped alongside the builds.
 
-### Before building `linker` or `bbruntime_dll`:
+### Encryption
 
-1. Copy `linker/cryptseed.h.example` to `linker/cryptseed.h`.
-2. Open `cryptseed.h` and change `RUNTIME_KEY_SEED` to any nonzero value of your own choosing.
-   
+This public repository no longer includes the source-encryption feature. Engine builds with this feature, along with the corresponding source code, are provided exclusively to trusted developers.
+If you require source encryption, please request access from [@krimbopple](https://github.com/krimbopple)
+
 ### Steps
 
 1. Open `blitz3d.sln` in Visual Studio 2022.

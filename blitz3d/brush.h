@@ -23,6 +23,9 @@ public:
 	const Vector& getColor()const;
 	float getAlpha()const;
 	float getShininess()const;
+	void setMaterial(float roughness, float metallic);
+	float getRoughness()const;
+	float getMetallic()const;
 	int getBlend()const;
 	int getFX()const;
 	Texture getTexture(int index)const;

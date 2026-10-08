@@ -30,6 +30,7 @@ class bbImage
 {
 public:
     int origWidth, origHeight;
+    std::string name;
     float drawScaleX = 1.0f;
     float drawScaleY = 1.0f;
     float tform[2][2] = { {1.0f, 0.0f},{0.0f, 1.0f} };
@@ -959,6 +960,38 @@ int bbBufferHeight(gxCanvas* buff)
     return (buff ? buff : gx_canvas)->getHeight();
 }
 
+int bbBufferDepth(gxCanvas* buff) {
+    if (buff) debugCanvas(buff, "BufferDepth");
+    return (buff ? buff : gx_canvas)->getDepth();
+}
+
+gxCanvas* bbDepthBuffer() {
+    return gx_scene ? gx_scene->getDepthTarget() : 0;
+}
+
+void bbDrawBuffer(gxCanvas* buff, int x, int y, int width, int height, int blending) {
+    debugCanvas(buff, "DrawBuffer");
+    if (!gx_canvas) return;
+    gx_canvas->blitstretch(x, y, width, height, buff, 0, 0, buff->getWidth(), buff->getHeight(), blending == 0);
+}
+
+bbImage* bbGetImage(int id) {
+    if (id < 0) return 0;
+    for (bbImage* i : image_set) {
+        if (id-- == 0) return i;
+    }
+    return 0;
+}
+
+int bbGetImagesCount() {
+    return (int)image_set.size();
+}
+
+BBStr* bbImageName(bbImage* i) {
+    debugImage(i, "ImageName");
+    return new BBStr(i->name);
+}
+
 int bbReadPixel(int x, int y, gxCanvas* buff)
 {
     if (buff) debugCanvas(buff, "ReadPixel");
@@ -1313,7 +1346,7 @@ int bbStringHeight(BBStr* str)
 }
 
 BBStr* bbFontPath(BBStr* facename) {
-    return new BBStr(gx_graphics->running_on_wine ? "" : UTF8::getSystemFontFile(facename->c_str()).c_str());
+    return new BBStr(UTF8::getSystemFontFile(facename->c_str()).c_str());
 }
 
 gxMovie* bbOpenMovie(BBStr* s)
@@ -1382,6 +1415,7 @@ bbImage* bbLoadImage(BBStr* s)
     std::vector<gxCanvas*> frames;
     frames.push_back(c);
     bbImage* i = new bbImage(frames);
+    i->name = path;
     image_set.insert(i);
     return i;
 }
@@ -1402,6 +1436,7 @@ bbImage* bbLoadImageFlag(BBStr* s, int flags)
     std::vector<gxCanvas*> frames;
     frames.push_back(c);
     bbImage* i = new bbImage(frames);
+    i->name = path;
     image_set.insert(i);
     return i;
 }
@@ -1650,7 +1685,7 @@ void bbDrawImage(bbImage* i, int x, int y, int frame)
     int w = c->getWidth(), h = c->getHeight();
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int hx, hy; c->getHandle(&hx, &hy);
@@ -1682,7 +1717,7 @@ void bbDrawBlock(bbImage* i, int x, int y, int frame)
     gxCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int w = c->getWidth(), h = c->getHeight();
@@ -1745,7 +1780,7 @@ void bbDrawImageRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_
     gxCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int hx, hy; c->getHandle(&hx, &hy);
@@ -1784,7 +1819,7 @@ void bbDrawBlockRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_
     gxCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
-        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f;
+        bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
         if (isScaleOnly) {
             float sx = m[0][0], sy = m[1][1];
             int hx, hy; c->getHandle(&hx, &hy);
@@ -2106,6 +2141,8 @@ void bbResizeImage(bbImage* i, float w, float h)
     if (iw < 1) iw = 1;
     if (ih < 1) ih = 1;
 
+    i->saveOrigPixels();
+
     const std::vector<gxCanvas*>& f = i->getFrames();
     for (int k = 0; k < (int)f.size(); ++k)
     {
@@ -2141,6 +2178,9 @@ void bbResizeImage(bbImage* i, float w, float h)
         i->replaceFrame(k, t);
         t->backup();
     }
+
+    i->origWidth = iw;
+    i->origHeight = ih;
 }
 
 void bbRotateImage(bbImage* i, float d)
@@ -2478,6 +2518,12 @@ void graphics_link(void (*rtSym)(const char* sym, void* pc))
     rtSym("UnlockBuffer%buffer=0", bbUnlockBuffer);
     rtSym("%BufferWidth%buffer=0", bbBufferWidth);
     rtSym("%BufferHeight%buffer=0", bbBufferHeight);
+    rtSym("%BufferDepth%buffer=0", bbBufferDepth);
+    rtSym("%DepthBuffer", bbDepthBuffer);
+    rtSym("DrawBuffer%buffer%x%y%width%height%blending=1", bbDrawBuffer);
+    rtSym("%GetImage%id", bbGetImage);
+    rtSym("%GetImagesCount", bbGetImagesCount);
+    rtSym("$ImageName%image", bbImageName);
     rtSym("%ReadPixel%x%y%buffer=0", bbReadPixel);
     rtSym("WritePixel%x%y%argb%buffer=0", bbWritePixel);
     rtSym("%ReadPixelFast%x%y%buffer=0", bbReadPixelFast);

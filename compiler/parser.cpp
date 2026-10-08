@@ -1089,6 +1089,18 @@ ExprNode* Parser::parseUniExpr(bool opt) {
 		result = new AddrOfNode(v);
 		break;
 	}
+	case '@': {
+		toker->next();
+		std::string fn = parseIdent();
+		result = new CallPtrNode(fn);
+		break;
+	}
+	case AND: {
+		toker->next();
+		VarNode* v = parseVar();
+		result = new AddrOfNode(v);
+		break;
+	}
 	case OFFSETOF: {
 		toker->next();
 		if (toker->curr() != '(') exp("'('");
@@ -1240,8 +1252,15 @@ ExprNode* Parser::parsePrimary(bool opt) {
 			|| (experimentalSyntaxEnabled && isSoftKeyword(toker->curr()))
 			) {
 			std::string fn = toker->curr() == IDENT ? toker->text() : tolower(toker->text());
-			result = new CallPtrNode(fn);
 			toker->next();
+			if (toker->curr() == '\\') {
+				toker->next();
+				std::string field = parseIdent();
+				result = new TypeFieldNode(fn, field);
+			}
+			else {
+				result = new CallPtrNode(fn);
+			}
 			break;
 		}
 		else {

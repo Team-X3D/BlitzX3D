@@ -7,7 +7,6 @@
 struct Prefs {
 	struct CompileOptions {
 		bool noautodecl = false;
-		bool encrypt = false;
 		bool experimental = false;
 	};
 
@@ -19,7 +18,6 @@ struct Prefs {
 	bool prg_quiet = true;
 	bool prg_veryquiet = false;
 	bool prg_dumpkeys = false;
-	bool prg_encrypt = false;
 	std::string prg_lastbuild;
 	std::string cmd_line;
 

@@ -26,6 +26,9 @@ struct bbFile : public bbStream {
 	int eof() {
 		return buf->sgetc() == EOF;
 	}
+	void flush() {
+		buf->pubsync();
+	}
 };
 
 static std::set<bbFile*> file_set;
@@ -181,6 +184,16 @@ int	bbFileSize(BBStr* f) {
 	return gx_filesys->getFileSize(t);
 }
 
+int	bbFileTime(BBStr* f) {
+	std::string path = *f; delete f;
+	WIN32_FILE_ATTRIBUTE_DATA data;
+	if (!GetFileAttributesExA(path.c_str(), GetFileExInfoStandard, &data)) return 0;
+	ULARGE_INTEGER t;
+	t.LowPart = data.ftLastWriteTime.dwLowDateTime;
+	t.HighPart = data.ftLastWriteTime.dwHighDateTime;
+	return (int)((t.QuadPart - 116444736000000000ULL) / 10000000ULL);
+}
+
 BBStr* bbFileExtension(BBStr* f) {
 	std::string t = *f; delete f;
 	if (t.find_last_of(".") != std::string::npos) {
@@ -257,6 +270,7 @@ void filesystem_link(void(*rtSym)(const char*, void*)) {
 	rtSym("DeleteFolder$dir", bbDeleteFolder);
 
 	rtSym("%FileSize$file", bbFileSize);
+	rtSym("%FileTime$file", bbFileTime);
 	rtSym("%FileType$file", bbFileType);
 	rtSym("$FileExtension$file", bbFileExtension);
 	rtSym("CopyFile$file$to", bbCopyFile);

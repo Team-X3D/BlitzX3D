@@ -755,6 +755,35 @@ void gxScene::setRenderState(const RenderState& rs) {
 	lastRenderStateValid = true;
 }
 
+void gxScene::setCullMode(int mode) {
+	setRS(D3DRS_CULLMODE, mode);
+}
+
+void gxScene::setDepthBias(float bias, float slope) {
+	setRS(D3DRS_DEPTHBIAS, *(DWORD*)&bias);
+	setRS(D3DRS_SLOPESCALEDEPTHBIAS, *(DWORD*)&slope);
+}
+
+void gxScene::setReverseZ(bool enable) {
+	setRS(D3DRS_ZFUNC, enable ? D3DCMP_GREATEREQUAL : D3DCMP_LESSEQUAL);
+}
+
+void gxScene::setColorWrite(bool enable) {
+	setRS(D3DRS_COLORWRITEENABLE, enable ? 0xF : 0);
+}
+
+void gxScene::setScissorRect(bool enable, int x, int y, int w, int h) {
+	setRS(D3DRS_SCISSORTESTENABLE, enable ? TRUE : FALSE);
+	if (enable) {
+		RECT r = { x, y, x + w, y + h };
+		dir3dDev->SetScissorRect(&r);
+	}
+}
+
+void gxScene::setTextureDivisor(int div) {
+	textureDivisor = div;
+}
+
 bool gxScene::begin(const std::vector<gxLight*>& lights) {
 
 	if(dir3dDev->BeginScene() != D3D_OK) return false;

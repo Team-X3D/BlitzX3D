@@ -158,7 +158,6 @@ void Prefs::open() {
 	inipp::get_value(ini.sections["COMPILER"], "Quiet", prg_quiet);
 	inipp::get_value(ini.sections["COMPILER"], "VeryQuiet", prg_veryquiet);
 	inipp::get_value(ini.sections["COMPILER"], "DumpKeys", prg_dumpkeys);
-	inipp::get_value(ini.sections["COMPILER"], "Encrypt", prg_encrypt);
 	inipp::get_value(ini.sections["COMPILER"], "LastBuild", prg_lastbuild);
 	inipp::get_value(ini.sections["COMPILER"], "CommandLine", cmd_line);
 
@@ -244,7 +243,6 @@ void Prefs::close() {
 	compilerSection.insert(std::make_pair("Quiet", boolToString(prg_quiet)));
 	compilerSection.insert(std::make_pair("VeryQuiet", boolToString(prg_veryquiet)));
 	compilerSection.insert(std::make_pair("DumpKeys", boolToString(prg_dumpkeys)));
-	compilerSection.insert(std::make_pair("Encrypt", boolToString(prg_encrypt)));
 	compilerSection.insert(std::make_pair("LastBuild", prg_lastbuild));
 	compilerSection.insert(std::make_pair("CommandLine", cmd_line));
 
@@ -314,7 +312,6 @@ bool Prefs::loadProjectOptions(const std::string& path) {
 	std::string elem = xmlElement(ss.str(), "CompileOptions");
 	if (elem.empty()) return false;
 	projectOptions.noautodecl = parseBoolValue(xmlAttr(elem, "NoAutoDecl"), projectOptions.noautodecl);
-	projectOptions.encrypt = parseBoolValue(xmlAttr(elem, "Encrypt"), projectOptions.encrypt);
 	projectOptions.experimental = parseBoolValue(xmlAttr(elem, "Experimental"), projectOptions.experimental);
 	projectOptionsActive = true;
 	return true;
@@ -356,6 +353,5 @@ void Prefs::clearProjectOptions() {
 
 std::string Prefs::compileOptionsXml() const {
 	return std::string("NoAutoDecl=\"") + boolToString(projectOptions.noautodecl) +
-		"\" Encrypt=\"" + boolToString(projectOptions.encrypt) +
 		"\" Experimental=\"" + boolToString(projectOptions.experimental) + "\"";
 }

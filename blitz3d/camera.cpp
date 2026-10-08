@@ -60,6 +60,23 @@ void Camera::setFogMode(int mode) {
 	fog_mode = mode;
 }
 
+void Camera::setCullMode(int mode) {
+	cull_mode = mode;
+}
+
+void Camera::setDepthBias(float bias, float slope) {
+	depth_bias = bias;
+	slope_bias = slope;
+}
+
+void Camera::setReverseZ(int enable) {
+	reverse_z = enable;
+}
+
+void Camera::setColorWrite(int enable) {
+	color_write = enable;
+}
+
 const Frustum& Camera::getFrustum()const {
 	if (!local_valid) {
 		float ar = (float)vp_h / vp_w;
@@ -114,5 +131,9 @@ bool Camera::beginRenderFrame() {
 	gx_scene->setFogDensity(fog_den);
 	gx_scene->setFogColor((float*)&fog_color.x);
 	gx_scene->setFogMode(fog_mode);
+	if (cull_mode >= 0) gx_scene->setCullMode(cull_mode);
+	gx_scene->setDepthBias(depth_bias, slope_bias);
+	gx_scene->setReverseZ(reverse_z != 0);
+	gx_scene->setColorWrite(color_write != 0);
 	return true;
 }

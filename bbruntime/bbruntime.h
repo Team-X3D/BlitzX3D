@@ -15,6 +15,10 @@ void bbruntime_link(void (*rtSym)(const char* sym, void* pc));
 const char* bbruntime_run(gxRuntime* runtime, void (*pc)(), bool debug);
 void bbruntime_panic(const wchar_t* err);
 
+void bbSetExceptionHandler(void* handler);
+void bbClearExceptionHandler();
+bool bbCallExceptionHandler(const char* message);
+
 class ErrorMessagePool {
 public:
 	static std::string* memoryAccessViolation;

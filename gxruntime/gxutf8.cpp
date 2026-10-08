@@ -250,6 +250,7 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	DWORD maxValueNameSize, maxValueDataSize;
 	result = RegQueryInfoKeyW(hKey, 0, 0, 0, 0, 0, 0, 0, &maxValueNameSize, &maxValueDataSize, 0, 0);
 	if (result != ERROR_SUCCESS) {
+		RegCloseKey(hKey);
 		return "";
 	}
 
@@ -259,10 +260,12 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	DWORD valueNameSize, valueDataSize, valueType;
 	std::wstring wsFontFile;
 
+	WCHAR winDir[MAX_PATH];
+	GetWindowsDirectoryW(winDir, MAX_PATH);
+
 	// Look for a matching font name
 	do {
 
-		wsFontFile.clear();
 		valueDataSize = maxValueDataSize + sizeof(WCHAR);
 		valueNameSize = maxValueNameSize + 1;
 
@@ -280,9 +283,19 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 		if (_wcsnicmp(wsFaceName.c_str(), wsValueName.c_str(), wsFaceName.length()) == 0) {
 
 			size_t wlen = valueDataSize / sizeof(WCHAR);
-			wsFontFile.assign((LPWSTR)valueData, wlen);
-			size_t nullPos = wsFontFile.find(L'\0');
-			if (nullPos != std::wstring::npos) wsFontFile.resize(nullPos);
+			std::wstring candidate((LPWSTR)valueData, wlen);
+			size_t nullPos = candidate.find(L'\0');
+			if (nullPos != std::wstring::npos) candidate.resize(nullPos);
+
+			if (candidate.empty()) continue;
+
+			std::wstringstream ss;
+			ss << winDir << L"\\Fonts\\" << candidate;
+			std::wstring fullPath = ss.str();
+
+			if (GetFileAttributesW(fullPath.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+
+			wsFontFile = fullPath;
 			break;
 		}
 	} while (result != ERROR_NO_MORE_ITEMS);
@@ -295,14 +308,6 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	if (wsFontFile.empty()) {
 		return "";
 	}
-
-	// Build full font file path
-	WCHAR winDir[MAX_PATH];
-	GetWindowsDirectoryW(winDir, MAX_PATH);
-
-	std::wstringstream ss;
-	ss << winDir << "\\Fonts\\" << wsFontFile;
-	wsFontFile = ss.str();
 
 	return std::string(wsFontFile.begin(), wsFontFile.end());
 }

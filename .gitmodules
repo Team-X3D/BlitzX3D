@@ -1,3 +1,11 @@
 [submodule "vendor/SDL3"]
 	path = vendor/SDL3
 	url = https://github.com/libsdl-org/SDL
+
+[submodule "angelscript"]
+	path = angelscript
+	url = https://github.com/SCP-CB-CPP/angelscript.git
+	branch = b3d
+[submodule "vendor/angelscript-JIT"]
+	path = vendor/angelscript-JIT
+	url = https://github.com/Team-X3D/angelscript-JIT-2.39.git

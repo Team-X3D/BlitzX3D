@@ -215,8 +215,16 @@ TNode* CallNode::translate(Codegen* g) {
 
 ExprNode* CallPtrNode::semant(Environ* env) {
 	sem_decl = env->findFunc(ident);
-	
-	if (!sem_decl || !(sem_decl->kind & DECL_FUNC)) ex(std::format(MultiLang::function_not_found, ident));
+
+	if (!sem_decl || !(sem_decl->kind & DECL_FUNC)) {
+		Type* t = env->findType(ident);
+		if (t && t->structType()) {
+			sem_isType = true;
+			sem_type = Type::pointer_type;
+			return this;
+		}
+		ex(std::format(MultiLang::function_not_found, ident));
+	}
 	if (OverrideFunctionMap.contains(ident)) ex(MultiLang::ambiguous_function_reference);
 
 	if (experimentalSyntaxEnabled) {
@@ -234,6 +242,11 @@ ExprNode* CallPtrNode::semant(Environ* env) {
 }
 
 TNode* CallPtrNode::translate(Codegen* g) {
+	if (sem_isType) return global("_t" + ident);
+	if (sem_decl && (sem_decl->kind & DECL_FUNC)) {
+		FuncType* f = sem_decl->type->funcType();
+		if (f && f->userlib) usedfuncs.insert(ident);
+	}
 	return global("_f" + ident);
 }
 
@@ -819,15 +832,23 @@ TNode* ObjectHandleNode::translate(Codegen* g) {
 // Address of  //
 /////////////////
 ExprNode* AddrOfNode::semant(Environ* e) {
-	var->semant(e);
-	if(var->sem_type->structType()) {
-		ex(MultiLang::addressof_not_supported_for_type);
+	if (IdentVarNode* iv = dynamic_cast<IdentVarNode*>(var)) {
+		if (Decl* d = e->findDecl(iv->ident)) {
+			if (d->kind & DECL_ARRAY) {
+				sem_array = true;
+				array_ident = iv->ident;
+				sem_type = Type::int_type;
+				return this;
+			}
+		}
 	}
+	var->semant(e);
 	sem_type = Type::int_type;
 	return this;
 }
 
 TNode* AddrOfNode::translate(Codegen* g) {
+	if (sem_array) return global("_a" + array_ident);
 	return var->translate(g);
 }
 
@@ -849,6 +870,23 @@ ExprNode* OffsetOfNode::semant(Environ* e) {
 
 TNode* OffsetOfNode::translate(Codegen* g) {
 	return iconst(sem_offset);
+}
+
+ExprNode* TypeFieldNode::semant(Environ* e) {
+	Type* t = e->findType(typeIdent);
+	StructType* st = t ? t->structType() : 0;
+	if (!st) ex(MultiLang::custom_type_not_found);
+
+	Decl* field = st->fields->findDecl(fieldIdent);
+	if (!field) ex(MultiLang::type_field_not_found);
+
+	sem_index = field->offset / 4;
+	sem_type = Type::int_type;
+	return this;
+}
+
+TNode* TypeFieldNode::translate(Codegen* g) {
+	return iconst(sem_index);
 }
 
 /////////////////////////
