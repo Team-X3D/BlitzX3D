@@ -1021,7 +1021,6 @@ bool angel_create()
 	}
 
 	// TODO:
-	// - Bounds checks
 	// - Iterable structs
 	// - Fixed size arrays
 	// - Custom type dims
