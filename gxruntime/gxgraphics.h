@@ -41,9 +41,22 @@ public:
 	gxRuntime* runtime;
 	//std::set<std::set<std::any>*> custom_set;
 
+	void applyAntialiasChange();
+	void resolveAntialias();
+	bool antialiasActive() const { return antialias_msaa; }
+
 private:
+	void refreshAntialiasCanvas(int w, int h, D3DFORMAT fmt);
+	bool ensureResolveScratch(int w, int h, D3DFORMAT fmt);
+	void releaseResolveScratch();
+	IDirect3DSurface9* resolve_scratch = nullptr;
+	int resolve_scratch_w = 0, resolve_scratch_h = 0;
+	D3DFORMAT resolve_scratch_fmt = D3DFMT_UNKNOWN;
 
 	gxCanvas* front_canvas, * back_canvas;
+	gxCanvas* antialias_canvas = nullptr;
+	bool antialias_msaa = false;
+	bool applied_antialias_request = false;
 	gxFont* def_font;
 	bool gfx_lost;
 	gxMesh* dummy_mesh;

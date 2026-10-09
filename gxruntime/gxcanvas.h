@@ -10,6 +10,8 @@ class gxEffect;
 
 class gxCanvas {
 public:
+	friend class gxGraphics;
+
 	gxCanvas(gxGraphics* g, IDirect3DSurface9* surf, int flags);
 	gxCanvas(gxGraphics* g, IDirect3DTexture9* tex, int flags);
 	gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* cube_tex, int flags);

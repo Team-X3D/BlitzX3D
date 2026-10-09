@@ -346,6 +346,8 @@ void gxRuntime::paint() {
 			}
 		}
 
+		if (graphics) graphics->resolveAntialias();
+
 		HRESULT hr = d3dDevice->Present(NULL, NULL, NULL, NULL);
 		if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) {
 			gfx_lost = true;
@@ -377,6 +379,8 @@ void gxRuntime::paint() {
 			}
 		}
 
+		if (graphics) graphics->resolveAntialias();
+
 		HRESULT hr = d3dDevice->Present(NULL, NULL, NULL, NULL);
 		if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) {
 			gfx_lost = true;
@@ -384,6 +388,8 @@ void gxRuntime::paint() {
 		break;
 	}
 	case GMODE_EXCLUSIVE: {
+		if (graphics) graphics->resolveAntialias();
+
 		HRESULT hr = d3dDevice->Present(NULL, NULL, NULL, NULL);
 		if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) {
 			gfx_lost = true;
@@ -463,6 +469,8 @@ void gxRuntime::flip(bool vwait) {
 		}
 		gfx_lost = false;
 	}
+
+	if (graphics) graphics->resolveAntialias();
 
 	HRESULT hr = d3dDevice->Present(NULL, NULL, NULL, NULL);
 	if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) {
@@ -971,18 +979,10 @@ bool gxRuntime::setDisplayMode(int w, int h, int d, bool d3d) {
 	return true;
 }
 
-void gxRuntime::applyAntialiasToParams(D3DPRESENT_PARAMETERS& pp) {
-	pp.MultiSampleType = D3DMULTISAMPLE_NONE;
-	pp.MultiSampleQuality = 0;
-
-	if (!requested_antialias) return;
-
-	pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
-
-	D3DFORMAT fmt = pp.BackBufferFormat;
+D3DMULTISAMPLE_TYPE gxRuntime::chooseMultisampleType(D3DFORMAT fmt, BOOL windowed, DWORD* outQuality) {
+	if (outQuality) *outQuality = 0;
+	if (!d3d || !curr_driver) return D3DMULTISAMPLE_NONE;
 	if (fmt == D3DFMT_UNKNOWN) fmt = D3DFMT_X8R8G8B8;
-
-	BOOL windowed = pp.Windowed ? TRUE : FALSE;
 
 	D3DMULTISAMPLE_TYPE type = D3DMULTISAMPLE_4_SAMPLES;
 	DWORD quality = 0;
@@ -991,12 +991,16 @@ void gxRuntime::applyAntialiasToParams(D3DPRESENT_PARAMETERS& pp) {
 		type = D3DMULTISAMPLE_2_SAMPLES;
 		quality = 0;
 		hr = d3d->CheckDeviceMultiSampleType(curr_driver->adapter, D3DDEVTYPE_HAL, fmt, windowed, type, &quality);
-		if (FAILED(hr) || quality == 0) return;
+		if (FAILED(hr) || quality == 0) return D3DMULTISAMPLE_NONE;
 	}
 
-	pp.MultiSampleType = type;
-	pp.MultiSampleQuality = quality > 0 ? quality - 1 : 0;
-	pp.Flags &= ~D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+	if (outQuality) *outQuality = quality - 1;
+	return type;
+}
+
+void gxRuntime::applyAntialiasToParams(D3DPRESENT_PARAMETERS& pp) {
+	pp.MultiSampleType = D3DMULTISAMPLE_NONE;
+	pp.MultiSampleQuality = 0;
 }
 
 gxGraphics* gxRuntime::openWindowedGraphics(int w, int h, int d, bool d3d) {

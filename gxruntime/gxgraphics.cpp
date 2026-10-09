@@ -63,12 +63,18 @@ gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9
 		zbuffFmt = D3DFMT_UNKNOWN;
 	}
 
+	back_canvas->surf->AddRef();
+	antialias_canvas = new gxCanvas(this, back_canvas->surf, 0);
+	antialias_canvas->setFont(def_font);
+	refreshAntialiasCanvas(testDesc.Width, testDesc.Height, testDesc.Format);
+
 	// todo: gamma
 }
 
 gxGraphics::~gxGraphics() {
 	ddUtil::releaseCopyScratch();
 	releaseCopyScratchCanvas();
+	releaseResolveScratch();
 	while (scene_set.size()) freeScene(*scene_set.begin());
 	while (movie_set.size()) closeMovie(*movie_set.begin());
 	while (font_set.size()) freeFont(*font_set.begin());
@@ -89,6 +95,7 @@ gxGraphics::~gxGraphics() {
 	for (auto it = font_res.begin(); it != font_res.end(); ++it) RemoveFontResource((*it).c_str());
 	font_res.clear();
 
+	delete antialias_canvas;
 	delete back_canvas;
 	delete front_canvas;
 
@@ -98,6 +105,86 @@ gxGraphics::~gxGraphics() {
 	if (dir3d) dir3d->Release();
 	if (frontBuffer && frontBuffer != backBuffer) frontBuffer->Release();
 	if (backBuffer) backBuffer->Release();
+}
+
+void gxGraphics::refreshAntialiasCanvas(int w, int h, D3DFORMAT fmt) {
+	if (!antialias_canvas) return;
+
+	antialias_canvas->releaseZBuffer();
+	if (antialias_canvas->plain_surf) antialias_canvas->plain_surf->Release();
+	antialias_canvas->plain_surf = nullptr;
+	antialias_canvas->surf = nullptr;
+
+	IDirect3DSurface9* target = nullptr;
+	bool msaa = false;
+
+	if (runtime->antialiasRequested() && dir3dDev && back_canvas && back_canvas->surf) {
+		D3DFORMAT rtFmt = (fmt == D3DFMT_UNKNOWN) ? D3DFMT_X8R8G8B8 : fmt;
+		BOOL windowed = present_params.Windowed ? TRUE : FALSE;
+		DWORD quality = 0;
+		D3DMULTISAMPLE_TYPE type = runtime->chooseMultisampleType(rtFmt, windowed, &quality);
+		if (type != D3DMULTISAMPLE_NONE) {
+			IDirect3DSurface9* rt = nullptr;
+			if (SUCCEEDED(dir3dDev->CreateRenderTarget(w, h, rtFmt, type, quality, FALSE, &rt, nullptr)) && rt) {
+				target = rt;
+				msaa = true;
+			}
+		}
+	}
+
+	if (!target) {
+		target = back_canvas->surf;
+		target->AddRef();
+		msaa = false;
+	}
+
+	antialias_canvas->surf = target;
+	antialias_canvas->plain_surf = target;
+
+	D3DSURFACE_DESC desc;
+	target->GetDesc(&desc);
+	antialias_canvas->format.setFormat(desc.Format);
+	antialias_canvas->logical_w = desc.Width;
+	antialias_canvas->logical_h = desc.Height;
+	antialias_canvas->clip_rect.left = 0;
+	antialias_canvas->clip_rect.top = 0;
+	antialias_canvas->clip_rect.right = desc.Width;
+	antialias_canvas->clip_rect.bottom = desc.Height;
+	antialias_canvas->setViewport(0, 0, desc.Width, desc.Height);
+
+	antialias_msaa = msaa;
+	applied_antialias_request = runtime->antialiasRequested();
+
+	if (zbuffFmt != D3DFMT_UNKNOWN) antialias_canvas->attachZBuffer();
+}
+
+bool gxGraphics::ensureResolveScratch(int w, int h, D3DFORMAT fmt) {
+	if (resolve_scratch && resolve_scratch_fmt == fmt && resolve_scratch_w >= w && resolve_scratch_h >= h) return true;
+	releaseResolveScratch();
+	if (FAILED(dir3dDev->CreateRenderTarget(w, h, fmt, D3DMULTISAMPLE_NONE, 0, FALSE, &resolve_scratch, nullptr)) || !resolve_scratch) {
+		resolve_scratch = nullptr;
+		return false;
+	}
+	resolve_scratch_w = w; resolve_scratch_h = h; resolve_scratch_fmt = fmt;
+	return true;
+}
+
+void gxGraphics::releaseResolveScratch() {
+	if (resolve_scratch) { resolve_scratch->Release(); resolve_scratch = nullptr; }
+	resolve_scratch_w = resolve_scratch_h = 0;
+	resolve_scratch_fmt = D3DFMT_UNKNOWN;
+}
+
+void gxGraphics::applyAntialiasChange() {
+	if (!antialias_canvas || !back_canvas) return;
+	if (applied_antialias_request == runtime->antialiasRequested()) return;
+	D3DFORMAT fmt = present_params.BackBufferFormat;
+	refreshAntialiasCanvas(back_canvas->getWidth(), back_canvas->getHeight(), fmt);
+}
+
+void gxGraphics::resolveAntialias() {
+	if (!antialias_msaa || !antialias_canvas || !antialias_canvas->surf || !back_canvas || !back_canvas->surf || !dir3dDev) return;
+	dir3dDev->StretchRect(antialias_canvas->surf, nullptr, back_canvas->surf, nullptr, D3DTEXF_NONE);
 }
 
 gxEffect* gxGraphics::createEffect(const std::string& filename) {
@@ -174,6 +261,7 @@ bool gxGraphics::restore() {
 
 		ddUtil::releaseCopyScratch();
 		releaseCopyScratchCanvas();
+		releaseResolveScratch();
 		hr = dir3dDev->ResetEx(&present_params, present_params.Windowed ? nullptr : &runtime->d3ddmEx);
 		if (FAILED(hr) && present_params.MultiSampleType != D3DMULTISAMPLE_NONE) {
 			present_params.MultiSampleType = D3DMULTISAMPLE_NONE;
@@ -191,17 +279,21 @@ bool gxGraphics::restore() {
 		runtime->backBuffer = newBack;
 		if (runtime->stretchRT) { runtime->stretchRT->Release(); runtime->stretchRT = nullptr; }
 
-		bool wasAliased = front_canvas && back_canvas && front_canvas->surf == back_canvas->surf;
-
 		if (back_canvas && back_canvas->surf) {
 			back_canvas->surf->Release();
 			back_canvas->surf = newBack;
 			newBack->AddRef();
 		}
-		if (front_canvas && wasAliased) {
+		if (front_canvas) {
 			front_canvas->surf->Release();
 			front_canvas->surf = newBack;
 			newBack->AddRef();
+		}
+
+		if (antialias_canvas) {
+			D3DSURFACE_DESC d;
+			newBack->GetDesc(&d);
+			refreshAntialiasCanvas(d.Width, d.Height, d.Format);
 		}
 
 		for (auto it = canvas_set.begin(); it != canvas_set.end(); ++it) {
@@ -294,6 +386,7 @@ bool gxGraphics::changeDisplayMode(int width, int height, bool fullscreen, bool 
 
 	ddUtil::releaseCopyScratch();
 	releaseCopyScratchCanvas();
+	releaseResolveScratch();
 	HRESULT hr = dir3dDev->ResetEx(&present_params, fullscreen ? &runtime->d3ddmEx : nullptr);
 	if (FAILED(hr) && present_params.MultiSampleType != D3DMULTISAMPLE_NONE) {
 		present_params.MultiSampleType = D3DMULTISAMPLE_NONE;
@@ -344,6 +437,10 @@ bool gxGraphics::changeDisplayMode(int width, int height, bool fullscreen, bool 
 	updateCanvas(front_canvas);
 	updateCanvas(back_canvas);
 
+	if (antialias_canvas) {
+		refreshAntialiasCanvas(width, height, present_params.BackBufferFormat);
+	}
+
 	for (auto it = mesh_set.begin(); it != mesh_set.end(); ++it) {
 		(*it)->restore();
 	}
@@ -373,7 +470,7 @@ gxCanvas* gxGraphics::getFrontCanvas()const {
 }
 
 gxCanvas* gxGraphics::getBackCanvas()const {
-	return back_canvas;
+	return antialias_canvas ? antialias_canvas : back_canvas;
 }
 
 gxFont* gxGraphics::getDefaultFont()const {
@@ -408,7 +505,15 @@ void gxGraphics::copy(gxCanvas* dest, int dx, int dy, int dw, int dh, gxCanvas* 
 			}
 		}
 	}
-	ddUtil::copy(dir3dDev, dest->getSurface(), dx, dy, dw, dh, src->getSurface(), sx, sy, sw, sh);
+	IDirect3DSurface9* copySrc = src->getSurface();
+	D3DSURFACE_DESC sd;
+	if (dir3dDev && copySrc && SUCCEEDED(copySrc->GetDesc(&sd)) && sd.MultiSampleType != D3DMULTISAMPLE_NONE) {
+		if (ensureResolveScratch(sd.Width, sd.Height, sd.Format) &&
+			SUCCEEDED(dir3dDev->StretchRect(copySrc, nullptr, resolve_scratch, nullptr, D3DTEXF_NONE))) {
+			copySrc = resolve_scratch;
+		}
+	}
+	ddUtil::copy(dir3dDev, dest->getSurface(), dx, dy, dw, dh, copySrc, sx, sy, sw, sh);
 	RECT r = { dx, dy, dx + dw, dy + dh };
 	dest->damage(r);
 }
@@ -517,7 +622,7 @@ gxCanvas* gxGraphics::createCanvasFromImage(void* fib32, int w, int h, int flags
 }
 
 gxCanvas* gxGraphics::verifyCanvas(gxCanvas* c) {
-	return canvas_set.count(c) || c == front_canvas || c == back_canvas ? c : 0;
+	return canvas_set.count(c) || c == front_canvas || c == back_canvas || c == antialias_canvas ? c : 0;
 }
 
 void gxGraphics::freeCanvas(gxCanvas* c) {
@@ -567,11 +672,14 @@ gxScene* gxGraphics::createScene(int flags) {
 	if (scene_set.size()) return 0;
 	if (!dir3dDev) return 0;
 
+	gxCanvas* target = antialias_canvas ? antialias_canvas : back_canvas;
+
 	D3DFORMAT depthFormats[] = { D3DFMT_D24S8, D3DFMT_D24X8, D3DFMT_D16, D3DFMT_D32 };
 	bool zOk = false;
+	target->releaseZBuffer();
 	for (int i = 0; i < 4; ++i) {
 		zbuffFmt = depthFormats[i];
-		if (back_canvas->attachZBuffer()) {
+		if (target->attachZBuffer()) {
 			zOk = true;
 			break;
 		}
@@ -581,7 +689,7 @@ gxScene* gxGraphics::createScene(int flags) {
 		return 0;
 	}
 
-	gxScene* scene = new gxScene(this, back_canvas);
+	gxScene* scene = new gxScene(this, target);
 	scene_set.insert(scene);
 	return scene;
 }
@@ -592,7 +700,7 @@ void gxGraphics::freeScene(gxScene* scene) {
 	if (!scene_set.erase(scene)) return;
 	dummy_mesh = 0;
 	while (mesh_set.size()) freeMesh(*mesh_set.begin());
-	back_canvas->releaseZBuffer();
+	(antialias_canvas ? antialias_canvas : back_canvas)->releaseZBuffer();
 	delete scene;
 }
 

@@ -148,6 +148,8 @@ public:
     void setAntialiasRequest(bool enable) { requested_antialias = enable; }
     bool antialiasRequested() const { return requested_antialias; }
 
+    D3DMULTISAMPLE_TYPE chooseMultisampleType(D3DFORMAT fmt, BOOL windowed, DWORD* quality);
+
     gxFileSystem* openFileSystem(int flags);
     void closeFileSystem(gxFileSystem* filesys);
 

@@ -472,8 +472,11 @@ void gxScene::setDither(bool n) {
 
 void gxScene::setAntialias(bool n) {
 	antialias = n;
-	if (graphics && graphics->runtime) {
-		graphics->runtime->setAntialiasRequest(n);
+	if (graphics) {
+		if (graphics->runtime) {
+			graphics->runtime->setAntialiasRequest(n);
+		}
+		graphics->applyAntialiasChange();
 	}
 	if (dir3dDev) {
 		setRS(D3DRS_MULTISAMPLEANTIALIAS, n ? TRUE : FALSE);
