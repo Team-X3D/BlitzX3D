@@ -896,7 +896,7 @@ struct SavedBlitState {
     DWORD oldZ, oldAlphaTest, oldAlphaFunc, oldAlphaRef, oldAlphaBlend;
     DWORD oldSrcBlend, oldDestBlend;
     DWORD oldLighting, oldTextureFactor;
-    DWORD oldCOp, oldCArg1, oldCArg2, oldAOp, oldAArg1, oldAArg2, oldMag, oldMin, oldLodBias;
+    DWORD oldCOp, oldCArg1, oldCArg2, oldAOp, oldAArg1, oldAArg2, oldMag, oldMin, oldMip, oldLodBias;
     IDirect3DBaseTexture9* extraTex[7];
     DWORD extraCOp[7], extraAOp[7];
 };
@@ -938,6 +938,7 @@ static void saveBlitState(IDirect3DDevice9* dev, SavedBlitState& s) {
     dev->GetTextureStageState(0, D3DTSS_ALPHAARG2, &s.oldAArg2);
     dev->GetSamplerState(0, D3DSAMP_MAGFILTER, &s.oldMag);
     dev->GetSamplerState(0, D3DSAMP_MINFILTER, &s.oldMin);
+    dev->GetSamplerState(0, D3DSAMP_MIPFILTER, &s.oldMip);
     dev->GetSamplerState(0, D3DSAMP_MIPMAPLODBIAS, &s.oldLodBias);
 }
 
@@ -966,6 +967,7 @@ static void restoreBlitState(IDirect3DDevice9* dev, SavedBlitState& s) {
     dev->SetTextureStageState(0, D3DTSS_ALPHAARG2, s.oldAArg2);
     dev->SetSamplerState(0, D3DSAMP_MAGFILTER, s.oldMag);
     dev->SetSamplerState(0, D3DSAMP_MINFILTER, s.oldMin);
+    dev->SetSamplerState(0, D3DSAMP_MIPFILTER, s.oldMip);
     dev->SetSamplerState(0, D3DSAMP_MIPMAPLODBIAS, s.oldLodBias);
     dev->SetTexture(0, s.oldTex);
     if (s.oldTex) s.oldTex->Release();
@@ -1288,7 +1290,9 @@ void gxCanvas::blitstretch(int x, int y, int w, int h,
 
     dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
-    dev->SetSamplerState(0, D3DSAMP_MIPMAPLODBIAS, 0);
+    dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
+    const float mipLodBias = 0.3f;
+    dev->SetSamplerState(0, D3DSAMP_MIPMAPLODBIAS, *((const DWORD*)&mipLodBias));
 
     disableExtraTextureStages(dev);
 
