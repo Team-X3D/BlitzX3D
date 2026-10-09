@@ -592,6 +592,10 @@ int bbExecuteFunction(asIScriptFunction* func, int* returnVal)
 
 	if (--call_depth > 0)
 		ctx->PopState();
+	else
+	{
+		ctx->Unprepare();
+	}
 
 	script_args_strings.clear();
 	return ret;
@@ -600,6 +604,7 @@ int bbExecuteFunction(asIScriptFunction* func, int* returnVal)
 int bbExecuteString(BBStr* code)
 {
 	auto ret = ExecuteString(engine, code->c_str(), nullptr, ctx);
+	ctx->Unprepare();
 	delete code;
 	return ret;
 }
@@ -1027,7 +1032,13 @@ bool angel_create()
 bool angel_destroy()
 {
 	factories.clear();
+	if (ctx)
+	{
+		ctx->Release();
+		ctx = nullptr;
+	}
 	bool ok = engine->ShutDownAndRelease() >= 0;
+	engine = nullptr;
 	delete jit;
 	jit = nullptr;
 	return ok;
