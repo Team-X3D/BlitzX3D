@@ -1291,7 +1291,7 @@ void gxCanvas::blitstretch(int x, int y, int w, int h,
     dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
     dev->SetSamplerState(0, D3DSAMP_MIPFILTER, D3DTEXF_LINEAR);
-    const float mipLodBias = 0.3f;
+    const float mipLodBias = 0.1f;
     dev->SetSamplerState(0, D3DSAMP_MIPMAPLODBIAS, *((const DWORD*)&mipLodBias));
 
     disableExtraTextureStages(dev);
