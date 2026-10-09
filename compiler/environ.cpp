@@ -4,6 +4,7 @@
 
 bool autoDeclEnabled = true;
 bool experimentalSyntaxEnabled = false;
+int targetPtrSize = 4;
 
 Environ::Environ(const std::string& f, Type* r, int l, Environ* gs)
     :funcLabel(f), returnType(r), level(l), globals(gs) {

@@ -11,6 +11,7 @@
 
 extern bool autoDeclEnabled;
 extern bool experimentalSyntaxEnabled;
+extern int targetPtrSize;
 
 class Environ {
 public:

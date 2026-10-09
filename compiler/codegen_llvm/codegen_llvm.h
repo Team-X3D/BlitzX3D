@@ -63,6 +63,9 @@ private:
 	int tmpCount;
 	int blockCount;
 
+	std::set<std::string> branchTargets;
+	std::set<std::string> blockLabels;
+
 	bool inCode;
 	std::string funcName;
 	std::string funcBody;
@@ -72,6 +75,8 @@ private:
 	bool retFloat;
 	bool skipNextJump;
 	std::string mainReturnLabel;
+
+	std::string ensureFuncNameStr();
 
 	bool finalized;
 	void finalize();

@@ -209,7 +209,15 @@ void StructDeclNode::proto(DeclSeq* d, Environ* e) {
 
 void StructDeclNode::semant(Environ* e) {
     fields->proto(sem_type->fields, e);
-    for (int k = 0; k < sem_type->fields->size(); ++k) sem_type->fields->decls[k]->offset = k * 4;
+    int off = 0;
+    for (int k = 0; k < sem_type->fields->size(); ++k) {
+        Decl* f = sem_type->fields->decls[k];
+        int sz = Node::typeSize(f->type);
+        int al = sz < targetPtrSize ? sz : targetPtrSize;
+        off = (off + al - 1) / al * al;
+        f->offset = off;
+        off += sz;
+    }
 }
 
 void StructDeclNode::translate(Codegen* g) {

@@ -3,6 +3,8 @@
 
 #include "std.h"
 
+extern int targetPtrSize;
+
 enum {
 	IR_JUMP, IR_JUMPT, IR_JUMPF, IR_JUMPGE,
 
@@ -19,16 +21,21 @@ enum {
 	IR_FSETEQ, IR_FSETNE, IR_FSETLT, IR_FSETGT, IR_FSETLE, IR_FSETGE,
 };
 
+enum {
+	VK_VOID, VK_INT, VK_FLOAT, VK_PTR
+};
+
 struct TNode {
 
 	int op;				//opcode
 	TNode* l, * r;		//args
 	int iconst;			//for CONST type_int
 	std::string sconst;		//for CONST type_string
+	int vkind; //width of the value this node produces
 
-	TNode(int op, TNode* l = 0, TNode* r = 0) :op(op), l(l), r(r), iconst(0) {}
-	TNode(int op, TNode* l, TNode* r, int i) :op(op), l(l), r(r), iconst(i) {}
-	TNode(int op, TNode* l, TNode* r, const std::string& s) :op(op), l(l), r(r), iconst(0), sconst(s) {}
+	TNode(int op, TNode* l = 0, TNode* r = 0) :op(op), l(l), r(r), iconst(0), vkind(VK_INT) {}
+	TNode(int op, TNode* l, TNode* r, int i) :op(op), l(l), r(r), iconst(i), vkind(VK_INT) {}
+	TNode(int op, TNode* l, TNode* r, const std::string& s) :op(op), l(l), r(r), iconst(0), sconst(s), vkind(VK_INT) {}
 	~TNode() { delete l; delete r; }
 };
 
@@ -38,6 +45,8 @@ public:
 	bool debug;
 	Codegen(std::ostream& out, bool debug) :out(out), debug(debug) {}
 	virtual ~Codegen() {}
+
+	virtual int ptrSize() { return targetPtrSize; }
 
 	virtual void enter(const std::string& l, int frameSize) = 0;
 	virtual void code(TNode* code) = 0;

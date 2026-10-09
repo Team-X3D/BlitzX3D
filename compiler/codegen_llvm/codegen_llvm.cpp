@@ -82,6 +82,7 @@ void Codegen_llvm::startBlock(const std::string& l) {
 	funcBody += l + ":\n";
 	curBlock = l;
 	blockOpen = true;
+	blockLabels.insert(l);
 }
 
 void Codegen_llvm::enter(const std::string& l, int frameSize) {
@@ -92,6 +93,8 @@ void Codegen_llvm::enter(const std::string& l, int frameSize) {
 	usedLocals.clear();
 	usedParams.clear();
 	argSlots.clear();
+	branchTargets.clear();
+	blockLabels.clear();
 	retFloat = false;
 	skipNextJump = false;
 	mainReturnLabel.clear();
@@ -348,6 +351,7 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 		return genCall(t, want);
 
 	case IR_JSR:
+		branchTargets.insert(t->sconst);
 		emitTerm("br label %" + t->sconst);
 		skipNextJump = true;
 		return Val();
@@ -358,11 +362,13 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 			mainReturnLabel = t->sconst;
 			return Val();
 		}
+		branchTargets.insert(t->sconst);
 		emitTerm("br label %" + t->sconst);
 		return Val();
 
 	case IR_RET:
 		if (funcName == "__MAIN" && !mainReturnLabel.empty()) {
+			branchTargets.insert(mainReturnLabel);
 			emitTerm("br label %" + mainReturnLabel);
 		}
 		else {
@@ -380,6 +386,7 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 	case IR_RETURN: {
 		std::string v = eval(t->l, K_INT).v;
 		emitInstr("store i32 " + v + ", ptr " + ensureRetval());
+		branchTargets.insert(t->sconst);
 		emitTerm("br label %" + t->sconst);
 		return Val();
 	}
@@ -390,6 +397,7 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 		std::string b = newTmp();
 		emitInstr(b + " = bitcast float " + v + " to i32");
 		emitInstr("store i32 " + b + ", ptr " + ensureRetval());
+		branchTargets.insert(t->sconst);
 		emitTerm("br label %" + t->sconst);
 		return Val();
 	}
@@ -399,6 +407,7 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 		std::string b = newTmp();
 		emitInstr(b + " = icmp ne i32 " + c + ", 0");
 		std::string nb = newBlock();
+		branchTargets.insert(t->sconst);
 		emitTerm("br i1 " + b + ", label %" + t->sconst + ", label %" + nb);
 		startBlock(nb);
 		return Val();
@@ -409,6 +418,7 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 		std::string b = newTmp();
 		emitInstr(b + " = icmp eq i32 " + c + ", 0");
 		std::string nb = newBlock();
+		branchTargets.insert(t->sconst);
 		emitTerm("br i1 " + b + ", label %" + t->sconst + ", label %" + nb);
 		startBlock(nb);
 		return Val();
@@ -420,9 +430,10 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 		std::string c = newTmp();
 		emitInstr(c + " = icmp uge i32 " + a + ", " + b);
 		std::string nb = newBlock();
+		branchTargets.insert(t->sconst);
 		emitTerm("br i1 " + c + ", label %" + t->sconst + ", label %" + nb);
 		startBlock(nb);
-		return Val();
+		return Val(a, K_INT);
 	}
 
 	case IR_NEG: {
@@ -547,6 +558,12 @@ Codegen_llvm::Val Codegen_llvm::gen(TNode* t, Kind want) {
 	return Val();
 }
 
+std::string Codegen_llvm::ensureFuncNameStr() {
+	std::string lab = "__errfn_" + funcName;
+	if (!dataOffsets.count(lab)) s_data(funcName, lab);
+	return lab;
+}
+
 void Codegen_llvm::leave(TNode* cleanup, int pop_sz) {
 	if (cleanup) {
 		munch(cleanup);
@@ -568,7 +585,21 @@ void Codegen_llvm::leave(TNode* cleanup, int pop_sz) {
 		else emitTerm("ret i32 " + rv);
 	}
 
-	out << "define x86_stdcallcc " << ret << " " << quoteName(funcName) << "(";
+	for (std::set<std::string>::iterator it = branchTargets.begin(); it != branchTargets.end(); ++it) {
+		if (blockLabels.count(*it)) continue;
+		std::string lab = ensureFuncNameStr();
+		std::string a = newTmp();
+		std::string r = newTmp();
+		funcBody += *it + ":\n";
+		funcBody += "  " + a + " = ptrtoint ptr " + quoteName(lab) + " to i32\n";
+		funcBody += "  " + r + " = call x86_stdcallcc i32 " + quoteName(*it) + "(i32 " + a + ")\n";
+		funcBody += "  unreachable\n";
+		externFuncs[*it] = std::make_pair(false, 1);
+	}
+
+	out << "define ";
+	if (funcName != "__MAIN") out << "x86_stdcallcc ";
+	out << ret << " " << quoteName(funcName) << "(";
 	for (int k = 0; k < paramCount; ++k) {
 		if (k) out << ", ";
 		out << "i32 %a" << k;
@@ -703,7 +734,7 @@ void Codegen_llvm::finalize() {
 
 	for (std::set<std::string>::iterator it = refGlobals.begin(); it != refGlobals.end(); ++it) {
 		const std::string& name = *it;
-		if (definedData.count(name) || definedFuncs.count(name) || emittedGlobals.count(name)) continue;
+		if (definedData.count(name) || definedFuncs.count(name) || externFuncs.count(name) || emittedGlobals.count(name)) continue;
 		emittedGlobals.insert(name);
 		out << quoteName(name) << " = external global i32, align 4\n";
 	}

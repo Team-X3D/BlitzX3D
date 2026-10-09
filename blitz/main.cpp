@@ -22,12 +22,12 @@
 #include "../compiler/assem_x86/assem_x86.h"
 #include "../compiler/codegen_x86/codegen_x86.h"
 #include "../compiler/codegen_llvm/codegen_llvm.h"
-#include "../compiler/codegen_llvm/coff_loader.h"
+#include "../compiler/codegen_llvm/llvm_jit.h"
 #include "../bbruntime_dll/bbruntime_dll.h"
 
 #undef environ
 
-static bool llvmResolveSymbol(const char* name, int* addr, void* ctx) {
+static bool _cdecl llvmResolveSymbol(const char* name, int* addr, void* ctx) {
 	return ((Module*)ctx)->findSymbol(name, addr);
 }
 
@@ -44,7 +44,7 @@ static void showInfo() {
 }
 
 static void showUsage() {
-	std::cout << "Usage: blitzcc [-h|-q|+q|-c|-d|-k|+k|-nlaa|-noautodecl|-experimental|-v|-o exefile] [sourcefile.bb]" << std::endl;
+	std::cout << "Usage: blitzcc [-h|-q|+q|-c|-d|-k|+k|-nlaa|-noautodecl|-experimental|-v|-x86|-o exefile] [sourcefile.bb]" << std::endl;
 }
 
 static void showHelp() {
@@ -60,6 +60,7 @@ static void showHelp() {
 	std::cout << "-nlaa      : disables large address awareness for the output executable" << std::endl;
 	std::cout << "-noautodecl: disables auto declaration of undeclared variables" << std::endl;
 	std::cout << "-experimental: enables experimental language syntax" << std::endl;
+	std::cout << "-x86       : use the x86 backend instead of the default LLVM backend" << std::endl;
 	std::cout << "-o exefile : generate executable" << std::endl;
 }
 
@@ -212,7 +213,7 @@ int _cdecl main(int argc, char* argv[]) {
 	bool nolaa = false;
 
 	bool encrypt = false;
-	bool llvmbackend = false;
+	bool llvmbackend = true;
 
 
 	for (int k = 1; k < argc; ++k) {
@@ -267,6 +268,9 @@ int _cdecl main(int argc, char* argv[]) {
 		else if (t == "-llvm") {
 			llvmbackend = true;
 		}
+		else if (t == "-x86") {
+			llvmbackend = false;
+		}
 
 		else {
 			if (in_file.size() || t[0] == '-' || t[0] == '+') usageErr();
@@ -278,6 +282,11 @@ int _cdecl main(int argc, char* argv[]) {
 				args += t;
 			}
 		}
+	}
+
+	if (out_file.size() && llvmbackend) {
+		// TODO TODO TODO LLVM cannot emit executables yet
+		llvmbackend = false;
 	}
 
 	std::ifstream debugFile; debugFile.open("debug.txt", std::ios_base::in);
@@ -402,8 +411,6 @@ int _cdecl main(int argc, char* argv[]) {
 	delete prog;
 
 	if (out_file.size()) {
-		if (llvmbackend) err("-o is not supported with the LLVM backend yet");
-
 		if (!veryquiet) std::cout << "Creating executable \"" << out_file << "\"..." << std::endl;
 
 		if (!module->createExe(out_file.c_str(), (home + "/bin/runtime.dll").c_str(), nolaa)) {
