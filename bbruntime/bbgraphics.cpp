@@ -2062,6 +2062,7 @@ void bbResizeImageFast(bbImage* i, float w, float h)
     if (ih < 1) ih = 1;
     i->drawScaleX = (float)iw / (float)cw;
     i->drawScaleY = (float)ih / (float)ch;
+    i->resetTForm();
 }
 
 static unsigned sampleOrigPixel(const std::vector<uint32_t>& src, int srcW, int srcH, float sx, float sy)
