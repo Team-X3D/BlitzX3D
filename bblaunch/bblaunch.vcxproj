@@ -93,7 +93,8 @@
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\Blitz3D.exe</OutputFile>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
-      <AdditionalDependencies>dxguid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxguid.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\tools\spirv-cross\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <LargeAddressAware>true</LargeAddressAware>
     </Link>
   </ItemDefinitionGroup>
@@ -153,7 +154,8 @@
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\BlitzX3D.exe</OutputFile>
-      <AdditionalDependencies>dxguid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>dxguid.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>..\tools\spirv-cross\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <LargeAddressAware>true</LargeAddressAware>
     </Link>
@@ -202,6 +204,10 @@
     </ProjectReference>
     <ProjectReference Include="..\gxruntime\gxruntime.vcxproj">
       <Project>{a124d746-4a3b-401d-ae99-6a838595bc8c}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\sdlgpu\sdlgpu.vcxproj">
+      <Project>{7b2e8f41-3c5d-4e6a-9f1b-8d2c4a6e0f53}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\linker\linker.vcxproj">

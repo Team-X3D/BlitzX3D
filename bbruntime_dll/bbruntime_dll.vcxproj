@@ -97,8 +97,8 @@
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32</AdditionalLibraryDirectories>
+      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
       <DelayLoadDLLs>d3dx9_43.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
@@ -161,10 +161,10 @@
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
       <DelayLoadDLLs>d3dx9_43.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
@@ -206,6 +206,10 @@
     </ProjectReference>
     <ProjectReference Include="..\gxruntime\gxruntime.vcxproj">
       <Project>{a124d746-4a3b-401d-ae99-6a838595bc8c}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="..\sdlgpu\sdlgpu.vcxproj">
+      <Project>{7b2e8f41-3c5d-4e6a-9f1b-8d2c4a6e0f53}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\stdutil\stdutil.vcxproj">

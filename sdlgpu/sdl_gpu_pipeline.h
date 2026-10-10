@@ -1,0 +1,85 @@
+#ifndef SDL_GPU_PIPELINE_H
+#define SDL_GPU_PIPELINE_H
+
+#include <SDL3/SDL_gpu.h>
+
+struct SDL_GPUDevice;
+struct SDL_Window;
+struct SDL_GPURenderPass;
+struct SDL_GPUCommandBuffer;
+struct SDL_GPUTexture;
+struct SDL_GPUTransferBuffer;
+
+namespace sdlgpu {
+
+#ifdef _WIN32
+#define GXPIPE_API __stdcall
+#else
+#define GXPIPE_API
+#endif
+
+struct GpuMesh;
+struct GpuShader;
+
+enum { MESH_BLEND_REPLACE = 0, MESH_BLEND_ALPHA = 1, MESH_BLEND_MULTIPLY = 2, MESH_BLEND_ADD = 3 };
+enum { MESH_Z_NORMAL = 0, MESH_Z_DISABLE = 1, MESH_Z_CMPONLY = 2 };
+enum { MESH_MAX_STAGES = 8 };
+
+struct MeshStage {
+	SDL_GPUTexture* tex = nullptr;
+	int blend = 0;
+	bool useUV1 = false;
+	bool alpha = false;
+	bool wrapU = true, wrapV = true, point = false;
+	float matA[4] = {};
+	float matB[4] = {};
+	float bump[4] = {};
+};
+
+	bool PresentBlit(SDL_GPUDevice* dev, SDL_Window* win, float r, float g, float b, unsigned w, unsigned h, const void* px);
+	struct MeshDrawParams {
+		SDL_GPUTexture* tex = nullptr;
+		SDL_GPUTexture* tex1 = nullptr;
+		float stage1[4] = {};
+		float uvMat0A[4] = {};
+		float uvMat0B[4] = {};
+		float uvMat1A[4] = {};
+		float uvMat1B[4] = {};
+		float bumpMat[4] = {};
+		SDL_GPUBuffer* boneBuf = nullptr;
+		bool wrapU0 = true, wrapV0 = true, point0 = false;
+		bool wrapU1 = true, wrapV1 = true, point1 = false;
+		bool cube0 = false, cube1 = false;
+		int blend = MESH_BLEND_REPLACE;
+		int zMode = MESH_Z_NORMAL;
+		SDL_GPUCullMode cull = SDL_GPU_CULLMODE_BACK;
+		bool wireframe = false;
+		int aniso = 0;
+		float lodBias = 0.0f;
+		float flat = 0.0f;
+		int stageCount = 0;
+		MeshStage stages[MESH_MAX_STAGES] = {};
+		GpuShader* shader = nullptr;
+	};
+	void DrawMesh(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPUCommandBuffer* cmds, SDL_GPURenderPass* pass, GpuMesh* mesh, const float* uniforms, unsigned uniformBytes, unsigned indexCount, unsigned startIndex, int firstVertex, int colorFormat, int depthFormat, const MeshDrawParams& p, int samples);
+	SDL_GPUTexture* GXPIPE_API GetWhiteTexture(SDL_GPUDevice* dev);
+	SDL_GPUSampler* GXPIPE_API GetDefaultMeshSampler(SDL_GPUDevice* dev);
+	void InvalidateMeshState();
+	void DrawCanvasOverlay(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pass, SDL_GPUTexture* tex);
+	void SetGammaRamp(SDL_GPUDevice* dev, const unsigned short* ramp);
+	bool GammaActive(SDL_GPUDevice* dev);
+	SDL_GPUTexture* AcquireGammaComposite(SDL_GPUDevice* dev, SDL_GPUTextureFormat fmt, unsigned w, unsigned h);
+	bool GammaBlit(SDL_GPUDevice* dev, SDL_GPUCommandBuffer* cmds, SDL_GPUTexture* src, SDL_GPUTexture* dst, unsigned w, unsigned h, SDL_GPUTextureFormat fmt);
+	int MeshDepthFormat(SDL_GPUDevice* dev);
+	int SceneColorFormat();
+	SDL_GPUTransferBuffer* AcquireUploadTransferBuffer(SDL_GPUDevice* dev, Uint32 size);
+	void ReleaseUploadTransferBuffer(SDL_GPUDevice* dev, SDL_GPUTransferBuffer* buf);
+	SDL_GPUTransferBuffer* AcquireDownloadTransferBuffer(SDL_GPUDevice* dev, Uint32 size);
+	void ReleaseDownloadTransferBuffer(SDL_GPUDevice* dev, SDL_GPUTransferBuffer* buf);
+	void ClearTransferPool(SDL_GPUDevice* dev);
+
+	void TeardownPipelines();
+
+}
+
+#endif
