@@ -5,6 +5,7 @@
 #include <cstring>
 
 static const int DIRECT_MAX_FRAME = 16 * 1024 * 1024;
+static const int DIRECT_MAX_UDP = 1200;
 static const unsigned char FRAME_TOKEN = 0;
 static const unsigned char FRAME_USER = 1;
 
@@ -141,7 +142,7 @@ public:
 		auto it = peers_.find(to);
 		if (it == peers_.end()) return;
 		Peer& p = it->second;
-		if (reliability == NetReliability::Unreliable && p.hasUdp && p.token) {
+		if (reliability == NetReliability::Unreliable && p.hasUdp && p.token && size <= DIRECT_MAX_UDP) {
 			sendUdp(p, data, size);
 		} else {
 			sendTcp(p, FRAME_USER, data, size);

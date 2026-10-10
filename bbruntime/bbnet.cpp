@@ -21,6 +21,8 @@ namespace {
 
 	const unsigned NET_TARGET_BROADCAST = 0xFFFFFFFFu;
 
+	const unsigned long long NET_TOMBSTONE_MS = 2000;
+
 	void put8(std::vector<char>& b, unsigned v) {
 		b.push_back((char)(v & 0xff));
 	}
@@ -77,6 +79,7 @@ namespace {
 		bool lastPos;
 		bool lastRot;
 		unsigned long long resendUntil;
+		unsigned recvSeq;
 
 		NetObject()
 			: owner(-1), valid(false),
@@ -84,7 +87,7 @@ namespace {
 			px(0), py(0), pz(0), pyaw(0), ppitch(0), proll(0),
 			prevMs(0), targetMs(0), hasPrev(false), hasTarget(false),
 			sentOnce(false), dirtyPos(false), dirtyRot(false),
-			lastPos(false), lastRot(false), resendUntil(0) {
+			lastPos(false), lastRot(false), resendUntil(0), recvSeq(0) {
 		}
 	};
 
@@ -104,6 +107,8 @@ namespace {
 		std::vector<std::pair<int, std::string>> messages;
 		std::vector<std::string> events;
 		std::map<int, NetObject> objects;
+		std::map<int, unsigned long long> tombstones;
+		unsigned nextSeq;
 		int tickHz;
 		int tickMs;
 		int resendMs;
@@ -112,7 +117,7 @@ namespace {
 		NetSession()
 			: transport(0), isHost(false), dedicated(false), connected(false),
 			localId(-1), authorityId(-1), nextClientId(1),
-			hostTransport(0), lastSender(-1),
+			hostTransport(0), lastSender(-1), nextSeq(1),
 			tickHz(20), tickMs(50), resendMs(150), lastTickMs(0) {
 		}
 
@@ -148,6 +153,16 @@ namespace {
 		int off = 6;
 		for (unsigned i = 0; i < count && off + 4 <= len; ++i, off += 4)
 			s->roster.push_back((int)get32(p + off));
+	}
+
+	bool isTombstoned(NetSession* s, int id, unsigned long long nowMs) {
+		auto it = s->tombstones.find(id);
+		if (it == s->tombstones.end()) return false;
+		if (nowMs - it->second > NET_TOMBSTONE_MS) {
+			s->tombstones.erase(it);
+			return false;
+		}
+		return true;
 	}
 
 	void sendEnvelope(NetSession* s, NetPeerId peer, unsigned char type, int sender, const std::vector<char>& payload) {
@@ -219,6 +234,7 @@ namespace {
 			if (sendPos) flags |= 1;
 			if (sendRot) flags |= 2;
 			put32(out, (unsigned)id);
+			put32(out, s->nextSeq++);
 			put8(out, flags);
 			if (sendPos) { putF32(out, o.x); putF32(out, o.y); putF32(out, o.z); }
 			if (sendRot) { putF32(out, o.yaw); putF32(out, o.pitch); putF32(out, o.roll); }
@@ -237,41 +253,56 @@ namespace {
 		return out;
 	}
 
-	void applySnapshot(NetSession* s, const char* p, int len, int sender, unsigned long long nowMs) {
-		if (len < 2) return;
+	std::vector<int> applySnapshot(NetSession* s, const char* p, int len, int sender, unsigned long long nowMs) {
+		std::vector<int> applied;
+		if (len < 2) return applied;
 		unsigned count = get16(p);
 		int off = 2;
 		for (unsigned i = 0; i < count; ++i) {
-			if (off + 5 > len) break;
+			if (off + 9 > len) break;
 			int id = (int)get32(p + off);
 			off += 4;
+			unsigned seq = get32(p + off);
+			off += 4;
 			unsigned char flags = (unsigned char)p[off++];
+			bool hasPos = (flags & 1) != 0;
+			bool hasRot = (flags & 2) != 0;
+			float x = 0, y = 0, z = 0, yaw = 0, pitch = 0, roll = 0;
+			if (hasPos) {
+				if (off + 12 > len) break;
+				x = getF32(p + off);
+				y = getF32(p + off + 4);
+				z = getF32(p + off + 8);
+				off += 12;
+			}
+			if (hasRot) {
+				if (off + 12 > len) break;
+				yaw = getF32(p + off);
+				pitch = getF32(p + off + 4);
+				roll = getF32(p + off + 8);
+				off += 12;
+			}
+			if (isTombstoned(s, id, nowMs)) continue;
 			NetObject& o = s->objects[id];
 			if (!o.valid) {
 				o.valid = true;
 				o.owner = sender;
 			}
+			if ((int)(seq - o.recvSeq) <= 0) continue;
+			o.recvSeq = seq;
 			if (o.hasTarget) {
 				o.px = o.x; o.py = o.y; o.pz = o.z;
 				o.pyaw = o.yaw; o.ppitch = o.pitch; o.proll = o.roll;
 				o.prevMs = o.targetMs;
 				o.hasPrev = true;
 			}
-			if ((flags & 1) && off + 12 <= len) {
-				o.x = getF32(p + off);
-				o.y = getF32(p + off + 4);
-				o.z = getF32(p + off + 8);
-				off += 12;
-			}
-			if ((flags & 2) && off + 12 <= len) {
-				o.yaw = getF32(p + off);
-				o.pitch = getF32(p + off + 4);
-				o.roll = getF32(p + off + 8);
-				off += 12;
-			}
+			if (hasPos) { o.x = x; o.y = y; o.z = z; }
+			if (hasRot) { o.yaw = yaw; o.pitch = pitch; o.roll = roll; }
 			o.targetMs = nowMs;
 			o.hasTarget = true;
+			applied.push_back(id);
 		}
+		return applied;
 	}
 
 	void replicateTick(NetSession* s) {
@@ -313,7 +344,14 @@ namespace {
 					for (auto& kv : s->sessionToTransport)
 						if (kv.second != ev.peer) sendEnvelope(s, kv.second, NET_MSG_ROSTER, s->localId, rp2);
 					std::vector<int> all;
-					for (auto& kv : s->objects) if (kv.second.valid) all.push_back(kv.first);
+					for (auto& kv : s->objects) {
+						if (!kv.second.valid) continue;
+						all.push_back(kv.first);
+						std::vector<char> op;
+						put32(op, (unsigned)kv.first);
+						put32(op, (unsigned)kv.second.owner);
+						sendEnvelope(s, ev.peer, NET_MSG_OBJ_ADD, s->localId, op);
+					}
 					if (!all.empty()) sendSnapshot(s, ev.peer, buildSnapshot(s, all, true, now), true);
 					s->events.push_back("peer_join");
 				} else {
@@ -339,17 +377,9 @@ namespace {
 				} else {
 					s->connected = false;
 					s->hostTransport = 0;
-					if (s->localId >= 0) {
-						s->roster.erase(std::remove(s->roster.begin(), s->roster.end(), s->authorityId), s->roster.end());
-						if (!s->roster.empty()) {
-							int newAuth = s->roster.front();
-							for (int id : s->roster) if (id < newAuth) newAuth = id;
-							s->authorityId = newAuth;
-							s->events.push_back("authority_changed");
-						} else {
-							s->events.push_back("disconnected");
-						}
-					}
+					s->authorityId = -1;
+					s->roster.clear();
+					s->events.push_back("disconnected");
 				}
 			} else if (ev.type == NetEvent::Receive) {
 				if (ev.data.size() < 9) continue;
@@ -376,6 +406,7 @@ namespace {
 					if (plen >= 8) {
 						int id = (int)get32(payload);
 						int owner = (int)get32(payload + 4);
+						s->tombstones.erase(id);
 						NetObject& o = s->objects[id];
 						o.valid = true;
 						o.owner = owner;
@@ -383,21 +414,30 @@ namespace {
 						o.dirtyRot = true;
 					}
 				} else if (type == NET_MSG_OBJ_DEL) {
-					if (plen >= 4) s->objects.erase((int)get32(payload));
+					if (plen >= 4) {
+						int id = (int)get32(payload);
+						s->objects.erase(id);
+						s->tombstones[id] = now;
+					}
 				} else if (type == NET_MSG_OWNER) {
 					if (plen >= 8) {
 						int id = (int)get32(payload);
 						auto it = s->objects.find(id);
-						if (it != s->objects.end()) it->second.owner = (int)get32(payload + 4);
+						if (it != s->objects.end()) {
+							it->second.owner = (int)get32(payload + 4);
+							it->second.dirtyPos = true;
+							it->second.dirtyRot = true;
+						}
 					}
 				} else if (type == NET_MSG_SNAP) {
-					applySnapshot(s, payload, plen, sender, now);
-					if (s->isHost) {
+					std::vector<int> applied = applySnapshot(s, payload, plen, sender, now);
+					if (s->isHost && !applied.empty()) {
+						std::vector<char> restamped = buildSnapshot(s, applied, true, now);
 						std::vector<char> fwd;
 						put8(fwd, NET_MSG_SNAP);
 						put32(fwd, (unsigned)sender);
 						put32(fwd, NET_TARGET_BROADCAST);
-						fwd.insert(fwd.end(), payload, payload + plen);
+						fwd.insert(fwd.end(), restamped.begin(), restamped.end());
 						for (auto& kv : s->sessionToTransport)
 							if (kv.first != sender)
 								s->transport->send(kv.second, fwd.data(), (int)fwd.size(), NetReliability::Unreliable);
@@ -572,6 +612,7 @@ static int bbNetRegisterObject(NetSession* s, int netId) {
 	debugNet(s, "NetRegisterObject");
 	if (!s->isHost) return 0;
 	if (s->objects.count(netId)) return 0;
+	s->tombstones.erase(netId);
 	NetObject& o = s->objects[netId];
 	o.valid = true;
 	o.owner = s->localId;
@@ -588,6 +629,7 @@ static void bbNetUnregisterObject(NetSession* s, int netId) {
 	debugNet(s, "NetUnregisterObject");
 	if (!s->isHost) return;
 	s->objects.erase(netId);
+	s->tombstones[netId] = GetTickCount64();
 	std::vector<char> p;
 	put32(p, (unsigned)netId);
 	for (auto& kv : s->sessionToTransport) sendEnvelope(s, kv.second, NET_MSG_OBJ_DEL, s->localId, p);
@@ -605,6 +647,9 @@ static int bbNetSetObjectOwner(NetSession* s, int netId, int peer) {
 	auto it = s->objects.find(netId);
 	if (it == s->objects.end()) return 0;
 	it->second.owner = peer;
+	it->second.recvSeq = 0;
+	it->second.dirtyPos = true;
+	it->second.dirtyRot = true;
 	std::vector<char> p;
 	put32(p, (unsigned)netId);
 	put32(p, (unsigned)peer);
