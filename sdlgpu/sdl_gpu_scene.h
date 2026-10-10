@@ -9,9 +9,10 @@ struct SDL_Window;
 
 #include <stdint.h>
 
+class sdlCanvas;
+
 namespace sdlgpu {
 
-class Surface;
 struct GpuMesh;
 struct MeshDrawParams;
 
@@ -91,8 +92,8 @@ void SetSceneViewport(GpuSceneFrame& frame, int vpX, int vpY, int vpW, int vpH);
 void RenderSceneMesh(GpuSceneFrame& frame, GpuMesh* mesh, const MeshUniforms& uniforms, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const struct MeshDrawParams& p);
 void EndSceneFrame(GpuSceneFrame& frame);
 bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame);
-bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, Surface* canvas);
-bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, Surface* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
+bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, ::sdlCanvas* canvas);
+bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, ::sdlCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
 void ReleaseSceneTargets(SDL_GPUDevice* dev, GpuSceneFrame& frame);
 
 }

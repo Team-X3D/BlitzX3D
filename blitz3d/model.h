@@ -58,10 +58,10 @@ public:
 	virtual void setFX(int n) { brush.setFX(n); w_brush = true; }
 	virtual void setMaterial(float roughness, float metallic) { brush.setMaterial(roughness, metallic); w_brush = true; }
 
-	void setEffect(gxEffect* effect);
+	void setEffect(sdlEffect* effect);
 
 	const Brush& getBrush()const { return brush; }
-	gxEffect* getEffect() const;
+	sdlEffect* getEffect() const;
 
 	void setRenderSpace(int n) { space = n; }
 	int getRenderSpace()const { return space; }
@@ -70,9 +70,9 @@ public:
 
 	bool doAutoFade(const Vector& eye);
 
-	void enqueue(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt);
-	void enqueue(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const Brush& b);
-	void enqueueSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const Brush& b, const float* bone_data, int bone_cnt);
+	void enqueue(sdlMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt);
+	void enqueue(sdlMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const Brush& b);
+	void enqueueSkinned(sdlMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const Brush& b, const float* bone_data, int bone_cnt);
 
 	int queueSize(int type)const { return queues[type].size(); }
 
@@ -92,8 +92,8 @@ private:
 
 	void enqueue(MeshQueue* q);
 
-	gxEffect* entityEffect = nullptr;
-	gxEffect* renderEffect = nullptr;
+	sdlEffect* entityEffect = nullptr;
+	sdlEffect* renderEffect = nullptr;
 };
 
 #endif

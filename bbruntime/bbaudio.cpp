@@ -2,142 +2,142 @@
 #include "bbaudio.h"
 #include "../MultiLang/MultiLang.h"
 
-gxAudio* gx_audio;
+sdlAudio* sdl_audio;
 
-static inline void debugSound(gxSound* s, const char* function) {
-	if (!gx_audio->verifySound(s)) ErrorLog(function, MultiLang::sound_not_exist);
+static inline void debugSound(sdlSound* s, const char* function) {
+	if (!sdl_audio->verifySound(s)) ErrorLog(function, MultiLang::sound_not_exist);
 }
 
-static gxSound* loadSound(BBStr* f, bool use_3d) {
+static sdlSound* loadSound(BBStr* f, bool use_3d) {
 	std::string t = *f; delete f;
-	return gx_audio ? gx_audio->loadSound(t, use_3d) : 0;
+	return sdl_audio ? sdl_audio->loadSound(t, use_3d) : 0;
 }
 
-static gxChannel* playMusic(BBStr* f, bool use_3d, int mode) {
+static sdlChannel* playMusic(BBStr* f, bool use_3d, int mode) {
 	std::string t = *f; delete f;
-	return gx_audio ? gx_audio->playFile(t, use_3d, mode) : 0;
+	return sdl_audio ? sdl_audio->playFile(t, use_3d, mode) : 0;
 }
 
-int bbVerifySound(gxSound* sound) {
-	return (bool)gx_audio->verifySound(sound);
+int bbVerifySound(sdlSound* sound) {
+	return (bool)sdl_audio->verifySound(sound);
 }
 
-gxSound* bbLoadSound(BBStr* f) {
+sdlSound* bbLoadSound(BBStr* f) {
 	return loadSound(f, false);
 }
 
-void bbFreeSound(gxSound* sound) {
+void bbFreeSound(sdlSound* sound) {
 	if (!sound) return;
 	debugSound(sound, "FreeSound");
-	gx_audio->freeSound(sound);
+	sdl_audio->freeSound(sound);
 }
 
-void bbLoopSound(gxSound* sound) {
+void bbLoopSound(sdlSound* sound) {
 	if (!sound) return;
 	debugSound(sound, "LoopSound");
 	sound->setLoop(true);
 }
 
-void bbSoundPitch(gxSound* sound, int pitch) {
+void bbSoundPitch(sdlSound* sound, int pitch) {
 	if (!sound) return;
 	debugSound(sound, "SoundPitch");
 	sound->setPitch(pitch);
 }
 
-void bbSoundVolume(gxSound* sound, float volume) {
+void bbSoundVolume(sdlSound* sound, float volume) {
 	if (!sound) return;
 	debugSound(sound, "SoundVolume");
 	sound->setVolume(volume);
 }
 
-void bbSoundPan(gxSound* sound, float pan) {
+void bbSoundPan(sdlSound* sound, float pan) {
 	if (!sound) return;
 	debugSound(sound, "SoundPan");
 	sound->setPan(pan);
 }
 
-gxChannel* bbPlaySound(gxSound* sound) {
+sdlChannel* bbPlaySound(sdlSound* sound) {
 	if (!sound) return 0;
 	debugSound(sound, "PlaySound");
 	return sound->play();
 }
 
-gxChannel* bbPlayMusic(BBStr* f, int mode) {
+sdlChannel* bbPlayMusic(BBStr* f, int mode) {
 	return playMusic(f, false, mode);
 }
 
-gxChannel* bbPlayCDTrack(int track, int mode) {
-	return gx_audio ? gx_audio->playCDTrack(track, mode) : 0;
+sdlChannel* bbPlayCDTrack(int track, int mode) {
+	return sdl_audio ? sdl_audio->playCDTrack(track, mode) : 0;
 }
 
 void bbSetMasterVolume(float volume) {
-	if (!gx_audio) return;
-	gx_audio->setVolume(volume);
+	if (!sdl_audio) return;
+	sdl_audio->setVolume(volume);
 }
 
 void bbSetReverb(float in_gain, float reverb_mix, float reverb_time, float high_freq_ratio) {
-	if (!gx_audio) return;
-	gx_audio->setReverb(in_gain, reverb_mix, reverb_time, high_freq_ratio);
+	if (!sdl_audio) return;
+	sdl_audio->setReverb(in_gain, reverb_mix, reverb_time, high_freq_ratio);
 }
 
-void bbStopChannel(gxChannel* channel) {
+void bbStopChannel(sdlChannel* channel) {
 	if (!channel) return;
 	channel->stop();
 }
 
-void bbPauseChannel(gxChannel* channel) {
+void bbPauseChannel(sdlChannel* channel) {
 	if (!channel) return;
 	channel->setPaused(true);
 }
 
-void bbResumeChannel(gxChannel* channel) {
+void bbResumeChannel(sdlChannel* channel) {
 	if (!channel) return;
 	channel->setPaused(false);
 }
 
-void bbChannelPitch(gxChannel* channel, int pitch) {
+void bbChannelPitch(sdlChannel* channel, int pitch) {
 	if (!channel) return;
 	channel->setPitch(pitch);
 }
 
-void bbChannelVolume(gxChannel* channel, float volume) {
+void bbChannelVolume(sdlChannel* channel, float volume) {
 	if (!channel) return;
 	channel->setVolume(volume);
 }
 
-void bbChannelPan(gxChannel* channel, float pan) {
+void bbChannelPan(sdlChannel* channel, float pan) {
 	if (!channel) return;
 	channel->setPan(pan);
 }
 
-int bbChannelPlaying(gxChannel* channel) {
+int bbChannelPlaying(sdlChannel* channel) {
 	return channel ? channel->isPlaying() : 0;
 }
 
-int bbChannelPosition(gxChannel* channel) {
+int bbChannelPosition(sdlChannel* channel) {
 	return channel ? (int)(channel->getPosition() * 1000.0) : 0;
 }
 
-int bbChannelLength(gxChannel* channel) {
+int bbChannelLength(sdlChannel* channel) {
 	return channel ? (int)(channel->getLength() * 1000.0) : 0;
 }
 
-void bbSetChannelPosition(gxChannel* channel, int position) {
+void bbSetChannelPosition(sdlChannel* channel, int position) {
 	if (channel) channel->setPosition(position / 1000.0);
 }
 
-gxSound* bbLoad3DSound(BBStr* f) {
+sdlSound* bbLoad3DSound(BBStr* f) {
 	return loadSound(f, true);
 }
 
 bool audio_create() {
-	gx_audio = gx_runtime->openAudio(0);
+	sdl_audio = sdl_runtime->openAudio(0);
 	return true;
 }
 
 bool audio_destroy() {
-	if (gx_audio) gx_runtime->closeAudio(gx_audio);
-	gx_audio = 0;
+	if (sdl_audio) sdl_runtime->closeAudio(sdl_audio);
+	sdl_audio = 0;
 	return true;
 }
 

@@ -1,7 +1,7 @@
 #include "std.h"
 #include "camera.h"
 
-extern gxScene* gx_scene;
+extern sdlScene* sdl_scene;
 
 Camera::Camera() {
 	setZoom(1);
@@ -13,7 +13,7 @@ Camera::Camera() {
 	setFogRange(1, 1000);
 	setFogColor(Vector());
 	setFogDensity(1.0f);
-	setFogMode(gxScene::FOG_NONE);
+	setFogMode(sdlScene::FOG_NONE);
 }
 
 void Camera::setZoom(float z) {
@@ -119,21 +119,21 @@ void Camera::getViewport(int* x, int* y, int* w, int* h)const {
 bool Camera::beginRenderFrame() {
 	if (!proj_mode) return false;
 	getFrustum();
-	gx_scene->setViewport(vp_x, vp_y, vp_w, vp_h);
-	gx_scene->clear(&(cls_color.x), cls_alpha, 1, cls_argb, cls_z);
+	sdl_scene->setViewport(vp_x, vp_y, vp_w, vp_h);
+	sdl_scene->clear(&(cls_color.x), cls_alpha, 1, cls_argb, cls_z);
 	if (proj_mode == PROJ_ORTHO) {
-		gx_scene->setOrthoProj(frustum_nr, frustum_fr, frustum_w, frustum_h);
+		sdl_scene->setOrthoProj(frustum_nr, frustum_fr, frustum_w, frustum_h);
 	}
 	else {
-		gx_scene->setPerspProj(frustum_nr, frustum_fr, frustum_w, frustum_h);
+		sdl_scene->setPerspProj(frustum_nr, frustum_fr, frustum_w, frustum_h);
 	}
-	gx_scene->setFogRange(fog_nr, fog_fr);
-	gx_scene->setFogDensity(fog_den);
-	gx_scene->setFogColor((float*)&fog_color.x);
-	gx_scene->setFogMode(fog_mode);
-	if (cull_mode >= 0) gx_scene->setCullMode(cull_mode);
-	gx_scene->setDepthBias(depth_bias, slope_bias);
-	gx_scene->setReverseZ(reverse_z != 0);
-	gx_scene->setColorWrite(color_write != 0);
+	sdl_scene->setFogRange(fog_nr, fog_fr);
+	sdl_scene->setFogDensity(fog_den);
+	sdl_scene->setFogColor((float*)&fog_color.x);
+	sdl_scene->setFogMode(fog_mode);
+	if (cull_mode >= 0) sdl_scene->setCullMode(cull_mode);
+	sdl_scene->setDepthBias(depth_bias, slope_bias);
+	sdl_scene->setReverseZ(reverse_z != 0);
+	sdl_scene->setColorWrite(color_write != 0);
 	return true;
 }

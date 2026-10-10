@@ -7,8 +7,8 @@
 //1=max proj err of terrain
 float stats3d[10];
 
-extern gxScene* gx_scene;
-extern gxRuntime* gx_runtime;
+extern sdlScene* sdl_scene;
+extern sdlRuntime* sdl_runtime;
 
 static std::vector<Object*> _enabled, _visible, _target_visible;
 
@@ -382,7 +382,7 @@ void World::update(float elapsed) {
 
 static Transform cam_tform;		//current camera transform
 
-static std::vector<gxLight*> _lights;
+static std::vector<sdlLight*> _lights;
 static std::vector<Mirror*> _mirrors;
 static std::vector<Listener*> _listeners;
 
@@ -445,7 +445,7 @@ void World::render(float tween) {
 
 	while (!ord_que.empty()) { ord_mods.push_back(ord_que.top()); ord_que.pop(); }
 
-	if (!gx_scene->begin(curr->lights)) return;
+	if (!sdl_scene->begin(curr->lights)) return;
 
 	while (!cam_que.empty()) {
 		Camera* cam = cam_que.top(); cam_que.pop();
@@ -455,7 +455,7 @@ void World::render(float tween) {
 		render(cam, nullptr);
 	}
 
-	gx_scene->end();
+	sdl_scene->end();
 
 	for (Listener* lis : curr->listeners) lis->renderListener();
 }
@@ -465,23 +465,23 @@ void World::render(Camera* cam, Mirror* mirror) {
 	if(mirror) {
 		const Transform& t = mirror->getRenderTform();
 		cam_tform = t * Transform(scaleMatrix(1, -1, 1)) * -t * cam->getRenderTform();
-		gx_scene->setFlippedTris(true);
+		sdl_scene->setFlippedTris(true);
 	}
 	else {
 		cam_tform = cam->getRenderTform();
-		gx_scene->setFlippedTris(false);
+		sdl_scene->setFlippedTris(false);
 	}
 
 	//set camera matrix
-	gx_scene->setViewMatrix((gxScene::Matrix*)&(-cam_tform));
-	gx_scene->setEyePosition(&cam_tform.v.x);
+	sdl_scene->setViewMatrix((sdlScene::Matrix*)&(-cam_tform));
+	sdl_scene->setEyePosition(&cam_tform.v.x);
 
 	//initialize render context
 	RenderContext rc(cam_tform, cam->getFrustum(), mirror != 0);
 
 	//draw everything in order
 	int ord = 0;
-	gx_scene->setZMode(gxScene::ZMODE_DISABLE);
+	sdl_scene->setZMode(sdlScene::ZMODE_DISABLE);
 	while(ord < static_cast<int>(ord_mods.size()) && ord_mods[ord]->getOrder() > 0) {
 		Model* mod = ord_mods[ord++];
 		if(!mod->doAutoFade(cam_tform.v)) continue;
@@ -489,15 +489,15 @@ void World::render(Camera* cam, Mirror* mirror) {
 		flushTransparent();
 	}
 
-	gx_scene->setZMode(gxScene::ZMODE_NORMAL);
+	sdl_scene->setZMode(sdlScene::ZMODE_NORMAL);
 	for (Model* mod : unord_mods) {
 		if (!mod->doAutoFade(cam_tform.v)) continue;
 		render(mod, rc);
 	}
-	gx_scene->setZMode(gxScene::ZMODE_CMPONLY);
+	sdl_scene->setZMode(sdlScene::ZMODE_CMPONLY);
 	flushTransparent();
 
-	gx_scene->setZMode(gxScene::ZMODE_DISABLE);
+	sdl_scene->setZMode(sdlScene::ZMODE_DISABLE);
 	while(ord < static_cast<int>(ord_mods.size())) {
 		Model* mod = ord_mods[ord++];
 		if(!mod->doAutoFade(cam_tform.v)) continue;
@@ -512,10 +512,10 @@ void World::render(Model* mod, const RenderContext& rc) {
 
 	if(mod->queueSize(Model::QUEUE_OPAQUE)) {
 		if(mod->getRenderSpace() == Model::RENDER_SPACE_LOCAL) {
-			gx_scene->setWorldMatrix((gxScene::Matrix*)&mod->getRenderTform());
+			sdl_scene->setWorldMatrix((sdlScene::Matrix*)&mod->getRenderTform());
 		}
 		else {
-			gx_scene->setWorldMatrix(0);
+			sdl_scene->setWorldMatrix(0);
 		}
 		mod->renderQueue(Model::QUEUE_OPAQUE);
 	}
@@ -547,14 +547,14 @@ void World::renderEntity(Camera* cam, float tween) {
 
 	while (!ord_que.empty()) { ord_mods.push_back(ord_que.top()); ord_que.pop(); }
 
-	if (!gx_scene->begin(_lights)) return;
+	if (!sdl_scene->begin(_lights)) return;
 
 	if (cam->beginRenderFrame()) {
 		for (Mirror* mir : _mirrors) render(cam, mir);
 		render(cam, nullptr);
 	}
 
-	gx_scene->end();
+	sdl_scene->end();
 }
 
 void World::renderEntity(Camera* cam, Entity* target, float tween) {
@@ -580,14 +580,14 @@ void World::renderEntity(Camera* cam, Entity* target, float tween) {
 
 	while (!ord_que.empty()) { ord_mods.push_back(ord_que.top()); ord_que.pop(); }
 
-	if (!gx_scene->begin(_lights)) return;
+	if (!sdl_scene->begin(_lights)) return;
 
 	if (cam->beginRenderFrame()) {
 		for (Mirror* mir : _mirrors) render(cam, mir);
 		render(cam, nullptr);
 	}
 
-	gx_scene->end();
+	sdl_scene->end();
 }
 
 void World::flushTransparent() {
@@ -599,11 +599,11 @@ void World::flushTransparent() {
 	bool local = true;
 	for (auto mod : transparents) {
 		if (mod->getRenderSpace() == Model::RENDER_SPACE_LOCAL) {
-			gx_scene->setWorldMatrix((gxScene::Matrix*)&mod->getRenderTform());
+			sdl_scene->setWorldMatrix((sdlScene::Matrix*)&mod->getRenderTform());
 			local = true;
 		}
 		else if(local) {
-			gx_scene->setWorldMatrix(0);
+			sdl_scene->setWorldMatrix(0);
 			local = false;
 		}
 		mod->renderQueue(Model::QUEUE_TRANSPARENT);

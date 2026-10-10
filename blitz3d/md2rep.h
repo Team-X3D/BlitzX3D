@@ -37,7 +37,7 @@ private:
 	};
 
 	Box box;
-	gxMesh* mesh;
+	sdlMesh* mesh;
 	int n_frames;
 	int n_verts, n_tris;
 	std::vector<Frame> frames;

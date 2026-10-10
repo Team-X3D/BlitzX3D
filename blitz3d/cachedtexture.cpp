@@ -1,11 +1,11 @@
 #include "std.h"
 #include "cachedtexture.h"
-#include "../gxruntime/gxgraphics.h"
+#include "../sdlruntime/sdlgraphics.h"
 
 int active_texs;
 
-extern gxRuntime* gx_runtime;
-extern gxGraphics* gx_graphics;
+extern sdlRuntime* sdl_runtime;
+extern sdlGraphics* sdl_graphics;
 
 std::set<CachedTexture::Rep*> CachedTexture::rep_set;
 
@@ -28,7 +28,7 @@ struct CachedTexture::Rep {
 	std::string file;
 	int flags, w, h, first;
 	int requested_cnt;
-	std::vector<gxCanvas*> frames;
+	std::vector<sdlCanvas*> frames;
 	std::shared_ptr<AsyncImageLoader::Job> job;
 	bool materialized;
 	bool failed;
@@ -38,7 +38,7 @@ struct CachedTexture::Rep {
 		job(nullptr), materialized(true), failed(false) {
 		++active_texs;
 		while (cnt-- > 0) {
-			if (gxCanvas* t = gx_graphics->createCanvas(w, h, flags)) {
+			if (sdlCanvas* t = sdl_graphics->createCanvas(w, h, flags)) {
 				frames.push_back(t);
 			}
 			else break;
@@ -60,7 +60,7 @@ struct CachedTexture::Rep {
 
 	~Rep() {
 		--active_texs;
-		for (int k = 0; k < frames.size(); ++k) gx_graphics->freeCanvas(frames[k]);
+		for (int k = 0; k < frames.size(); ++k) sdl_graphics->freeCanvas(frames[k]);
 		cancelJob();
 	}
 
@@ -102,11 +102,9 @@ struct CachedTexture::Rep {
 			}
 		}
 
-		void* fib32 = job ? job->fib32 : nullptr;
-		int iw = job ? job->w : 0;
-		int ih = job ? job->h : 0;
+		const DecodedImage* img = (job && job->image) ? job->image.get() : nullptr;
 
-		if (!fib32) {
+		if (!img) {
 			failed = true;
 			cancelJob();
 			materialized = true;
@@ -114,20 +112,20 @@ struct CachedTexture::Rep {
 		}
 
 		int t_flags = (flags & (
-			gxCanvas::CANVAS_TEX_RGB |
-			gxCanvas::CANVAS_TEX_ALPHA |
-			gxCanvas::CANVAS_TEX_MASK |
-			gxCanvas::CANVAS_TEX_HICOLOR)) | gxCanvas::CANVAS_NONDISPLAY | gxCanvas::CANVAS_TEXTURE;
+			sdlCanvas::CANVAS_TEX_RGB |
+			sdlCanvas::CANVAS_TEX_ALPHA |
+			sdlCanvas::CANVAS_TEX_MASK |
+			sdlCanvas::CANVAS_TEX_HICOLOR)) | sdlCanvas::CANVAS_NONDISPLAY | sdlCanvas::CANVAS_TEXTURE;
 
 		int frame_flags = flags;
-		if ((flags & gxCanvas::CANVAS_TEX_MASK) && !(flags & gxCanvas::CANVAS_TEX_ALPHA)) {
-			frame_flags |= gxCanvas::CANVAS_TEX_ALPHA;
+		if ((flags & sdlCanvas::CANVAS_TEX_MASK) && !(flags & sdlCanvas::CANVAS_TEX_ALPHA)) {
+			frame_flags |= sdlCanvas::CANVAS_TEX_ALPHA;
 		}
 
-		if (!(flags & gxCanvas::CANVAS_TEX_CUBE)) {
+		if (!(flags & sdlCanvas::CANVAS_TEX_CUBE)) {
 			if (w <= 0 || h <= 0 || first < 0 || requested_cnt <= 0) {
-				if (fib32) {
-					if (gxCanvas* t = gx_graphics->createCanvasFromImage(fib32, iw, ih, flags)) {
+				if (img) {
+					if (sdlCanvas* t = sdl_graphics->createCanvasFromImage(img, flags)) {
 						frames.push_back(t);
 					}
 				}
@@ -138,7 +136,7 @@ struct CachedTexture::Rep {
 			}
 		}
 
-		gxCanvas* t = gx_graphics->createCanvasFromImage(fib32, iw, ih, t_flags);
+		sdlCanvas* t = sdl_graphics->createCanvasFromImage(img, t_flags);
 		if (!t) {
 			failed = true;
 			cancelJob();
@@ -146,17 +144,17 @@ struct CachedTexture::Rep {
 			return;
 		}
 		if (!t->getDepth()) {
-			gx_graphics->freeCanvas(t);
+			sdl_graphics->freeCanvas(t);
 			failed = true;
 			cancelJob();
 			materialized = true;
 			return;
 		}
 
-		if (flags & gxCanvas::CANVAS_TEX_CUBE) {
+		if (flags & sdlCanvas::CANVAS_TEX_CUBE) {
 			int cw = t->getWidth() / 6;
 			if (cw * 6 != t->getWidth()) {
-				gx_graphics->freeCanvas(t);
+				sdl_graphics->freeCanvas(t);
 				failed = true;
 				cancelJob();
 				materialized = true;
@@ -164,13 +162,13 @@ struct CachedTexture::Rep {
 			}
 			int ch = t->getHeight();
 
-			gxCanvas* tex = gx_graphics->createCanvas(cw, ch, frame_flags);
+			sdlCanvas* tex = sdl_graphics->createCanvas(cw, ch, frame_flags);
 			if (tex) {
 				frames.push_back(tex);
 
 				for (int face = 0; face < 6; ++face) {
 					tex->setCubeFace(face);
-					gx_graphics->copy(tex, 0, 0, cw, ch, t, face * cw, 0, cw, ch);
+					sdl_graphics->copy(tex, 0, 0, cw, ch, t, face * cw, 0, cw, ch);
 				}
 				tex->setCubeFace(1);
 			}
@@ -179,7 +177,7 @@ struct CachedTexture::Rep {
 			int x_tiles = t->getWidth() / w;
 			int y_tiles = t->getHeight() / h;
 			if (first + requested_cnt > x_tiles * y_tiles) {
-				gx_graphics->freeCanvas(t);
+				sdl_graphics->freeCanvas(t);
 				failed = true;
 				cancelJob();
 				materialized = true;
@@ -189,16 +187,16 @@ struct CachedTexture::Rep {
 			int y = (first / x_tiles) * h;
 			int cnt = requested_cnt;
 			while (cnt--) {
-				gxCanvas* p = gx_graphics->createCanvas(w, h, frame_flags);
+				sdlCanvas* p = sdl_graphics->createCanvas(w, h, frame_flags);
 				if (p) {
-					gx_graphics->copy(p, 0, 0, w, h, t, x, y, w, h);
+					sdl_graphics->copy(p, 0, 0, w, h, t, x, y, w, h);
 					p->setLogicalSize(w, h);
 					frames.push_back(p);
 				}
 				x = x + w; if (x + w > t->getWidth()) { x = 0; y = y + h; }
 			}
 		}
-		gx_graphics->freeCanvas(t);
+		sdl_graphics->freeCanvas(t);
 
 		cancelJob();
 		materialized = true;
@@ -274,7 +272,7 @@ std::string CachedTexture::getName()const {
 	return rep->file;
 }
 
-const std::vector<gxCanvas*>& CachedTexture::getFrames()const {
+const std::vector<sdlCanvas*>& CachedTexture::getFrames()const {
 	rep->materialize(true);
 	return rep->frames;
 }

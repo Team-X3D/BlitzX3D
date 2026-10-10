@@ -1,6 +1,7 @@
 #include "sdl_gpu_context.h"
 #include "sdl_gpu_lock.h"
-#include "sdl_gpu_common.h"
+
+#include "../sdlruntime/std.h"
 
 #include <dinput.h>
 
@@ -10,6 +11,10 @@
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_log.h>
+
+#include "../sdlruntime/sdlruntime.h"
+#include "../sdlruntime/sdlgraphics.h"
+#include "../sdlruntime/sdlinput.h"
 
 #include <unordered_map>
 #include <mutex>
@@ -117,7 +122,10 @@ SDL_GPUDevice* CreateGPUDevice() {
 #endif
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXIL_BOOLEAN, true);
-	// SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan");
+	HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+	if (ntdll && GetProcAddress(ntdll, "wine_get_version")) {
+		SDL_SetStringProperty(props, SDL_PROP_GPU_DEVICE_CREATE_NAME_STRING, "vulkan");
+	}
 #ifdef _DEBUG
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, true);
 #else
@@ -324,50 +332,51 @@ int SdlScancodeToDIK(int sc) {
 	}
 }
 
-static void ForwardMouseMove(SDL_Window* win, InputSink* input, WindowHost* host, int px, int py) {
-	if (!input) return;
+static void ForwardMouseMove(SDL_Window* win, sdlRuntime* rt, int px, int py) {
+	if (!rt || !rt->input) return;
 	int x = px, y = py;
-	if (win && host) {
+	if (rt->graphics && win) {
 		int ww = 0, wh = 0;
 		if (!SDL_GetWindowSizeInPixels(win, &ww, &wh)) SDL_GetWindowSize(win, &ww, &wh);
-		int gw = 0, gh = 0;
-		host->gameSize(&gw, &gh);
+		int gw = rt->graphics->getWidth();
+		int gh = rt->graphics->getHeight();
 		if (ww > 0 && wh > 0 && gw > 0 && gh > 0 && (ww != gw || wh != gh)) {
 			x = x * gw / ww;
 			y = y * gh / wh;
 		}
-		if (gw > 0 && gh > 0) {
-			if (x < 0) x = 0;
-			else if (x >= gw) x = gw - 1;
-			if (y < 0) y = 0;
-			else if (y >= gh) y = gh - 1;
-		}
+		if (x < 0) x = 0;
+		else if (x >= gw) x = gw - 1;
+		if (y < 0) y = 0;
+		else if (y >= gh) y = gh - 1;
 	}
-	input->mouseMove(x, y);
+	rt->input->wm_mousemove(x, y);
 }
 
-void PumpEvents(SDL_Window* win, InputSink* input, WindowHost* host) {
-	if (!win) return;
+void PumpEvents(SDL_Window* win, sdlRuntime* rt) {
+	if (!win || !rt) return;
 	std::call_once(s_motionFlag, [] { SDL_SetEventEnabled(SDL_EVENT_MOUSE_MOTION, false); });
 	SDL_Event ev;
 	while (SDL_PollEvent(&ev)) {
 		switch (ev.type) {
 		case SDL_EVENT_QUIT:
 		case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-			if (host) host->requestQuit();
+			rt->asyncEnd();
 			return;
 		case SDL_EVENT_KEY_DOWN:
-			if (!ev.key.repeat && input) {
-				if (int dik = SdlScancodeToDIK((int)ev.key.scancode)) input->keyDown(dik);
+			if (rt->input) {
+				if (ev.key.scancode == SDL_SCANCODE_BACKSPACE) rt->input->wm_char(8, 1);
+				if (!ev.key.repeat) {
+					if (int dik = SdlScancodeToDIK((int)ev.key.scancode)) rt->input->wm_keydown(dik);
+				}
 			}
 			break;
 		case SDL_EVENT_KEY_UP:
-			if (input) {
-				if (int dik = SdlScancodeToDIK((int)ev.key.scancode)) input->keyUp(dik);
+			if (rt->input) {
+				if (int dik = SdlScancodeToDIK((int)ev.key.scancode)) rt->input->wm_keyup(dik);
 			}
 			break;
 		case SDL_EVENT_TEXT_INPUT:
-			if (input && ev.text.text) {
+			if (rt->input && ev.text.text) {
 				const char* p = ev.text.text;
 				while (*p) {
 					unsigned char c = (unsigned char)*p;
@@ -382,49 +391,49 @@ void PumpEvents(SDL_Window* win, InputSink* input, WindowHost* host) {
 						if ((cc & 0xC0) != 0x80) { len = i; break; }
 						cp = (cp << 6) | (cc & 0x3F);
 					}
-					input->charInput(cp);
+					rt->input->wm_char(cp, 1);
 					p += len;
 					if (len <= 0) ++p;
 				}
 			}
 			break;
 		case SDL_EVENT_MOUSE_BUTTON_DOWN:
-			if (input) {
+			if (rt->input) {
 				switch (ev.button.button) {
-				case SDL_BUTTON_LEFT: input->mouseDown(1); break;
-				case SDL_BUTTON_RIGHT: input->mouseDown(2); break;
-				case SDL_BUTTON_MIDDLE: input->mouseDown(3); break;
-				case SDL_BUTTON_X1: input->mouseDown(5); break;
-				case SDL_BUTTON_X2: input->mouseDown(4); break;
+				case SDL_BUTTON_LEFT: rt->input->wm_mousedown(1); break;
+				case SDL_BUTTON_RIGHT: rt->input->wm_mousedown(2); break;
+				case SDL_BUTTON_MIDDLE: rt->input->wm_mousedown(3); break;
+				case SDL_BUTTON_X1: rt->input->wm_mousedown(5); break;
+				case SDL_BUTTON_X2: rt->input->wm_mousedown(4); break;
 				default: break;
 				}
-				ForwardMouseMove(win, input, host, (int)ev.button.x, (int)ev.button.y);
+				ForwardMouseMove(win, rt, (int)ev.button.x, (int)ev.button.y);
 			}
 			break;
 		case SDL_EVENT_MOUSE_BUTTON_UP:
-			if (input) {
+			if (rt->input) {
 				switch (ev.button.button) {
-				case SDL_BUTTON_LEFT: input->mouseUp(1); break;
-				case SDL_BUTTON_RIGHT: input->mouseUp(2); break;
-				case SDL_BUTTON_MIDDLE: input->mouseUp(3); break;
-				case SDL_BUTTON_X1: input->mouseUp(5); break;
-				case SDL_BUTTON_X2: input->mouseUp(4); break;
+				case SDL_BUTTON_LEFT: rt->input->wm_mouseup(1); break;
+				case SDL_BUTTON_RIGHT: rt->input->wm_mouseup(2); break;
+				case SDL_BUTTON_MIDDLE: rt->input->wm_mouseup(3); break;
+				case SDL_BUTTON_X1: rt->input->wm_mouseup(5); break;
+				case SDL_BUTTON_X2: rt->input->wm_mouseup(4); break;
 				default: break;
 				}
-				ForwardMouseMove(win, input, host, (int)ev.button.x, (int)ev.button.y);
+				ForwardMouseMove(win, rt, (int)ev.button.x, (int)ev.button.y);
 			}
 			break;
 		case SDL_EVENT_MOUSE_WHEEL:
-			if (input) input->mouseWheel((int)(ev.wheel.y * 120.0f));
+			if (rt->input) rt->input->wm_mousewheel((int)(ev.wheel.y * 120.0f));
 			break;
 		default:
 			break;
 		}
 	}
-	if (input && (SDL_GetWindowFlags(win) & SDL_WINDOW_INPUT_FOCUS)) {
+	if (rt->input && (SDL_GetWindowFlags(win) & SDL_WINDOW_INPUT_FOCUS)) {
 		float mx = 0.0f, my = 0.0f;
 		SDL_GetMouseState(&mx, &my);
-		ForwardMouseMove(win, input, host, (int)mx, (int)my);
+		ForwardMouseMove(win, rt, (int)mx, (int)my);
 	}
 }
 

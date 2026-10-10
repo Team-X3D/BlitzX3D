@@ -3,7 +3,7 @@
 #include <wininet.h>
 #include <WinDNS.h>
 #include "../MultiLang/MultiLang.h"
-#include "../gxruntime/gxutf8.h"
+#include "../sdlruntime/sdlutf8.h"
 
 #pragma comment (lib, "Urlmon.lib")
 #pragma comment (lib, "Dnsapi.lib")
@@ -92,11 +92,11 @@ int UDPStream::eof() {
 int UDPStream::recv() {
 	if (e) return 0;
 	int tout;
-	if (recv_timeout) tout = gx_runtime->getMilliSecs() + recv_timeout;
+	if (recv_timeout) tout = sdl_runtime->getMilliSecs() + recv_timeout;
 	for (;;) {
 		int dt = 0;
 		if (recv_timeout) {
-			dt = tout - gx_runtime->getMilliSecs();
+			dt = tout - sdl_runtime->getMilliSecs();
 			if (dt < 0) dt = 0;
 		}
 		fd_set fd = { 1,sock };
@@ -199,11 +199,11 @@ int TCPStream::read(char* buff, int size) {
 	if (e) return 0;
 	char* b = buff, * l = buff + size;
 	int tout;
-	if (read_timeout) tout = gx_runtime->getMilliSecs() + read_timeout;
+	if (read_timeout) tout = sdl_runtime->getMilliSecs() + read_timeout;
 	while (b < l) {
 		int dt = 0;
 		if (read_timeout) {
-			dt = tout - gx_runtime->getMilliSecs();
+			dt = tout - sdl_runtime->getMilliSecs();
 			if (dt < 0) dt = 0;
 		}
 		fd_set fd = { 1,sock };
@@ -448,7 +448,7 @@ void  bbCloseTCPServer(TCPServer* p) {
 
 TCPStream* bbAcceptTCPStream(TCPServer* server) {
 	debugTCPServer(server, "AcceptTCPStream");
-	if (!gx_runtime->idle()) RTEX(0);
+	if (!sdl_runtime->idle()) RTEX(0);
 	if (TCPStream* tcp = server->accept()) {
 		tcp_set.insert(tcp);
 		return tcp;

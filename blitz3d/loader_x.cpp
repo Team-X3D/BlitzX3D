@@ -8,7 +8,7 @@
 #include "minidx9/include/rmxfguid.h"
 #include "minidx9/include/rmxftmpl.h"
 
-extern gxRuntime* gx_runtime;
+extern sdlRuntime* sdl_runtime;
 static std::map<std::string, MeshModel*> frames_map;
 static int anim_len;
 

@@ -157,13 +157,13 @@ namespace sdlgpu {
 		return CreateFromAsset(dev, asset, psEntry, vsEntry);
 	}
 
-	GpuShader* GXSHADER_API CreateShaderFromSource(SDL_GPUDevice* dev, const char* source, const char* vsEntry, const char* psEntry, const char* includeDir) {
+	GpuShader* SDLSHADER_API CreateShaderFromSource(SDL_GPUDevice* dev, const char* source, const char* vsEntry, const char* psEntry, const char* includeDir) {
 		if (!dev || !source) return nullptr;
 		g_shaderError.clear();
 		return CompileFromSource(dev, source, nullptr, vsEntry, psEntry, includeDir);
 	}
 
-	GpuShader* GXSHADER_API CreateShaderFromFile(SDL_GPUDevice* dev, const char* path, const char* vsEntry, const char* psEntry, const char* includeDir) {
+	GpuShader* SDLSHADER_API CreateShaderFromFile(SDL_GPUDevice* dev, const char* path, const char* vsEntry, const char* psEntry, const char* includeDir) {
 		if (!dev || !path) return nullptr;
 		g_shaderError.clear();
 		std::string stem = ShaderAssetStem(path);
@@ -217,7 +217,7 @@ namespace sdlgpu {
 		return SDL_CreateGPUShader(dev, &ci);
 	}
 
-	SDL_GPUGraphicsPipeline* GXSHADER_API ShaderPipeline(GpuShader* s, SDL_GPUDevice* dev, int colorFormat, int depthFormat, int blend, int zMode, int cull, bool wireframe, int samples, bool skinned) {
+	SDL_GPUGraphicsPipeline* SDLSHADER_API ShaderPipeline(GpuShader* s, SDL_GPUDevice* dev, int colorFormat, int depthFormat, int blend, int zMode, int cull, bool wireframe, int samples, bool skinned) {
 		if (!s || !dev) return nullptr;
 		GpuLock lock;
 		ShaderPipeKey key;
@@ -329,7 +329,7 @@ namespace sdlgpu {
 		return pipe;
 	}
 
-	void GXSHADER_API ShaderPushUniforms(GpuShader* s, SDL_GPUCommandBuffer* cmds) {
+	void SDLSHADER_API ShaderPushUniforms(GpuShader* s, SDL_GPUCommandBuffer* cmds) {
 		if (!s || !cmds) return;
 		for (auto& b : s->ubos) {
 			if (b.data.empty()) continue;
@@ -338,7 +338,7 @@ namespace sdlgpu {
 		}
 	}
 
-	void GXSHADER_API ShaderBindTextures(GpuShader* s, SDL_GPUDevice* dev, SDL_GPURenderPass* pass) {
+	void SDLSHADER_API ShaderBindTextures(GpuShader* s, SDL_GPUDevice* dev, SDL_GPURenderPass* pass) {
 		if (!s || !dev || !pass || !s->samplerCount) return;
 		SDL_GPUTexture* white = GetWhiteTexture(dev);
 		SDL_GPUSampler* samp = GetDefaultMeshSampler(dev);
@@ -360,7 +360,7 @@ namespace sdlgpu {
 		return &it->second.second;
 	}
 
-	bool GXSHADER_API ShaderSetFloat(GpuShader* s, const char* name, float value) {
+	bool SDLSHADER_API ShaderSetFloat(GpuShader* s, const char* name, float value) {
 		if (!s || !name) return false;
 		unsigned bi = 0;
 		ShaderParam* p = FindParam(s, name, bi);
@@ -371,7 +371,7 @@ namespace sdlgpu {
 		return true;
 	}
 
-	bool GXSHADER_API ShaderSetVector(GpuShader* s, const char* name, const float value[4]) {
+	bool SDLSHADER_API ShaderSetVector(GpuShader* s, const char* name, const float value[4]) {
 		if (!s || !name || !value) return false;
 		unsigned bi = 0;
 		ShaderParam* p = FindParam(s, name, bi);
@@ -383,7 +383,7 @@ namespace sdlgpu {
 		return true;
 	}
 
-	bool GXSHADER_API ShaderSetMatrix(GpuShader* s, const char* name, const float value[16]) {
+	bool SDLSHADER_API ShaderSetMatrix(GpuShader* s, const char* name, const float value[16]) {
 		if (!s || !name || !value) return false;
 		unsigned bi = 0;
 		ShaderParam* p = FindParam(s, name, bi);
@@ -395,7 +395,7 @@ namespace sdlgpu {
 		return true;
 	}
 
-	bool GXSHADER_API ShaderSetTexture(GpuShader* s, const char* name, SDL_GPUTexture* tex) {
+	bool SDLSHADER_API ShaderSetTexture(GpuShader* s, const char* name, SDL_GPUTexture* tex) {
 		if (!s || !name) return false;
 		auto it = s->texIndex.find(name);
 		if (it == s->texIndex.end()) return false;
@@ -403,11 +403,11 @@ namespace sdlgpu {
 		return true;
 	}
 
-	const char* GXSHADER_API ShaderError() {
+	const char* SDLSHADER_API ShaderError() {
 		return g_shaderError.c_str();
 	}
 
-	void GXSHADER_API ReleaseShader(SDL_GPUDevice* dev, GpuShader* s) {
+	void SDLSHADER_API ReleaseShader(SDL_GPUDevice* dev, GpuShader* s) {
 		if (!s) return;
 		GpuLock lock;
 		for (auto& kv : s->pipes) if (kv.second && dev) SDL_ReleaseGPUGraphicsPipeline(dev, kv.second);
@@ -421,7 +421,7 @@ namespace sdlgpu {
 		delete s;
 	}
 
-	void GXSHADER_API ReleaseAllShaders(SDL_GPUDevice* dev) {
+	void SDLSHADER_API ReleaseAllShaders(SDL_GPUDevice* dev) {
 		(void)dev;
 	}
 

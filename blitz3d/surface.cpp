@@ -1,7 +1,7 @@
 #include "std.h"
 #include "surface.h"
 
-extern gxGraphics* gx_graphics;
+extern sdlGraphics* sdl_graphics;
 
 static Surface::Monitor nop_mon;
 
@@ -16,8 +16,8 @@ Surface::Surface(Monitor* m) :
 }
 
 Surface::~Surface() {
-	if(mesh) gx_graphics->freeMesh(mesh);
-	if(skin_mesh) gx_graphics->freeMesh(skin_mesh);
+	if(mesh) sdl_graphics->freeMesh(mesh);
+	if(skin_mesh) sdl_graphics->freeMesh(skin_mesh);
 }
 
 void Surface::setBrush(const Brush& b) {
@@ -84,7 +84,7 @@ void Surface::updateNormals() {
 	}
 }
 
-gxMesh* Surface::getMesh() {
+sdlMesh* Surface::getMesh() {
 	if(mesh && mesh->dirty()) valid_vs = 0;
 
 	if(valid_vs == vertices.size() && valid_ts == triangles.size()) return mesh;
@@ -94,7 +94,7 @@ gxMesh* Surface::getMesh() {
 
 	if(mesh_vs < vertices.size() || mesh_ts < triangles.size()) {
 		if(mesh) {
-			gx_graphics->freeMesh(mesh);
+			sdl_graphics->freeMesh(mesh);
 			mesh_vs = vertices.size() + mesh_vs / 2;
 			mesh_ts = triangles.size() + mesh_ts / 2;
 		}
@@ -102,7 +102,7 @@ gxMesh* Surface::getMesh() {
 			mesh_vs = vertices.size();
 			mesh_ts = triangles.size();
 		}
-		mesh = gx_graphics->createMesh(mesh_vs, mesh_ts, 0);
+		mesh = sdl_graphics->createMesh(mesh_vs, mesh_ts, 0);
 	}
 
 	if (!mesh || !mesh->lock(true)) {
@@ -121,7 +121,7 @@ gxMesh* Surface::getMesh() {
 	return mesh;
 }
 
-gxMesh* Surface::getSkinMesh() {
+sdlMesh* Surface::getSkinMesh() {
 	if (skin_mesh && skin_mesh->dirty()) skin_valid_vs = 0;
 
 	if (skin_valid_vs == vertices.size() && skin_valid_ts == triangles.size()) return skin_mesh;
@@ -131,7 +131,7 @@ gxMesh* Surface::getSkinMesh() {
 
 	if (skin_mesh_vs < vertices.size() || skin_mesh_ts < triangles.size()) {
 		if (skin_mesh) {
-			gx_graphics->freeMesh(skin_mesh);
+			sdl_graphics->freeMesh(skin_mesh);
 			skin_mesh_vs = vertices.size() + skin_mesh_vs / 2;
 			skin_mesh_ts = triangles.size() + skin_mesh_ts / 2;
 		}
@@ -139,7 +139,7 @@ gxMesh* Surface::getSkinMesh() {
 			skin_mesh_vs = vertices.size();
 			skin_mesh_ts = triangles.size();
 		}
-		skin_mesh = gx_graphics->createMesh(skin_mesh_vs, skin_mesh_ts, gxMesh::MESH_SKINNED);
+		skin_mesh = sdl_graphics->createMesh(skin_mesh_vs, skin_mesh_ts, sdlMesh::MESH_SKINNED);
 	}
 
 	if (!skin_mesh || !skin_mesh->lock(true)) {
@@ -171,7 +171,7 @@ gxMesh* Surface::getSkinMesh() {
 	return skin_mesh;
 }
 
-gxMesh* Surface::getMesh(const std::vector<Bone>& bones) {
+sdlMesh* Surface::getMesh(const std::vector<Bone>& bones) {
 
 	bool bones_changed = true;
 	if (skin_valid && mesh && !mesh->dirty() && last_bones.size() == bones.size() && mesh_vs >= vertices.size() && mesh_ts >= triangles.size())
@@ -186,10 +186,10 @@ gxMesh* Surface::getMesh(const std::vector<Bone>& bones) {
 	valid_vs = valid_ts = 0;
 
 	if(mesh_vs < vertices.size() || mesh_ts < triangles.size()) {
-		if(mesh) gx_graphics->freeMesh(mesh);
+		if(mesh) sdl_graphics->freeMesh(mesh);
 		mesh_vs = vertices.size();
 		mesh_ts = triangles.size();
-		mesh = gx_graphics->createMesh(mesh_vs, mesh_ts, gxMesh::MESH_DYNAMIC);
+		mesh = sdl_graphics->createMesh(mesh_vs, mesh_ts, sdlMesh::MESH_DYNAMIC);
 		skin_valid = false;
 	}
 

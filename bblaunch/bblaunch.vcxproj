@@ -92,6 +92,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\Blitz3D.exe</OutputFile>
+      <LargeAddressAware>true</LargeAddressAware>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
       <AdditionalDependencies>dxguid.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>..\tools\spirv-cross\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -202,7 +203,7 @@
       <Project>{57c1d7a8-8b56-474a-94d9-06684015bb6b}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
-    <ProjectReference Include="..\gxruntime\gxruntime.vcxproj">
+    <ProjectReference Include="..\sdlruntime\sdlruntime.vcxproj">
       <Project>{a124d746-4a3b-401d-ae99-6a838595bc8c}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>

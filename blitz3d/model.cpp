@@ -3,17 +3,17 @@
 #include "sprite.h"
 #include <algorithm>
 
-extern gxScene* gx_scene;
-extern gxGraphics* gx_graphics;
+extern sdlScene* sdl_scene;
+extern sdlGraphics* sdl_graphics;
 
 class Model::MeshQueue {
 	union {
-		gxMesh* mesh;
+		sdlMesh* mesh;
 		MeshQueue* next;
 	};
 	int fv, vc, ft, tc;
 	Brush brush;
-	gxEffect* effect;
+	sdlEffect* effect;
 	int q_type;
 	uint64_t stateKey;
 	std::vector<float> bone_data;
@@ -24,18 +24,18 @@ class Model::MeshQueue {
 public:
 	MeshQueue() {}
 
-	MeshQueue(gxMesh* m, int fv, int vc, int ft, int tc, const Brush& b, gxEffect* e, uint64_t key) :
+	MeshQueue(sdlMesh* m, int fv, int vc, int ft, int tc, const Brush& b, sdlEffect* e, uint64_t key) :
 		mesh(m), fv(fv), vc(vc), ft(ft), tc(tc), brush(b), effect(e), stateKey(key), bone_cnt(0) {
 		int n = brush.getBlend();
-		q_type = (n == gxScene::BLEND_REPLACE) ? QUEUE_OPAQUE : QUEUE_TRANSPARENT;
+		q_type = (n == sdlScene::BLEND_REPLACE) ? QUEUE_OPAQUE : QUEUE_TRANSPARENT;
 	}
 
-	MeshQueue(gxMesh* m, int fv, int vc, int ft, int tc, const Brush& b, gxEffect* e, uint64_t key,
+	MeshQueue(sdlMesh* m, int fv, int vc, int ft, int tc, const Brush& b, sdlEffect* e, uint64_t key,
 		const float* bones, int n_bones) :
 		mesh(m), fv(fv), vc(vc), ft(ft), tc(tc), brush(b), effect(e), stateKey(key),
 		bone_data(bones, bones + n_bones * 12), bone_cnt(n_bones) {
 		int n = brush.getBlend();
-		q_type = (n == gxScene::BLEND_REPLACE) ? QUEUE_OPAQUE : QUEUE_TRANSPARENT;
+		q_type = (n == sdlScene::BLEND_REPLACE) ? QUEUE_OPAQUE : QUEUE_TRANSPARENT;
 	}
 
 	int getQueueType()const {
@@ -46,15 +46,15 @@ public:
 	uint64_t getStateKey() const { return stateKey; }
 
 	void render() {
-		gx_scene->setRenderState(brush.getRenderState());
+		sdl_scene->setRenderState(brush.getRenderState());
 		if (bone_cnt > 0) {
-			gx_scene->setEffect(nullptr);
-			gx_scene->renderSkinned(mesh, fv, vc, ft, tc, bone_data.data(), bone_cnt);
+			sdl_scene->setEffect(nullptr);
+			sdl_scene->renderSkinned(mesh, fv, vc, ft, tc, bone_data.data(), bone_cnt);
 			return;
 		}
 		Sprite::flushStage();
-		gx_scene->setEffect(gx_graphics->verifyEffect(effect) ? effect : nullptr);
-		gx_scene->render(mesh, fv, vc, ft, tc);
+		sdl_scene->setEffect(sdl_graphics->verifyEffect(effect) ? effect : nullptr);
+		sdl_scene->render(mesh, fv, vc, ft, tc);
 	}
 	void* operator new(size_t sz) {
 		static const int GROW = 2048;
@@ -76,7 +76,7 @@ public:
 
 Model::MeshQueue* Model::MeshQueue::pool;
 
-static uint64_t computeStateKey(const Brush& b, gxEffect* e) {
+static uint64_t computeStateKey(const Brush& b, sdlEffect* e) {
 	const auto& rs = b.getRenderState();
 	uint64_t key = 0;
 
@@ -85,7 +85,7 @@ static uint64_t computeStateKey(const Brush& b, gxEffect* e) {
 	key ^= (uint64_t)(rs.alpha * 255.0f) << 16;
 	key ^= (uint64_t)(rs.shininess * 255.0f) << 24;
 
-	for (int i = 0; i < gxScene::MAX_TEXTURES; ++i) {
+	for (int i = 0; i < sdlScene::MAX_TEXTURES; ++i) {
 		if (rs.tex_states[i].canvas) {
 			uint64_t ptr = (uint64_t)(uintptr_t)rs.tex_states[i].canvas;
 			key ^= (ptr << (i * 8)) ^ (ptr >> (64 - i * 8));
@@ -160,17 +160,17 @@ void Model::enqueue(MeshQueue* q) {
 	queues[q->getQueueType()].push_back(q);
 }
 
-void Model::enqueue(gxMesh* mesh, int fv, int vc, int ft, int tc) {
+void Model::enqueue(sdlMesh* mesh, int fv, int vc, int ft, int tc) {
 	uint64_t key = computeStateKey(render_brush, renderEffect);
 	enqueue(new MeshQueue(mesh, fv, vc, ft, tc, render_brush, renderEffect, key));
 }
 
-void Model::enqueue(gxMesh* mesh, int fv, int vc, int ft, int tc, const Brush& brush) {
+void Model::enqueue(sdlMesh* mesh, int fv, int vc, int ft, int tc, const Brush& brush) {
 	uint64_t key = computeStateKey(brush, renderEffect);
 	enqueue(new MeshQueue(mesh, fv, vc, ft, tc, brush, renderEffect, key));
 }
 
-void Model::enqueueSkinned(gxMesh* mesh, int fv, int vc, int ft, int tc, const Brush& brush,
+void Model::enqueueSkinned(sdlMesh* mesh, int fv, int vc, int ft, int tc, const Brush& brush,
 	const float* bone_data, int bone_cnt) {
 	uint64_t key = computeStateKey(brush, renderEffect);
 	enqueue(new MeshQueue(mesh, fv, vc, ft, tc, brush, renderEffect, key, bone_data, bone_cnt));
@@ -189,10 +189,10 @@ void Model::renderQueue(int type) {
 	que.clear();
 }
 
-void Model::setEffect(gxEffect* e) {
+void Model::setEffect(sdlEffect* e) {
 	entityEffect = e;
 }
 
-gxEffect* Model::getEffect() const {
+sdlEffect* Model::getEffect() const {
 	return entityEffect;
 }

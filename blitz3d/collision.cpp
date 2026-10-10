@@ -14,7 +14,7 @@ bool Collision::update(const Line& line, float t, const Vector& n) {
 	return true;
 }
 
-extern gxRuntime* gx_runtime;
+extern sdlRuntime* sdl_runtime;
 
 bool Collision::sphereCollide(const Line& line, float radius, const Vector& dest, float dest_radius) {
 

@@ -2,7 +2,7 @@
 #include "bbsys.h"
 
 bool debug;
-gxRuntime* gx_runtime;
+sdlRuntime* sdl_runtime;
 const char* errorfunc = "";
 const char* errorlog = "";
 

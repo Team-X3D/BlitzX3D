@@ -4,12 +4,12 @@
 #include <vector>
 
 #include "bbsys.h"
-#include "../gxruntime/gxinput.h"
+#include "../sdlruntime/sdlinput.h"
 
-extern gxInput* gx_input;
-extern gxDevice* gx_mouse;
-extern gxDevice* gx_keyboard;
-extern std::vector<gxDevice*> gx_joysticks;
+extern sdlInput* sdl_input;
+extern sdlDevice* sdl_mouse;
+extern sdlDevice* sdl_keyboard;
+extern std::vector<sdlDevice*> sdl_joysticks;
 
 //keyboard
 int   bbKeyDown(int n);

@@ -3,8 +3,9 @@
 #include "sdl_gpu_pipeline.h"
 #include "sdl_gpu_text.h"
 #include "sdl_gpu_texture.h"
-#include "sdl_gpu_common.h"
-#include "sdl_gpu_surface.h"
+
+#include "../sdlruntime/std.h"
+#include "../sdlruntime/sdlcanvas.h"
 
 #include <cstdio>
 #include <SDL3/SDL_log.h>
@@ -347,7 +348,7 @@ bool PresentSceneFrame(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame
 	return SDL_SubmitGPUCommandBuffer(cmds);
 }
 
-bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, Surface* canvas) {
+bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& frame, ::sdlCanvas* canvas) {
 	if (!dev || !win) return false;
 	FlushPendingTextTargets(dev);
 	bool has3D = frame.drew3D && frame.cmds;
@@ -396,7 +397,7 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 
 	if (has3D) { int sxx, syy; unsigned sww, shh; SceneSourceRect(frame, sxx, syy, sww, shh); BlitSceneToSwap(cmds, frame.colorTarget, sxx, syy, sww, shh, target, sw, sh, clearColor); }
 
-	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds) : nullptr;
+	SDL_GPUTexture* canvasTex = canvas ? GetCanvasOverlayTextureBatched(dev, canvas, cmds, nullptr, has3D) : nullptr;
 	bool haveText = HasPendingText();
 	bool textReady = haveText && PreparePendingText(dev, cmds);
 	if (canvasTex || textReady || !has3D) {
@@ -438,7 +439,7 @@ bool PresentSceneWithCanvas(SDL_GPUDevice* dev, SDL_Window* win, GpuSceneFrame& 
 	return SDL_SubmitGPUCommandBuffer(cmds);
 }
 
-bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, Surface* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh) {
+bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, ::sdlCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh) {
 	if (!dev || !dest || !frame.cmds || !frame.colorTarget) return false;
 	if (dx < 0) { sx -= dx; dw += dx; dx = 0; }
 	if (dy < 0) { sy -= dy; dh += dy; dy = 0; }
@@ -450,7 +451,7 @@ bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, Surface* dest, 
 	if (sy + sh > (int)frame.colorH) sh = (int)frame.colorH - sy;
 	if (dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return false;
 	EndSceneFrame(frame);
-	bool cube = (dest->getFlags() & Surface::CANVAS_TEX_CUBE) != 0;
+	bool cube = (dest->getFlags() & ::sdlCanvas::CANVAS_TEX_CUBE) != 0;
 	SDL_GPUTexture* destTex = cube ? EnsureCanvasCubeTexture(dev, dest) : EnsureCanvasRenderTarget(dev, dest);
 	if (!destTex) return false;
 	static const Uint32 kCubeLayer[6] = {
@@ -484,7 +485,7 @@ bool BlitFrameToCanvas(SDL_GPUDevice* dev, GpuSceneFrame& frame, Surface* dest, 
 	info.filter = SDL_GPU_FILTER_LINEAR;
 	info.cycle = false;
 	SDL_BlitGPUTexture(frame.cmds, &info);
-	if (cube && (dest->getFlags() & Surface::CANVAS_TEX_MIPMAP) && dest->getWidth() > 1) SDL_GenerateMipmapsForGPUTexture(frame.cmds, destTex);
+	if (cube && (dest->getFlags() & ::sdlCanvas::CANVAS_TEX_MIPMAP) && dest->getWidth() > 1) SDL_GenerateMipmapsForGPUTexture(frame.cmds, destTex);
 	dest->releaseCPUBitsIfUnused();
 	return true;
 }

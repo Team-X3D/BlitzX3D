@@ -503,9 +503,9 @@ float _bbFPow(float x, float y) {
 }
 
 void bbRuntimeStats() {
-	// gx_runtime->debugLog(std::format(MultiLang::stats_strings, stringCnt).c_str());
-	gx_runtime->debugLog(std::format(MultiLang::stats_objects, objCnt).c_str());
-	gx_runtime->debugLog(std::format(MultiLang::stats_unreleased, unrelObjCnt).c_str());
+	// sdl_runtime->debugLog(std::format(MultiLang::stats_strings, stringCnt).c_str());
+	sdl_runtime->debugLog(std::format(MultiLang::stats_objects, objCnt).c_str());
+	sdl_runtime->debugLog(std::format(MultiLang::stats_unreleased, unrelObjCnt).c_str());
 }
 
 BBMemStats bbGetMemStats() {

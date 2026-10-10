@@ -6,9 +6,9 @@
 #include <vector>
 
 #ifdef _WIN32
-#define GXSHADERDATA_API __stdcall
+#define SDLSHADERDATA_API __stdcall
 #else
-#define GXSHADERDATA_API
+#define SDLSHADERDATA_API
 #endif
 
 namespace sdlgpu {
@@ -44,12 +44,12 @@ struct ShaderAsset {
 	bool hasVS = false;
 };
 
-std::string GXSHADERDATA_API ShaderAssetStem(const std::string& sourcePath);
-bool GXSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err);
-bool GXSHADERDATA_API SaveShaderAsset(const std::string& stem, const ShaderAsset& asset, std::string& err);
-bool GXSHADERDATA_API LoadShaderAsset(const std::string& stem, ShaderAsset& out, std::string& err);
-bool GXSHADERDATA_API ShaderAssetExists(const std::string& stem);
-bool GXSHADERDATA_API RuntimeCompilerAvailable();
+std::string SDLSHADERDATA_API ShaderAssetStem(const std::string& sourcePath);
+bool SDLSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err);
+bool SDLSHADERDATA_API SaveShaderAsset(const std::string& stem, const ShaderAsset& asset, std::string& err);
+bool SDLSHADERDATA_API LoadShaderAsset(const std::string& stem, ShaderAsset& out, std::string& err);
+bool SDLSHADERDATA_API ShaderAssetExists(const std::string& stem);
+bool SDLSHADERDATA_API RuntimeCompilerAvailable();
 
 }
 

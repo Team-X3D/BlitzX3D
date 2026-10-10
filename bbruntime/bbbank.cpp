@@ -205,7 +205,7 @@ int   bbWriteBytes(bbBank* b, bbStream* s, int offset, int count) {
 int  bbCallDLL(BBStr* dll, BBStr* fun, bbBank* in, bbBank* out) {
 	if (in && !validBank(in, "CallDLL")) { delete dll; delete fun; return 0; }
 	if (out && !validBank(out, "CallDLL")) { delete dll; delete fun; return 0; }
-	int t = gx_runtime->callDll(*dll, *fun,
+	int t = sdl_runtime->callDll(*dll, *fun,
 		in ? in->data : 0, in ? in->size : 0,
 		out ? out->data : 0, out ? out->size : 0);
 	delete dll; delete fun;

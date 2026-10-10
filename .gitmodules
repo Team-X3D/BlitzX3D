@@ -9,3 +9,13 @@
 [submodule "vendor/angelscript-JIT"]
 	path = vendor/angelscript-JIT
 	url = https://github.com/Team-X3D/angelscript-JIT-2.39.git
+
+[submodule "vendor/SDL_image"]
+	path = vendor/SDL_image
+	url = https://github.com/libsdl-org/SDL_image.git
+[submodule "vendor/SDL_ttf"]
+	path = vendor/SDL_ttf
+	url = https://github.com/libsdl-org/SDL_ttf
+[submodule "vendor/SDL_shadercross"]
+	path = vendor/SDL_shadercross
+	url = https://github.com/libsdl-org/SDL_shadercross.git

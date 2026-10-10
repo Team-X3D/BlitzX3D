@@ -52,7 +52,7 @@
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <PreprocessorDefinitions>WIN32;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\..\gxruntime\sdlgpu;..\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\sdlgpu;..\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
@@ -77,7 +77,7 @@ copy /Y "..\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <PreprocessorDefinitions>WIN32;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\..\gxruntime\sdlgpu;..\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\..\sdlgpu;..\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
@@ -97,12 +97,12 @@ copy /Y "..\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="shaderc.cpp" />
-    <ClCompile Include="..\..\gxruntime\sdlgpu\sdl_gpu_shader_data.cpp">
+    <ClCompile Include="..\..\sdlgpu\sdl_gpu_shader_data.cpp">
       <CallingConvention>Cdecl</CallingConvention>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\gxruntime\sdlgpu\sdl_gpu_shader_data.h" />
+    <ClInclude Include="..\..\sdlgpu\sdl_gpu_shader_data.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

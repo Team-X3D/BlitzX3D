@@ -1,17 +1,19 @@
 #include "std.h"
 #include "bbgraphics.h"
 #include "bbinput.h"
-#include "../gxruntime/gxutf8.h"
+#include "../sdlruntime/sdlutf8.h"
 #include "../MultiLang/MultiLang.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
 #include "../blitz3d/texture.h"
 #include "../blitz3d/cachedtexture.h"
+#include "../sdlruntime/sdlruntime.h"
+#include "../sdlruntime/asyncimage.h"
 
-gxGraphics* gx_graphics;
-gxCanvas* gx_canvas;
-gxCanvas* gx_depth_canvas;
+sdlGraphics* sdl_graphics;
+sdlCanvas* sdl_canvas;
+sdlCanvas* sdl_depth_canvas;
 
 struct ScrollRectState
 {
@@ -34,7 +36,7 @@ public:
     float drawScaleX = 1.0f;
     float drawScaleY = 1.0f;
     float tform[2][2] = { {1.0f, 0.0f},{0.0f, 1.0f} };
-    bbImage(const std::vector<gxCanvas*>& f, int origW = -1, int origH = -1) : frames(f) {
+    bbImage(const std::vector<sdlCanvas*>& f, int origW = -1, int origH = -1) : frames(f) {
         if (origW == -1) {
             origWidth = frames[0]->getWidth();
             origHeight = frames[0]->getHeight();
@@ -43,15 +45,13 @@ public:
             origWidth = origW;
             origHeight = origH;
         }
-        saveOrigPixels();
-        savePixels();
     }
     ~bbImage()
     {
         for (int k = 0; k < frames.size(); ++k)
-            gx_graphics->freeCanvas(frames[k]);
+            sdl_graphics->freeCanvas(frames[k]);
     }
-    const std::vector<gxCanvas*>& getFrames()const
+    const std::vector<sdlCanvas*>& getFrames()const
     {
         return frames;
     }
@@ -88,11 +88,10 @@ public:
         tform[1][0] = nb; tform[1][1] = nd;
     }
 
-    void replaceFrame(int n, gxCanvas* c)
+    void replaceFrame(int n, sdlCanvas* c)
     {
-        gx_graphics->freeCanvas(frames[n]);
+        sdl_graphics->freeCanvas(frames[n]);
         frames[n] = c;
-        savePixels();
         drawScaleX = 1.0f;
         drawScaleY = 1.0f;
         resetTForm();
@@ -104,7 +103,7 @@ public:
         heights.resize(frames.size());
         for (int k = 0; k < (int)frames.size(); ++k)
         {
-            gxCanvas* c = frames[k];
+            sdlCanvas* c = frames[k];
             int w = c->getWidth(), h = c->getHeight();
             widths[k] = w; heights[k] = h;
             pixelData[k].resize(w * h);
@@ -120,7 +119,7 @@ public:
         origPixelData.resize(frames.size());
         for (int k = 0; k < (int)frames.size(); ++k)
         {
-            gxCanvas* c = frames[k];
+            sdlCanvas* c = frames[k];
             int w = c->getWidth(), h = c->getHeight();
             origPixelData[k].resize(w * h);
             c->lock();
@@ -130,16 +129,31 @@ public:
             c->unlock();
         }
     }
-    const std::vector<uint32_t>& getOrigPixels(int frame) const
+    const std::vector<uint32_t>& getOrigPixels(int frame)
     {
-        return origPixelData[frame];
+        static const std::vector<uint32_t> empty;
+        if (frames.empty()) return empty;
+        if ((int)origPixelData.size() != (int)frames.size()) origPixelData.resize(frames.size());
+        if (frame < 0 || frame >= (int)frames.size()) frame = 0;
+        std::vector<uint32_t>& px = origPixelData[frame];
+        if (px.empty()) {
+            sdlCanvas* c = frames[frame];
+            int w = c->getWidth(), h = c->getHeight();
+            px.resize((size_t)w * h);
+            c->lock();
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x)
+                    px[(size_t)y * w + x] = c->getPixelFast(x, y);
+            c->unlock();
+        }
+        return px;
     }
     void restoreToDevice()
     {
         for (int k = 0; k < (int)frames.size(); ++k)
         {
             int w = widths[k], h = heights[k];
-            gxCanvas* c = gx_graphics->createCanvas(w, h, gxCanvas::CANVAS_TEXTURE);
+            sdlCanvas* c = sdl_graphics->createCanvas(w, h, sdlCanvas::CANVAS_TEXTURE);
             if (!c) continue;
             c->lock();
             for (int y = 0; y < h; ++y)
@@ -152,17 +166,24 @@ public:
             c->setHandle(hx, hy);
             c->copyMaskFrom(frames[k]);
             frames[k] = c;
-            gx_graphics->adoptCanvas(c);
+            sdl_graphics->adoptCanvas(c);
         }
     }
+    void releaseSavedPixels()
+    {
+        pixelData.clear();
+        pixelData.shrink_to_fit();
+        widths.clear();
+        heights.clear();
+    }
 private:
-    std::vector<gxCanvas*> frames;
+    std::vector<sdlCanvas*> frames;
     std::vector<std::vector<uint32_t>> pixelData;
     std::vector<std::vector<uint32_t>> origPixelData;
     std::vector<int> widths, heights;
 };
 
-static int gx_driver;	//Current graphics driver index.
+static int sdl_driver;	//Current graphics driver index.
 
 static bool filter;
 static int tform_method = 2; // 0 = nearest, 1 = bilinear, 2 = bicubic
@@ -170,7 +191,7 @@ static bool auto_dirty;
 static bool auto_midhandle;
 static std::unordered_set<bbImage*> image_set;
 static int curs_x, curs_y;
-static gxCanvas* p_canvas;
+static sdlCanvas* p_canvas;
 
 static int fps_cap_ms = 0;
 static int last_flip_ms = 0;
@@ -179,7 +200,7 @@ static int fps_frame_count = 0;
 static int fps_window_start = 0;
 static int fps_value = 0;
 
-static gxFont* curr_font;
+static sdlFont* curr_font;
 static unsigned curr_color;
 static unsigned curr_clsColor;
 
@@ -193,19 +214,19 @@ static inline void debugImage(bbImage* i, const char* function, int frame = 0)
     if (frame < 0 || frame >= (int)i->getFrames().size()) RTEX(MultiLang::image_frame_out_of_range);
 }
 
-static inline void debugFont(gxFont* f, const char* function)
+static inline void debugFont(sdlFont* f, const char* function)
 {
-    if (!gx_graphics->verifyFont(f)) ErrorLog(function, MultiLang::font_not_exist);
+    if (!sdl_graphics->verifyFont(f)) ErrorLog(function, MultiLang::font_not_exist);
 }
 
-static inline void debugCanvas(gxCanvas* c, const char* function)
+static inline void debugCanvas(sdlCanvas* c, const char* function)
 {
-    if (!gx_graphics->verifyCanvas(c)) ErrorLog(function, MultiLang::buffer_not_exist);
+    if (!sdl_graphics->verifyCanvas(c)) ErrorLog(function, MultiLang::buffer_not_exist);
 }
 
 static inline void debugDriver(int n, const char* function)
 {
-    if (n < 1 || n > gx_runtime->numGraphicsDrivers()) ErrorLog(function, MultiLang::illegal_graphics_driver_index);
+    if (n < 1 || n > sdl_runtime->numGraphicsDrivers()) ErrorLog(function, MultiLang::illegal_graphics_driver_index);
 }
 
 static inline void debugMode(int n, const char* function)
@@ -218,14 +239,14 @@ void bbFreeImage(bbImage* i);
 static void freeGraphics(bool freeImages = true)
 {
     extern void blitz3d_close();
-    if (gx_graphics) blitz3d_close();
+    if (sdl_graphics) blitz3d_close();
     if (freeImages)
     {
         while (image_set.size()) bbFreeImage(*image_set.begin());
     }
     if (p_canvas)
     {
-        gx_graphics->freeCanvas(p_canvas);
+        sdl_graphics->freeCanvas(p_canvas);
         p_canvas = 0;
     }
 }
@@ -234,7 +255,7 @@ static void freeGraphics(bool freeImages = true)
 #define GRN(_X_) ( ((_X_)>>8) & 0xff )
 #define BLU(_X_) ( (_X_) & 0xff )
 
-static int getPixel(gxCanvas* c, float x, float y)
+static int getPixel(sdlCanvas* c, float x, float y)
 {
     debugCanvas(c, "getPixel");
 
@@ -343,20 +364,20 @@ static std::vector<uint32_t> progressiveMinifyPixels(const std::vector<uint32_t>
     return cur;
 }
 
-static gxCanvas* progressiveMinifyCanvas(gxCanvas* c, int targetW, int targetH, float* outDiv) {
+static sdlCanvas* progressiveMinifyCanvas(sdlCanvas* c, int targetW, int targetH, float* outDiv) {
     int w = c->getWidth(), h = c->getHeight();
     if (targetW <= 0 || targetH <= 0 || (w <= targetW * 2 && h <= targetH * 2)) {
         *outDiv = 1.0f;
         return c;
     }
-    gxCanvas* cur = c;
+    sdlCanvas* cur = c;
     float div = 1.0f;
     while ((w > targetW * 2 + 1 || h > targetH * 2 + 1) && w >= 2 && h >= 2) {
         int nw = w / 2, nh = h / 2;
         if (nw < 1) nw = 1;
         if (nh < 1) nh = 1;
         if (nw == w && nh == h) break;
-        gxCanvas* nxt = gx_graphics->createCanvas(nw, nh, cur->getFlags());
+        sdlCanvas* nxt = sdl_graphics->createCanvas(nw, nh, cur->getFlags());
         cur->lock();
         nxt->lock();
         for (int y = 0; y < nh; ++y) {
@@ -372,7 +393,7 @@ static gxCanvas* progressiveMinifyCanvas(gxCanvas* c, int targetW, int targetH, 
         }
         cur->unlock();
         nxt->unlock();
-        if (cur != c) gx_graphics->freeCanvas(cur);
+        if (cur != c) sdl_graphics->freeCanvas(cur);
         cur = nxt;
         w = nw; h = nh;
         div *= 2.0f;
@@ -381,7 +402,7 @@ static gxCanvas* progressiveMinifyCanvas(gxCanvas* c, int targetW, int targetH, 
     return cur;
 }
 
-static gxCanvas* tformCanvas(gxCanvas* c, float m[2][2], int x_handle, int y_handle)
+static sdlCanvas* tformCanvas(sdlCanvas* c, float m[2][2], int x_handle, int y_handle)
 {
     c->backup();
 
@@ -403,7 +424,7 @@ static gxCanvas* tformCanvas(gxCanvas* c, float m[2][2], int x_handle, int y_han
     float maxy = ceil(vmax(v0.y, v1.y, v2.y, v3.y));
     int iw = maxx - minx, ih = maxy - miny;
 
-    gxCanvas* t = gx_graphics->createCanvas(iw, ih, c->getFlags());
+    sdlCanvas* t = sdl_graphics->createCanvas(iw, ih, c->getFlags());
     t->setHandle(-minx, -miny);
     t->copyMaskFrom(c);
 
@@ -415,7 +436,7 @@ static gxCanvas* tformCanvas(gxCanvas* c, float m[2][2], int x_handle, int y_han
         return t;
     }
 
-    gxCanvas* mid = nullptr;
+    sdlCanvas* mid = nullptr;
     float srcDiv = 1.0f;
     bool pureScale = fabs(m[0][1]) < 0.0001f && fabs(m[1][0]) < 0.0001f && m[0][0] > 0.0f && m[1][1] > 0.0f;
     if (pureScale && (m[0][0] < 0.5f || m[1][1] < 0.5f)) {
@@ -423,7 +444,7 @@ static gxCanvas* tformCanvas(gxCanvas* c, float m[2][2], int x_handle, int y_han
         int th = (int)ceilf(c->getHeight() * m[1][1]);
         mid = progressiveMinifyCanvas(c, tw, th, &srcDiv);
     }
-    gxCanvas* src = mid ? mid : c;
+    sdlCanvas* src = mid ? mid : c;
 
     src->lock();
     t->lock();
@@ -521,13 +542,13 @@ static gxCanvas* tformCanvas(gxCanvas* c, float m[2][2], int x_handle, int y_han
 
     t->unlock();
     src->unlock();
-    if (mid) gx_graphics->freeCanvas(mid);
+    if (mid) sdl_graphics->freeCanvas(mid);
     t->backup();
 
     return t;
 }
 
-static bool saveCanvas(gxCanvas* c, const std::string& f)
+static bool saveCanvas(sdlCanvas* c, const std::string& f)
 {
     std::ofstream out(f.c_str(), std::ios::binary);
     if (!out.good()) return false;
@@ -573,14 +594,14 @@ static bool saveCanvas(gxCanvas* c, const std::string& f)
 
 int bbCountGfxDrivers()
 {
-    return gx_runtime->numGraphicsDrivers();
+    return sdl_runtime->numGraphicsDrivers();
 }
 
 BBStr* bbGfxDriverName(int n)
 {
     debugDriver(n, "GfxDriverName");
     std::string t; int caps;
-    gx_runtime->graphicsDriverInfo(n - 1, &t, &caps);
+    sdl_runtime->graphicsDriverInfo(n - 1, &t, &caps);
     return new BBStr(t);
 }
 
@@ -588,17 +609,17 @@ void  bbSetGfxDriver(int n)
 {
     debugDriver(n, "SetGfxDriver");
     gfx_modes.clear();
-    gx_driver = n - 1;
+    sdl_driver = n - 1;
 }
 
 int  bbCountGfxModes()
 {
     gfx_modes.clear();
-    int n = gx_runtime->numGraphicsModes(gx_driver);
+    int n = sdl_runtime->numGraphicsModes(sdl_driver);
     for (int k = 0; k < n; ++k)
     {
         GfxMode m;
-        gx_runtime->graphicsModeInfo(gx_driver, k, &m.w, &m.h, &m.d, &m.caps);
+        sdl_runtime->graphicsModeInfo(sdl_driver, k, &m.w, &m.h, &m.d, &m.caps);
         gfx_modes.push_back(m);
     }
     return gfx_modes.size();
@@ -624,12 +645,12 @@ int  bbGfxModeDepth(int n)
 
 static int modeExists(int w, int h, int d, bool bb3d)
 {
-    int cnt = gx_runtime->numGraphicsModes(gx_driver);
+    int cnt = sdl_runtime->numGraphicsModes(sdl_driver);
     for (int k = 0; k < cnt; ++k)
     {
         int tw, th, td, tc;
-        gx_runtime->graphicsModeInfo(gx_driver, k, &tw, &th, &td, &tc);
-        if (bb3d && !(tc & gxRuntime::GFXMODECAPS_3D)) continue;
+        sdl_runtime->graphicsModeInfo(sdl_driver, k, &tw, &th, &td, &tc);
+        if (bb3d && !(tc & sdlRuntime::GFXMODECAPS_3D)) continue;
         if (w == tw && h == th && d == td) return 1;
     }
     return 0;
@@ -644,19 +665,19 @@ int  bbGfxDriver3D(int n)
 {
     debugDriver(n, "GfxDriver3D");
     std::string t; int caps;
-    gx_runtime->graphicsDriverInfo(n - 1, &t, &caps);
-    return (caps & gxRuntime::GFXMODECAPS_3D) ? 1 : 0;
+    sdl_runtime->graphicsDriverInfo(n - 1, &t, &caps);
+    return (caps & sdlRuntime::GFXMODECAPS_3D) ? 1 : 0;
 }
 
 int  bbCountGfxModes3D()
 {
     gfx_modes.clear();
-    int n = gx_runtime->numGraphicsModes(gx_driver);
+    int n = sdl_runtime->numGraphicsModes(sdl_driver);
     for (int k = 0; k < n; ++k)
     {
         GfxMode m;
-        gx_runtime->graphicsModeInfo(gx_driver, k, &m.w, &m.h, &m.d, &m.caps);
-        if (m.caps & gxRuntime::GFXMODECAPS_3D) gfx_modes.push_back(m);
+        sdl_runtime->graphicsModeInfo(sdl_driver, k, &m.w, &m.h, &m.d, &m.caps);
+        if (m.caps & sdlRuntime::GFXMODECAPS_3D) gfx_modes.push_back(m);
     }
     return gfx_modes.size();
 }
@@ -669,125 +690,128 @@ int  bbGfxMode3DExists(int w, int h, int d)
 int  bbGfxMode3D(int n)
 {
     debugMode(n, "GfxMode3D");
-    return gfx_modes[n - 1].caps & gxRuntime::GFXMODECAPS_3D ? 1 : 0;
+    return gfx_modes[n - 1].caps & sdlRuntime::GFXMODECAPS_3D ? 1 : 0;
 }
 
 int  bbWindowed3D()
 {
     int tc;
-    gx_runtime->windowedModeInfo(&tc);
-    return (tc & gxRuntime::GFXMODECAPS_3D) ? 1 : 0;
+    sdl_runtime->windowedModeInfo(&tc);
+    return (tc & sdlRuntime::GFXMODECAPS_3D) ? 1 : 0;
 }
 
 float bbDPIScaleX() {
-    gx_runtime->calculateDPI();
-    return gx_runtime->scale_x;
+    sdl_runtime->calculateDPI();
+    return sdl_runtime->scale_x;
 }
 
 float bbDPIScaleY() {
-    gx_runtime->calculateDPI();
-    return gx_runtime->scale_y;
+    sdl_runtime->calculateDPI();
+    return sdl_runtime->scale_y;
 }
 
 int  bbTotalVidMem()
 {
-    return gx_graphics->getTotalVidmem();
+    return sdl_graphics->getTotalVidmem();
 }
 
 int  bbAvailVidMem()
 {
-    return gx_graphics->getAvailVidmem();
+    return sdl_graphics->getAvailVidmem();
 }
 
-static void applyCanvasBuffer(gxCanvas* buff)
+static void applyCanvasBuffer(sdlCanvas* buff)
 {
-    if (!buff || !gx_graphics->verifyCanvas(buff)) {
+    if (!buff || !sdl_graphics->verifyCanvas(buff)) {
         RTEX(MultiLang::buffer_not_exist);
     }
-    gx_canvas = buff;
+    if (sdl_graphics) sdl_graphics->setActiveCanvas(buff);
+    sdl_canvas = buff;
     scroll_rect_stack.clear();
     curs_x = curs_y = 0;
-    gx_canvas->setOrigin(0, 0);
-    gx_canvas->setViewport(0, 0, gx_canvas->getWidth(), gx_canvas->getHeight());
-    gx_canvas->setColor(curr_color);
-    gx_canvas->setClsColor(curr_clsColor);
-    gx_canvas->setFont(curr_font);
-    if (gx_scene) gx_scene->setDepthTarget(nullptr);
+    sdl_canvas->setOrigin(0, 0);
+    sdl_canvas->setViewport(0, 0, sdl_canvas->getWidth(), sdl_canvas->getHeight());
+    sdl_canvas->setColor(curr_color);
+    sdl_canvas->setClsColor(curr_clsColor);
+    sdl_canvas->setFont(curr_font);
+    if (sdl_scene) sdl_scene->setDepthTarget(nullptr);
 }
 
-void bbSetBuffer(gxCanvas* buff)
+void bbSetBuffer(sdlCanvas* buff)
 {
     debugCanvas(buff, "SetBuffer");
     applyCanvasBuffer(buff);
 }
 
-void bbSetBufferDepth(gxCanvas* buff, gxCanvas* depthBuff)
+void bbSetBufferDepth(sdlCanvas* buff, sdlCanvas* depthBuff)
 {
     debugCanvas(buff, "SetBufferDepth");
     applyCanvasBuffer(buff);
-    if (gx_scene) gx_scene->setDepthTarget(depthBuff);
+    if (sdl_scene) sdl_scene->setDepthTarget(depthBuff);
 }
 
-gxCanvas* bbGraphicsBuffer()
+sdlCanvas* bbGraphicsBuffer()
 {
-    return gx_canvas;
+    return sdl_canvas;
 }
 
-int bbLoadBuffer(gxCanvas* c, BBStr* str)
+int bbLoadBuffer(sdlCanvas* c, BBStr* str)
 {
     debugCanvas(c, "LoadBuffer");
     std::string s = *str; delete str;
-    gxCanvas* t = gx_graphics->loadCanvas(s, 0);
+    sdlCanvas* t = sdl_graphics->loadCanvas(s, 0);
     if (!t) return 0;
     float m[2][2];
     m[0][0] = (float)c->getWidth() / (float)t->getWidth();
     m[1][1] = (float)c->getHeight() / (float)t->getHeight();
     m[1][0] = m[0][1] = 0;
-    gxCanvas* p = tformCanvas(t, m, 0, 0);
-    gx_graphics->freeCanvas(t);
+    sdlCanvas* p = tformCanvas(t, m, 0, 0);
+    sdl_graphics->freeCanvas(t);
     int ox, oy;
     c->getOrigin(&ox, &oy); c->setOrigin(0, 0);
     c->blit(0, 0, p, 0, 0, p->getWidth(), p->getHeight(), true);
-    gx_graphics->freeCanvas(p);
+    sdl_graphics->freeCanvas(p);
     return 1;
 }
 
-int bbSaveBuffer(gxCanvas* c, BBStr* str)
+int bbSaveBuffer(sdlCanvas* c, BBStr* str)
 {
     debugCanvas(c, "SaveBuffer");
     std::string t = *str; delete str;
     return saveCanvas(c, t) ? 1 : 0;
 }
 
-void bbBufferDirty(gxCanvas* c)
+void bbBufferDirty(sdlCanvas* c)
 {
     debugCanvas(c, "BufferDirty");
     c->backup();
 }
 
 static void graphics(int w, int h, int d, int flags) {
+    for (bbImage* img : image_set) img->savePixels();
     // MessageBoxA(NULL, "graphics(): entered", "Debug", MB_OK);
     freeGraphics(false);
     // MessageBoxA(NULL, "graphics(): after freeGraphics", "Debug", MB_OK);
-    gx_runtime->closeGraphics(gx_graphics);
+    sdl_runtime->closeGraphics(sdl_graphics);
     // MessageBoxA(NULL, "graphics(): after closeGraphics", "Debug", MB_OK);
-    gx_graphics = gx_runtime->openGraphics(w, h, d, gx_driver, flags);
+    sdl_graphics = sdl_runtime->openGraphics(w, h, d, sdl_driver, flags);
     // MessageBoxA(NULL, "graphics(): after openGraphics", "Debug", MB_OK);
-    if (!gx_runtime->idle()) RTEX(0);
+    if (!sdl_runtime->idle()) RTEX(0);
     // MessageBoxA(NULL, "graphics(): after idle", "Debug", MB_OK);
-    if (!gx_graphics) RTEX(MultiLang::unable_create_gxgraphics_instance);
-    // MessageBoxA(NULL, "graphics(): gx_graphics valid", "Debug", MB_OK);
+    if (!sdl_graphics) RTEX(MultiLang::unable_create_gxgraphics_instance);
+    // MessageBoxA(NULL, "graphics(): sdl_graphics valid", "Debug", MB_OK);
 
     for (bbImage* img : image_set) {
         img->restoreToDevice();
     }
+    for (bbImage* img : image_set) img->releaseSavedPixels();
 
     curr_clsColor = 0;
     curr_color = 0xffffffff;
-    curr_font = gx_graphics->getDefaultFont();
+    curr_font = sdl_graphics->getDefaultFont();
 
     // MessageBoxA(NULL, "graphics(): after getDefaultFont", "Debug", MB_OK);
-    gxCanvas* buff = (flags & gxGraphics::GRAPHICS_3D) ? gx_graphics->getBackCanvas() : gx_graphics->getFrontCanvas();
+    sdlCanvas* buff = (flags & sdlGraphics::GRAPHICS_3D) ? sdl_graphics->getBackCanvas() : sdl_graphics->getFrontCanvas();
     // MessageBoxA(NULL, "graphics(): before bbSetBuffer", "Debug", MB_OK);
     bbSetBuffer(buff);
     // MessageBoxA(NULL, "graphics(): after bbSetBuffer", "Debug", MB_OK);
@@ -798,13 +822,13 @@ void bbGraphics(int w, int h, int d, int mode)
     int flags = 0;
     switch (mode)
     {
-    case 0:flags |= debug ? gxGraphics::GRAPHICS_WINDOWED : 0; break;
+    case 0:flags |= debug ? sdlGraphics::GRAPHICS_WINDOWED : 0; break;
     case 1:break;
-    case 2:flags |= gxGraphics::GRAPHICS_WINDOWED; break;
-    case 3:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_SCALED; break;
-    case 4:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_BORDERLESS; break;
-    case 6:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_AUTOSUSPEND; break;
-    case 7:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_SCALED | gxGraphics::GRAPHICS_AUTOSUSPEND; break;
+    case 2:flags |= sdlGraphics::GRAPHICS_WINDOWED; break;
+    case 3:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_SCALED; break;
+    case 4:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_BORDERLESS; break;
+    case 6:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_AUTOSUSPEND; break;
+    case 7:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_SCALED | sdlGraphics::GRAPHICS_AUTOSUSPEND; break;
     default:RTEX(MultiLang::illegal_graphics_mode);
     }
     graphics(w, h, d, flags);
@@ -812,17 +836,17 @@ void bbGraphics(int w, int h, int d, int mode)
 
 void bbGraphics3D(int w, int h, int d, int mode)
 {
-    int flags = gxGraphics::GRAPHICS_3D;
+    int flags = sdlGraphics::GRAPHICS_3D;
     switch (mode)
     {
-    case 0:flags |= (debug && bbWindowed3D()) ? gxGraphics::GRAPHICS_WINDOWED : 0; break;
+    case 0:flags |= (debug && bbWindowed3D()) ? sdlGraphics::GRAPHICS_WINDOWED : 0; break;
     case 1:break;
-    case 2:flags |= gxGraphics::GRAPHICS_WINDOWED; break;
-    case 3:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_SCALED; break;
-    case 4:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_BORDERLESS; break;
-    case 5:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_BORDERLESS | gxGraphics::GRAPHICS_SCALED; break;
-    case 6:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_AUTOSUSPEND; break;
-    case 7:flags |= gxGraphics::GRAPHICS_WINDOWED | gxGraphics::GRAPHICS_SCALED | gxGraphics::GRAPHICS_AUTOSUSPEND; break;
+    case 2:flags |= sdlGraphics::GRAPHICS_WINDOWED; break;
+    case 3:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_SCALED; break;
+    case 4:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_BORDERLESS; break;
+    case 5:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_BORDERLESS | sdlGraphics::GRAPHICS_SCALED; break;
+    case 6:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_AUTOSUSPEND; break;
+    case 7:flags |= sdlGraphics::GRAPHICS_WINDOWED | sdlGraphics::GRAPHICS_SCALED | sdlGraphics::GRAPHICS_AUTOSUSPEND; break;
     default:RTEX(MultiLang::illegal_graphics3d_mode);
     }
     graphics(w, h, d, flags);
@@ -833,60 +857,60 @@ void bbGraphics3D(int w, int h, int d, int mode)
 void bbEndGraphics()
 {
     freeGraphics();
-    gx_runtime->closeGraphics(gx_graphics);
-    gx_graphics = gx_runtime->openGraphics(400, 300, 0, 0, gxGraphics::GRAPHICS_WINDOWED | 4);  // 4 = GRAPHICS_3D
-    if (!gx_runtime->idle()) RTEX(0);
-    if (gx_graphics)
+    sdl_runtime->closeGraphics(sdl_graphics);
+    sdl_graphics = sdl_runtime->openGraphics(400, 300, 0, 0, sdlGraphics::GRAPHICS_WINDOWED | 4);  // 4 = GRAPHICS_3D
+    if (!sdl_runtime->idle()) RTEX(0);
+    if (sdl_graphics)
     {
         curr_clsColor = 0;
         curr_color = 0xffffffff;
-        curr_font = gx_graphics->getDefaultFont();
-        bbSetBuffer(gx_graphics->getFrontCanvas());
+        curr_font = sdl_graphics->getDefaultFont();
+        bbSetBuffer(sdl_graphics->getFrontCanvas());
         return;
     }
     RTEX(MultiLang::unable_close_gxgraphics_instance);
 }
 
 void bbSetGraphicsMode(int width, int height, int fullscreen, int borderless = 0) {
-    if (!gx_graphics) {
+    if (!sdl_graphics) {
         ErrorLog("SetGraphicsMode", MultiLang::graphics_not_set);
         return;
     }
     bool fs = (fullscreen != 0);
     bool bl = (borderless != 0);
-    if (!gx_graphics->changeDisplayMode(width, height, fs, bl)) {
+    if (!sdl_graphics->changeDisplayMode(width, height, fs, bl)) {
         ErrorLog("SetGraphicsMode", "Failed to change display mode");
     }
 }
 
 int bbGraphicsLost()
 {
-    return gx_runtime->graphicsLost();
+    return sdl_runtime->graphicsLost();
 }
 
 int bbInFocus()
 {
-    return gx_runtime->focus();
+    return sdl_runtime->focus();
 }
 
 void bbSetDarkMode(int dark_mode) {
-    if (!gx_graphics) {
+    if (!sdl_graphics) {
         ErrorLog("SetDarkMode", MultiLang::graphics_not_set);
         return;
     }
-    if (!gx_graphics->setDarkMode(dark_mode)) {
+    if (!sdl_graphics->setDarkMode(dark_mode)) {
         ErrorLog("SetDarkMode", "Failed to set dark mode");
     }
 }
 
 int bbDesktopWidth()
 {
-    return gx_runtime->desktopWidth();
+    return sdl_runtime->desktopWidth();
 }
 
 int bbDesktopHeight()
 {
-    return gx_runtime->desktopHeight();
+    return sdl_runtime->desktopHeight();
 }
 
 void  bbSetGamma(int r, int g, int b, float dr, float dg, float db)
@@ -897,82 +921,82 @@ void  bbSetGamma(int r, int g, int b, float dr, float dg, float db)
     else if (dg > 255.0f) dg = 255.0f;
     if (db < 0) db = 0;
     else if (db > 255.0f) db = 255.0f;
-    gx_graphics->setGamma(r, g, b, dr, dg, db);
+    sdl_graphics->setGamma(r, g, b, dr, dg, db);
 }
 
 void  bbUpdateGamma(int calibrate)
 {
-    gx_graphics->updateGamma(!!calibrate);
+    sdl_graphics->updateGamma(!!calibrate);
 }
 
 float  bbGammaRed(int n)
 {
     float dr, dg, db;
-    gx_graphics->getGamma(n, n, n, &dr, &dg, &db);
+    sdl_graphics->getGamma(n, n, n, &dr, &dg, &db);
     return dr;
 }
 
 float  bbGammaGreen(int n)
 {
     float dr, dg, db;
-    gx_graphics->getGamma(n, n, n, &dr, &dg, &db);
+    sdl_graphics->getGamma(n, n, n, &dr, &dg, &db);
     return dg;
 }
 
 float  bbGammaBlue(int n)
 {
     float dr, dg, db;
-    gx_graphics->getGamma(n, n, n, &dr, &dg, &db);
+    sdl_graphics->getGamma(n, n, n, &dr, &dg, &db);
     return db;
 }
 
-gxCanvas* bbFrontBuffer()
+sdlCanvas* bbFrontBuffer()
 {
-    return gx_graphics->getFrontCanvas();
+    return sdl_graphics->getFrontCanvas();
 }
 
-gxCanvas* bbBackBuffer()
+sdlCanvas* bbBackBuffer()
 {
-    return gx_graphics->getBackCanvas();
+    return sdl_graphics->getBackCanvas();
 }
 
-void bbLockBuffer(gxCanvas* buff)
+void bbLockBuffer(sdlCanvas* buff)
 {
     if (buff) debugCanvas(buff, "LockBuffer");
-    (buff ? buff : gx_canvas)->lock();
+    (buff ? buff : sdl_canvas)->lock();
 }
 
-void bbUnlockBuffer(gxCanvas* buff)
+void bbUnlockBuffer(sdlCanvas* buff)
 {
     if (buff) debugCanvas(buff, "UnlockBuffer");
-    (buff ? buff : gx_canvas)->unlock();
+    (buff ? buff : sdl_canvas)->unlock();
 }
 
-int bbBufferWidth(gxCanvas* buff)
+int bbBufferWidth(sdlCanvas* buff)
 {
     if (buff) debugCanvas(buff, "BufferWidth");
-    return (buff ? buff : gx_canvas)->getWidth();
+    return (buff ? buff : sdl_canvas)->getWidth();
 }
 
-int bbBufferHeight(gxCanvas* buff)
+int bbBufferHeight(sdlCanvas* buff)
 {
     if (buff) debugCanvas(buff, "BufferHeight");
-    return (buff ? buff : gx_canvas)->getHeight();
+    return (buff ? buff : sdl_canvas)->getHeight();
 }
 
-int bbBufferDepth(gxCanvas* buff) {
+int bbBufferDepth(sdlCanvas* buff) {
     if (buff) debugCanvas(buff, "BufferDepth");
-    return (buff ? buff : gx_canvas)->getDepth();
+    return (buff ? buff : sdl_canvas)->getDepth();
 }
 
-gxCanvas* bbDepthBuffer() {
-    return gx_scene ? gx_scene->getDepthTarget() : 0;
+sdlCanvas* bbDepthBuffer() {
+    return sdl_scene ? sdl_scene->getDepthTarget() : 0;
 }
 
-void bbDrawBuffer(gxCanvas* buff, int x, int y, int width, int height, int blending) {
+void bbDrawBuffer(sdlCanvas* buff, int x, int y, int width, int height, int blending) {
     debugCanvas(buff, "DrawBuffer");
-    if (!gx_canvas) return;
-    gx_canvas->blitstretch(x, y, width, height, buff, 0, 0, buff->getWidth(), buff->getHeight(), blending == 0);
+    if (!sdl_canvas) return;
+    sdl_canvas->blitstretch(x, y, width, height, buff, 0, 0, buff->getWidth(), buff->getHeight(), blending == 0);
 }
 
 bbImage* bbGetImage(int id) {
@@ -992,62 +1016,62 @@ BBStr* bbImageName(bbImage* i) {
     return new BBStr(i->name);
 }
 
-int bbReadPixel(int x, int y, gxCanvas* buff)
+int bbReadPixel(int x, int y, sdlCanvas* buff)
 {
     if (buff) debugCanvas(buff, "ReadPixel");
-    return (buff ? buff : gx_canvas)->getPixel(x, y);
+    return (buff ? buff : sdl_canvas)->getPixel(x, y);
 }
 
-void bbWritePixel(int x, int y, int argb, gxCanvas* buff)
+void bbWritePixel(int x, int y, int argb, sdlCanvas* buff)
 {
     if (buff) debugCanvas(buff, "WritePixel");
-    (buff ? buff : gx_canvas)->setPixel(x, y, argb);
+    (buff ? buff : sdl_canvas)->setPixel(x, y, argb);
 }
 
-int bbReadPixelFast(int x, int y, gxCanvas* buff)
+int bbReadPixelFast(int x, int y, sdlCanvas* buff)
 {
-    return (buff ? buff : gx_canvas)->getPixelFast(x, y);
+    return (buff ? buff : sdl_canvas)->getPixelFast(x, y);
 }
 
-void bbWritePixelFast(int x, int y, int argb, gxCanvas* buff)
+void bbWritePixelFast(int x, int y, int argb, sdlCanvas* buff)
 {
-    (buff ? buff : gx_canvas)->setPixelFast(x, y, argb);
+    (buff ? buff : sdl_canvas)->setPixelFast(x, y, argb);
 }
 
-void bbCopyPixel(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gxCanvas* buff)
+void bbCopyPixel(int src_x, int src_y, sdlCanvas* src, int dest_x, int dest_y, sdlCanvas* buff)
 {
-    (buff ? buff : gx_canvas)->copyPixel(dest_x, dest_y, src ? src : gx_canvas, src_x, src_y);
+    (buff ? buff : sdl_canvas)->copyPixel(dest_x, dest_y, src ? src : sdl_canvas, src_x, src_y);
 }
 
-void bbCopyPixelFast(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gxCanvas* buff)
+void bbCopyPixelFast(int src_x, int src_y, sdlCanvas* src, int dest_x, int dest_y, sdlCanvas* buff)
 {
-    (buff ? buff : gx_canvas)->copyPixelFast(dest_x, dest_y, src ? src : gx_canvas, src_x, src_y);
+    (buff ? buff : sdl_canvas)->copyPixelFast(dest_x, dest_y, src ? src : sdl_canvas, src_x, src_y);
 }
 
 int bbScanLine()
 {
-    return gx_graphics->getScanLine();
+    return sdl_graphics->getScanLine();
 }
 
 void bbVWait(int n)
 {
-    gx_graphics->vwait();
-    if (!gx_runtime->idle()) RTEX(0);
+    sdl_graphics->vwait();
+    if (!sdl_runtime->idle()) RTEX(0);
 }
 
 void bbFlip(int vwait)
 {
     if (fps_cap_ms > 0) {
-        int now = gx_runtime->getMilliSecs();
+        int now = sdl_runtime->getMilliSecs();
         int elapsed = now - last_flip_ms;
         int remaining = fps_cap_ms - elapsed;
         if (remaining > 0) {
-            if (!gx_runtime->delay(remaining)) RTEX(0);
+            if (!sdl_runtime->delay(remaining)) RTEX(0);
         }
     }
-    gx_graphics->flip(vwait ? true : false);
-    if (!gx_runtime->idle()) RTEX(0);
-    int now_ms = gx_runtime->getMilliSecs();
+    sdl_graphics->flip(vwait ? true : false);
+    if (!sdl_runtime->idle()) RTEX(0);
+    int now_ms = sdl_runtime->getMilliSecs();
     last_flip_ms = now_ms;
     if (fps_window_start == 0) {
         fps_window_start = now_ms;
@@ -1065,8 +1089,8 @@ void bbFlip(int vwait)
 
 int bbGetFPS()
 {
-    if (!gx_runtime || !gx_graphics || fps_window_start == 0) return 0;
-    if (gx_runtime->getMilliSecs() - last_flip_ms > 1000) return 0;
+    if (!sdl_runtime || !sdl_graphics || fps_window_start == 0) return 0;
+    if (sdl_runtime->getMilliSecs() - last_flip_ms > 1000) return 0;
     return fps_value;
 }
 
@@ -1078,7 +1102,7 @@ void bbCapFPS(int fps)
     }
     fps_cap_ms = 1000 / fps;
     if (fps_cap_ms < 1) fps_cap_ms = 1;
-    last_flip_ms = gx_runtime->getMilliSecs();
+    last_flip_ms = sdl_runtime->getMilliSecs();
 }
 
 void bbUncapFPS()
@@ -1088,27 +1112,27 @@ void bbUncapFPS()
 
 int bbGraphicsWidth()
 {
-    return gx_graphics->getWidth();
+    return sdl_graphics->getWidth();
 }
 
 int bbGraphicsHeight()
 {
-    return gx_graphics->getHeight();
+    return sdl_graphics->getHeight();
 }
 
 int bbGraphicsDepth()
 {
-    return gx_graphics->getDepth();
+    return sdl_graphics->getDepth();
 }
 
 void bbOrigin(int x, int y)
 {
-    gx_canvas->setOrigin(x, y);
+    sdl_canvas->setOrigin(x, y);
 }
 
 void bbViewport(int x, int y, int w, int h)
 {
-    gx_canvas->setViewport(x, y, w, h);
+    sdl_canvas->setViewport(x, y, w, h);
 }
 
 static RECT intersectRect(const RECT& a, const RECT& b)
@@ -1126,8 +1150,8 @@ static RECT intersectRect(const RECT& a, const RECT& b)
 void bbBeginScrollRect(int x, int y, int w, int h, int scroll_x, int scroll_y)
 {
     int ox, oy, vx, vy, vw, vh;
-    gx_canvas->getOrigin(&ox, &oy);
-    gx_canvas->getViewport(&vx, &vy, &vw, &vh);
+    sdl_canvas->getOrigin(&ox, &oy);
+    sdl_canvas->getViewport(&vx, &vy, &vw, &vh);
 
     ScrollRectState st;
     st.viewport.left = vx; st.viewport.top = vy;
@@ -1140,8 +1164,8 @@ void bbBeginScrollRect(int x, int y, int w, int h, int scroll_x, int scroll_y)
     want.right = want.left + w; want.bottom = want.top + h;
     RECT clip = intersectRect(st.viewport, want);
 
-    gx_canvas->setViewport(clip.left, clip.top, clip.right - clip.left, clip.bottom - clip.top);
-    gx_canvas->setOrigin(ox + x - scroll_x, oy + y - scroll_y);
+    sdl_canvas->setViewport(clip.left, clip.top, clip.right - clip.left, clip.bottom - clip.top);
+    sdl_canvas->setOrigin(ox + x - scroll_x, oy + y - scroll_y);
 }
 
 void bbEndScrollRect()
@@ -1149,34 +1173,34 @@ void bbEndScrollRect()
     if (scroll_rect_stack.empty()) return;
     ScrollRectState st = scroll_rect_stack.back();
     scroll_rect_stack.pop_back();
-    gx_canvas->setViewport(st.viewport.left, st.viewport.top,
+    sdl_canvas->setViewport(st.viewport.left, st.viewport.top,
         st.viewport.right - st.viewport.left, st.viewport.bottom - st.viewport.top);
-    gx_canvas->setOrigin(st.origin_x, st.origin_y);
+    sdl_canvas->setOrigin(st.origin_x, st.origin_y);
 }
 
 void bbColor(int r, int g, int b, int a)
 {
-    gx_canvas->setColor(curr_color = (a << 24) | (r << 16) | (g << 8) | b);
+    sdl_canvas->setColor(curr_color = (a << 24) | (r << 16) | (g << 8) | b);
 }
 
 void bbGetColor(int x, int y)
 {
-    gx_canvas->setColor(curr_color = gx_canvas->getPixel(x, y));
+    sdl_canvas->setColor(curr_color = sdl_canvas->getPixel(x, y));
 }
 
 int bbColorRed()
 {
-    return (gx_canvas->getColor() >> 16) & 0xff;
+    return (sdl_canvas->getColor() >> 16) & 0xff;
 }
 
 int bbColorGreen()
 {
-    return (gx_canvas->getColor() >> 8) & 0xff;
+    return (sdl_canvas->getColor() >> 8) & 0xff;
 }
 
 int bbColorBlue()
 {
-    return gx_canvas->getColor() & 0xff;
+    return sdl_canvas->getColor() & 0xff;
 }
 
 int bbColorAlpha()
@@ -1184,54 +1208,54 @@ int bbColorAlpha()
     return (curr_color >> 24) & 0xff;
 }
 
-void bbSet2DEffect(gxEffect* effect) {
-    if (!gx_canvas) return;
-    gx_canvas->set2DEffect(effect);
+void bbSet2DEffect(sdlEffect* effect) {
+    if (!sdl_canvas) return;
+    sdl_canvas->set2DEffect(effect);
 }
 
 void bbClear2DEffect() {
-    if (!gx_canvas) return;
-    gx_canvas->set2DEffect(nullptr);
+    if (!sdl_canvas) return;
+    sdl_canvas->set2DEffect(nullptr);
 }
 
-gxEffect* bbGet2DEffect() {
-    return gx_canvas ? gx_canvas->get2DEffect() : nullptr;
+sdlEffect* bbGet2DEffect() {
+    return sdl_canvas ? sdl_canvas->get2DEffect() : nullptr;
 }
 
 void bbClsColor(int r, int g, int b, int a)
 {
-    gx_canvas->setClsColor(curr_clsColor = (a << 24) | (r << 16) | (g << 8) | b);
+    sdl_canvas->setClsColor(curr_clsColor = (a << 24) | (r << 16) | (g << 8) | b);
 }
 
-void bbSetFont(gxFont* f)
+void bbSetFont(sdlFont* f)
 {
     debugFont(f, "SetFont");
-    gx_canvas->setFont(curr_font = f);
+    sdl_canvas->setFont(curr_font = f);
 }
 
 void bbCls()
 {
-    gx_canvas->cls();
+    sdl_canvas->cls();
 }
 
 void bbPlot(int x, int y)
 {
-    gx_canvas->plot(x, y);
+    sdl_canvas->plot(x, y);
 }
 
 void bbLine(int x1, int y1, int x2, int y2)
 {
-    gx_canvas->line(x1, y1, x2, y2);
+    sdl_canvas->line(x1, y1, x2, y2);
 }
 
 void bbRect(int x, int y, int w, int h, int solid)
 {
-    gx_canvas->rect(x, y, w, h, solid);
+    sdl_canvas->rect(x, y, w, h, solid);
 }
 
 void bbOval(int x, int y, int w, int h, int solid)
 {
-    gx_canvas->oval(x, y, w, h, solid);
+    sdl_canvas->oval(x, y, w, h, solid);
 }
 
 /*
@@ -1244,7 +1268,7 @@ void bbText(int x, int y, BBStr* str, int xPos, int yPos)
     if (xPos == 1) x -= curr_font->getWidth(*str) / 2;
     if (yPos == 2) y -= curr_font->getHeight();
     if (yPos == 1) y -= curr_font->getHeight() / 2;
-    gx_canvas->text(x, y, *str);
+    sdl_canvas->text(x, y, *str);
     delete str;
 }
 
@@ -1272,51 +1296,51 @@ BBStr* bbGetTextureLoadError() {
     return new BBStr(ddUtil::getLastImageError());
 }
 
-void bbCopyRect(int sx, int sy, int w, int h, int dx, int dy, gxCanvas* src, gxCanvas* dest)
+void bbCopyRect(int sx, int sy, int w, int h, int dx, int dy, sdlCanvas* src, sdlCanvas* dest)
 {
     if (src) debugCanvas(src, "CopyRect");
-    else src = gx_canvas;
+    else src = sdl_canvas;
     if (dest) debugCanvas(dest, "CopyRect");
-    else dest = gx_canvas;
+    else dest = sdl_canvas;
 
-    if (dest->getFlags() & gxCanvas::CANVAS_TEXTURE) {
-        gx_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
+    if (dest->getFlags() & sdlCanvas::CANVAS_TEXTURE) {
+        sdl_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
     }
     else {
         dest->blit(dx, dy, src, sx, sy, w, h, true);
     }
 }
 
-void bbCopyRectStretch(int sx, int sy, int w, int h, int dx, int dy, int dw, int dh, gxCanvas* src, gxCanvas* dest)
+void bbCopyRectStretch(int sx, int sy, int w, int h, int dx, int dy, int dw, int dh, sdlCanvas* src, sdlCanvas* dest)
 {
     if (src) debugCanvas(src, "CopyRectStretch");
-    else src = gx_canvas;
+    else src = sdl_canvas;
     if (dest) debugCanvas(dest, "CopyRectStretch");
-    else dest = gx_canvas;
+    else dest = sdl_canvas;
     dest->blitstretch(dx, dy, dw, dh, src, sx, sy, w, h, true);
 }
 
-void bbDrawBufferRect(gxCanvas* src, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh)
+void bbDrawBufferRect(sdlCanvas* src, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh)
 {
     debugCanvas(src, "DrawBufferRect");
-    gx_canvas->blitstretch(dx, dy, dw, dh, src, sx, sy, sw, sh, !src->hasMask());
+    sdl_canvas->blitstretch(dx, dy, dw, dh, src, sx, sy, sw, sh, !src->hasMask());
 }
 
-gxFont* bbLoadFont(BBStr* name, int height, bool bold, bool italic, bool underlined) {
-    if (!gx_graphics) {
+sdlFont* bbLoadFont(BBStr* name, int height, bool bold, bool italic, bool underlined) {
+    if (!sdl_graphics) {
         delete name;
         return nullptr;
     }
-    gxFont* font = gx_graphics->loadFont(*name, height, bold, italic, underlined);
+    sdlFont* font = sdl_graphics->loadFont(*name, height, bold, italic, underlined);
     delete name;
     return font;
 }
 
-void bbFreeFont(gxFont* f)
+void bbFreeFont(sdlFont* f)
 {
     debugFont(f, "FreeFont");
-    if (f == curr_font) bbSetFont(gx_graphics->getDefaultFont());
-    gx_graphics->freeFont(f);
+    if (f == curr_font) bbSetFont(sdl_graphics->getDefaultFont());
+    sdl_graphics->freeFont(f);
 }
 
 int bbFontWidth()
@@ -1329,7 +1353,7 @@ int bbFontHeight()
     return curr_font->getHeight();
 }
 
-gxFont* bbGetFont() {
+sdlFont* bbGetFont() {
     return curr_font;
 }
 
@@ -1349,61 +1373,61 @@ BBStr* bbFontPath(BBStr* facename) {
     return new BBStr(UTF8::getSystemFontFile(facename->c_str()).c_str());
 }
 
-gxMovie* bbOpenMovie(BBStr* s)
+sdlMovie* bbOpenMovie(BBStr* s)
 {
-    gxMovie* movie = gx_graphics->openMovie(*s, 0); delete s;
+    sdlMovie* movie = sdl_graphics->openMovie(*s, 0); delete s;
     return movie;
 }
 
-int bbDrawMovie(gxMovie* movie, int x, int y, int w, int h)
+int bbDrawMovie(sdlMovie* movie, int x, int y, int w, int h)
 {
     if (w < 0) w = movie->getWidth();
     if (h < 0) h = movie->getHeight();
-    int playing = movie->draw(gx_canvas, x, y, w, h);
-    if (!gx_runtime->idle()) RTEX(0);
+    int playing = movie->draw(sdl_canvas, x, y, w, h);
+    if (!sdl_runtime->idle()) RTEX(0);
     return playing;
 }
 
-int bbMovieWidth(gxMovie* movie)
+int bbMovieWidth(sdlMovie* movie)
 {
     return movie->getWidth();
 }
 
-int bbMovieHeight(gxMovie* movie)
+int bbMovieHeight(sdlMovie* movie)
 {
     return movie->getHeight();
 }
 
-int bbMoviePlaying(gxMovie* movie)
+int bbMoviePlaying(sdlMovie* movie)
 {
     return movie->isPlaying();
 }
 
-int bbMovieTime(gxMovie* movie)
+int bbMovieTime(sdlMovie* movie)
 {
     return (int)(movie->getTime() * 1000.0);
 }
 
-int bbMovieLength(gxMovie* movie)
+int bbMovieLength(sdlMovie* movie)
 {
     return (int)(movie->getLength() * 1000.0);
 }
 
-void bbSeekMovie(gxMovie* movie, int time)
+void bbSeekMovie(sdlMovie* movie, int time)
 {
     movie->setTime(time / 1000.0);
 }
 
-void bbCloseMovie(gxMovie* movie)
+void bbCloseMovie(sdlMovie* movie)
 {
-    gx_graphics->closeMovie(movie);
+    sdl_graphics->closeMovie(movie);
 }
 
 bbImage* bbLoadImage(BBStr* s)
 {
     std::string path = *s;
     delete s;
-    gxCanvas* c = gx_graphics->loadCanvas(path, 0);
+    sdlCanvas* c = sdl_graphics->loadCanvas(path, 0);
     if (!c) {
         std::string errMsg = "Failed to load image: " + path;
         const std::string& libErr = ddUtil::getLastImageError();
@@ -1412,7 +1436,7 @@ bbImage* bbLoadImage(BBStr* s)
     }
     c->backup();
     if (auto_midhandle) c->setHandle(c->getWidth() / 2, c->getHeight() / 2);
-    std::vector<gxCanvas*> frames;
+    std::vector<sdlCanvas*> frames;
     frames.push_back(c);
     bbImage* i = new bbImage(frames);
     i->name = path;
@@ -1424,7 +1448,7 @@ bbImage* bbLoadImageFlag(BBStr* s, int flags)
 {
     std::string path = *s;
     delete s;
-    gxCanvas* c = gx_graphics->loadCanvas(path, flags);
+    sdlCanvas* c = sdl_graphics->loadCanvas(path, flags);
     if (!c) {
         std::string errMsg = "Failed to load image: " + path;
         const std::string& libErr = ddUtil::getLastImageError();
@@ -1433,7 +1457,7 @@ bbImage* bbLoadImageFlag(BBStr* s, int flags)
     }
     c->backup();
     if (auto_midhandle) c->setHandle(c->getWidth() / 2, c->getHeight() / 2);
-    std::vector<gxCanvas*> frames;
+    std::vector<sdlCanvas*> frames;
     frames.push_back(c);
     bbImage* i = new bbImage(frames);
     i->name = path;
@@ -1445,62 +1469,68 @@ bbImage* bbLoadAnimImage(BBStr* s, int w, int h, int first, int cnt) {
     std::string path = *s;
     delete s;
 
-    std::vector<IDirect3DTexture9*> gifFrames;
-    int gifW = 0, gifH = 0;
-    if (ddUtil::loadTextureFrames(path, gxCanvas::CANVAS_TEXTURE | gxCanvas::CANVAS_TEX_ALPHA, gx_graphics, gifFrames, &gifW, &gifH)) {
-        int total = (int)gifFrames.size();
-        if (first < 0) first = 0;
-        if (cnt <= 0) cnt = total - first;
-        if (first + cnt > total) cnt = total - first;
-        if (cnt <= 0) {
-            for (IDirect3DTexture9* t : gifFrames) t->Release();
+    if (sdl_graphics->runtime && sdl_graphics->runtime->sdlGpu) {
+        if (w <= 0 || h <= 0 || first < 0 || cnt <= 0) return 0;
+        sdlCanvas* pic = sdl_graphics->loadCanvas(path, 0);
+        if (!pic) return 0;
+        int srcFlags = pic->getFlags() & sdlCanvas::CANVAS_TEX_ALPHA;
+        int fpr = pic->getWidth() / w;
+        int fpp = pic->getHeight() / h * fpr;
+        if (fpr <= 0 || first + cnt > fpp) {
+            sdl_graphics->freeCanvas(pic);
             return 0;
         }
-
-        std::vector<gxCanvas*> frames;
+        int src_x = first % fpr * w;
+        int src_y = first / fpr * h;
+        std::vector<sdlCanvas*> frames;
         for (int k = 0; k < cnt; ++k) {
-            gxCanvas* c = new gxCanvas(gx_graphics, gifFrames[first + k], gxCanvas::CANVAS_TEXTURE | gxCanvas::CANVAS_TEX_ALPHA);
-            gx_graphics->adoptCanvas(c);
-            c->setLogicalSize(gifW, gifH);
+            sdlCanvas* c = sdl_graphics->createCanvas(w, h, sdlCanvas::CANVAS_TEXTURE | srcFlags);
+            if (!c) {
+                for (int i = 0; i < k; ++i) sdl_graphics->freeCanvas(frames[i]);
+                sdl_graphics->freeCanvas(pic);
+                return 0;
+            }
+            c->setLogicalSize(w, h);
+            sdl_graphics->copy(c, 0, 0, w, h, pic, src_x, src_y, w, h);
             c->backup();
-            if (auto_midhandle) c->setHandle(gifW / 2, gifH / 2);
+            if (auto_midhandle) c->setHandle(w / 2, h / 2);
             frames.push_back(c);
+            src_x += w;
+            if (src_x + w > pic->getWidth()) { src_x = 0; src_y += h; }
         }
-        for (int k = 0; k < first; ++k) gifFrames[k]->Release();
-        for (int k = first + cnt; k < total; ++k) gifFrames[k]->Release();
-
+        sdl_graphics->freeCanvas(pic);
         bbImage* image = new bbImage(frames);
         image_set.insert(image);
         return image;
     }
 
-    int srcFlags = ddUtil::hasActualAlpha(path) ? gxCanvas::CANVAS_TEX_ALPHA : 0;
+    int srcFlags = ddUtil::hasActualAlpha(path) ? sdlCanvas::CANVAS_TEX_ALPHA : 0;
 
-    IDirect3DTexture9* picTex = ddUtil::loadTextureSurface(path, srcFlags, gx_graphics, false);
+    IDirect3DTexture9* picTex = ddUtil::loadTextureSurface(path, srcFlags, sdl_graphics, false);
     if (!picTex) return 0;
-    gxCanvas* pic = new gxCanvas(gx_graphics, picTex, gxCanvas::CANVAS_TEXTURE | srcFlags);
-    gx_graphics->adoptCanvas(pic);
+    sdlCanvas* pic = new sdlCanvas(sdl_graphics, picTex, sdlCanvas::CANVAS_TEXTURE | srcFlags);
+    sdl_graphics->adoptCanvas(pic);
 
     int fpr = pic->getWidth() / w;
     int fpp = pic->getHeight() / h * fpr;
     if (first + cnt > fpp) {
-        gx_graphics->freeCanvas(pic);
+        sdl_graphics->freeCanvas(pic);
         return 0;
     }
 
     int src_x = first % fpr * w;
     int src_y = first / fpr * h;
 
-    std::vector<gxCanvas*> frames;
+    std::vector<sdlCanvas*> frames;
     for (int k = 0; k < cnt; ++k) {
-        IDirect3DTexture9* tex = ddUtil::createTextureSurface(w, h, gxCanvas::CANVAS_TEXTURE | srcFlags, gx_graphics, false);
+        IDirect3DTexture9* tex = ddUtil::createTextureSurface(w, h, sdlCanvas::CANVAS_TEXTURE | srcFlags, sdl_graphics, false);
         if (!tex) {
-            for (int i = 0; i < k; ++i) gx_graphics->freeCanvas(frames[i]);
-            gx_graphics->freeCanvas(pic);
+            for (int i = 0; i < k; ++i) sdl_graphics->freeCanvas(frames[i]);
+            sdl_graphics->freeCanvas(pic);
             return 0;
         }
-        gxCanvas* c = new gxCanvas(gx_graphics, tex, gxCanvas::CANVAS_TEXTURE | srcFlags);
-        gx_graphics->adoptCanvas(c);
+        sdlCanvas* c = new sdlCanvas(sdl_graphics, tex, sdlCanvas::CANVAS_TEXTURE | srcFlags);
+        sdl_graphics->adoptCanvas(c);
 
         c->setLogicalSize(w, h);
 
@@ -1511,7 +1541,7 @@ bbImage* bbLoadAnimImage(BBStr* s, int w, int h, int first, int cnt) {
         src_x += w;
         if (src_x + w > pic->getWidth()) { src_x = 0; src_y += h; }
     }
-    gx_graphics->freeCanvas(pic);
+    sdl_graphics->freeCanvas(pic);
 
     bbImage* image = new bbImage(frames);
     image_set.insert(image);
@@ -1532,12 +1562,23 @@ Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int fw, int fh, int first
     }
 
     int imgW = 0, imgH = 0;
-    IDirect3DTexture9* picTex = ddUtil::loadTextureSurface(path, flags, gx_graphics, false, &imgW, &imgH);
-    if (!picTex) {
-        ErrorLog("LoadAnimTextureGrid", "Failed to load image");
-        return nullptr;
+    if (sdl_graphics->runtime && sdl_graphics->runtime->sdlGpu) {
+        auto probe = DecodeImageFile(path);
+        if (!probe) {
+            ErrorLog("LoadAnimTextureGrid", "Failed to load image");
+            return nullptr;
+        }
+        imgW = probe->w;
+        imgH = probe->h;
     }
-    picTex->Release();
+    else {
+        IDirect3DTexture9* picTex = ddUtil::loadTextureSurface(path, flags, sdl_graphics, false, &imgW, &imgH);
+        if (!picTex) {
+            ErrorLog("LoadAnimTextureGrid", "Failed to load image");
+            return nullptr;
+        }
+        picTex->Release();
+    }
 
     int frameW = fw;
     int frameH = fh;
@@ -1565,15 +1606,15 @@ Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int fw, int fh, int first
 bbImage* bbCopyImage(bbImage* i)
 {
     debugImage(i, "CopyImage");
-    std::vector<gxCanvas*> frames;
-    const std::vector<gxCanvas*>& f = i->getFrames();
+    std::vector<sdlCanvas*> frames;
+    const std::vector<sdlCanvas*>& f = i->getFrames();
     for (int k = 0; k < f.size(); ++k)
     {
-        gxCanvas* t = f[k];
-        gxCanvas* c = gx_graphics->createCanvas(t->getWidth(), t->getHeight(), 0);
+        sdlCanvas* t = f[k];
+        sdlCanvas* c = sdl_graphics->createCanvas(t->getWidth(), t->getHeight(), 0);
         if (!c)
         {
-            for (--k; k >= 0; --k) gx_graphics->freeCanvas(frames[k]);
+            for (--k; k >= 0; --k) sdl_graphics->freeCanvas(frames[k]);
             return 0;
         }
         int x, y;
@@ -1597,13 +1638,13 @@ bbImage* bbCopyImage(bbImage* i)
 
 bbImage* bbCreateImage(int w, int h, int n)
 {
-    std::vector<gxCanvas*> frames;
+    std::vector<sdlCanvas*> frames;
     for (int k = 0; k < n; ++k)
     {
-        gxCanvas* c = gx_graphics->createCanvas(w, h, 0);
+        sdlCanvas* c = sdl_graphics->createCanvas(w, h, 0);
         if (!c)
         {
-            for (--k; k >= 0; --k) gx_graphics->freeCanvas(frames[k]);
+            for (--k; k >= 0; --k) sdl_graphics->freeCanvas(frames[k]);
             return 0;
         }
         if (auto_dirty) c->backup();
@@ -1617,13 +1658,13 @@ bbImage* bbCreateImage(int w, int h, int n)
 
 bbImage* bbCreateImageFlag(int w, int h, int n, int flags)
 {
-    std::vector<gxCanvas*> frames;
+    std::vector<sdlCanvas*> frames;
     for (int k = 0; k < n; ++k)
     {
-        gxCanvas* c = gx_graphics->createCanvas(w, h, flags);
+        sdlCanvas* c = sdl_graphics->createCanvas(w, h, flags);
         if (!c)
         {
-            for (--k; k >= 0; --k) gx_graphics->freeCanvas(frames[k]);
+            for (--k; k >= 0; --k) sdl_graphics->freeCanvas(frames[k]);
             return 0;
         }
         if (auto_dirty) c->backup();
@@ -1638,12 +1679,12 @@ bbImage* bbCreateImageFlag(int w, int h, int n, int flags)
 void bbFreeImage(bbImage* i)
 {
     if (!image_set.erase(i)) return;
-    const std::vector<gxCanvas*>& f = i->getFrames();
+    const std::vector<sdlCanvas*>& f = i->getFrames();
     for (int k = 0; k < f.size(); ++k)
     {
-        if (f[k] == gx_canvas)
+        if (f[k] == sdl_canvas)
         {
-            bbSetBuffer(gx_graphics->getFrontCanvas());
+            bbSetBuffer(sdl_graphics->getFrontCanvas());
             break;
         }
     }
@@ -1654,25 +1695,25 @@ int bbSaveImage(bbImage* i, BBStr* str, int n)
 {
     debugImage(i, "SaveImage", n);
     std::string t = *str; delete str;
-    gxCanvas* c = i->getFrames()[n];
+    sdlCanvas* c = i->getFrames()[n];
     return saveCanvas(c, t) ? 1 : 0;
 }
 
 void bbGrabImage(bbImage* i, int x, int y, int n)
 {
     debugImage(i, "GrabImage", n);
-    gxCanvas* c = i->getFrames()[n];
+    sdlCanvas* c = i->getFrames()[n];
     int src_ox, src_oy, dst_hx, dst_hy;
-    gx_canvas->getOrigin(&src_ox, &src_oy);
+    sdl_canvas->getOrigin(&src_ox, &src_oy);
     c->getHandle(&dst_hx, &dst_hy);
     x += src_ox - dst_hx; y += src_oy - dst_hy;
     c->setViewport(0, 0, c->getWidth(), c->getHeight());
-    c->blit(0, 0, gx_canvas, x, y, c->getWidth(), c->getHeight(), true);
+    c->blit(0, 0, sdl_canvas, x, y, c->getWidth(), c->getHeight(), true);
     i->saveOrigPixels();
     if (auto_dirty) c->backup();
 }
 
-gxCanvas* bbImageBuffer(bbImage* i, int n)
+sdlCanvas* bbImageBuffer(bbImage* i, int n)
 {
     debugImage(i, "ImageBuffer", n);
     return i->getFrames()[n];
@@ -1681,7 +1722,7 @@ gxCanvas* bbImageBuffer(bbImage* i, int n)
 void bbDrawImage(bbImage* i, int x, int y, int frame)
 {
     debugImage(i, "DrawImage", frame);
-    gxCanvas* c = i->getFrames()[frame];
+    sdlCanvas* c = i->getFrames()[frame];
     int w = c->getWidth(), h = c->getHeight();
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
@@ -1693,28 +1734,28 @@ void bbDrawImage(bbImage* i, int x, int y, int frame)
             int dh = (int)(h * sy + 0.5f);
             int shx = (int)(hx * sx + 0.5f);
             int shy = (int)(hy * sy + 0.5f);
-            bool solid = !c->hasMask() && !((c->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask());
-            gx_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, 0, 0, w, h, solid);
+            bool solid = !c->hasMask() && !((c->getFlags() & sdlCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask());
+            sdl_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, 0, 0, w, h, solid);
             return;
         }
-        gx_canvas->blitTForm(x, y, c, 0, 0, w, h, m, filter);
+        sdl_canvas->blitTForm(x, y, c, 0, 0, w, h, m, filter);
         return;
     }
     if (c->hasMask()) {
-        gx_canvas->blit(x, y, c, 0, 0, w, h, false);
+        sdl_canvas->blit(x, y, c, 0, 0, w, h, false);
     }
-    else if ((c->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask()) {
-        gx_canvas->blitAlpha(x, y, c, 0, 0, w, h, 0xffffffff, false);
+    else if ((c->getFlags() & sdlCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask()) {
+        sdl_canvas->blitAlpha(x, y, c, 0, 0, w, h, 0xffffffff, false);
     }
     else {
-        gx_canvas->blit(x, y, c, 0, 0, w, h, true);
+        sdl_canvas->blit(x, y, c, 0, 0, w, h, true);
     }
 }
 
 void bbDrawBlock(bbImage* i, int x, int y, int frame)
 {
     debugImage(i, "DrawBlock", frame);
-    gxCanvas* c = i->getFrames()[frame];
+    sdlCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
         bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
@@ -1726,26 +1767,26 @@ void bbDrawBlock(bbImage* i, int x, int y, int frame)
             int dh = (int)(h * sy + 0.5f);
             int shx = (int)(hx * sx + 0.5f);
             int shy = (int)(hy * sy + 0.5f);
-            gx_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, 0, 0, w, h, true);
+            sdl_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, 0, 0, w, h, true);
             return;
         }
-        gx_canvas->blitTForm(x, y, c, 0, 0, c->getWidth(), c->getHeight(), m, filter);
+        sdl_canvas->blitTForm(x, y, c, 0, 0, c->getWidth(), c->getHeight(), m, filter);
         return;
     }
-    gx_canvas->blit(x, y, c, 0, 0, c->getWidth(), c->getHeight(), true);
+    sdl_canvas->blit(x, y, c, 0, 0, c->getWidth(), c->getHeight(), true);
 }
 
 static void tile(bbImage* i, int x, int y, int frame, bool solid)
 {
-    gxCanvas* c = i->getFrames()[frame];
+    sdlCanvas* c = i->getFrames()[frame];
 
     int hx, hy;
     c->getHandle(&hx, &hy);
     int w = c->getWidth(), h = c->getHeight();
 
     int ox, oy, vp_x, vp_y, vp_w, vp_h;
-    gx_canvas->getOrigin(&ox, &oy);
-    gx_canvas->getViewport(&vp_x, &vp_y, &vp_w, &vp_h);
+    sdl_canvas->getOrigin(&ox, &oy);
+    sdl_canvas->getViewport(&vp_x, &vp_y, &vp_w, &vp_h);
     int dx = vp_x - ox + hx;
     int dy = vp_y - oy + hy;
     x -= dx;
@@ -1757,7 +1798,7 @@ static void tile(bbImage* i, int x, int y, int frame, bool solid)
     {
         for (x = -w; x < vp_w; x += w)
         {
-            gx_canvas->blit(x + dx, y + dy, c, 0, 0, w, h, solid);
+            sdl_canvas->blit(x + dx, y + dy, c, 0, 0, w, h, solid);
         }
     }
 }
@@ -1777,7 +1818,7 @@ void bbTileBlock(bbImage* i, int x, int y, int frame)
 void bbDrawImageRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_h, int frame)
 {
     debugImage(i, "DrawImageRect", frame);
-    gxCanvas* c = i->getFrames()[frame];
+    sdlCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
         bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
@@ -1788,35 +1829,35 @@ void bbDrawImageRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_
             int dh = (int)(r_h * sy + 0.5f);
             int shx = (int)(hx * sx + 0.5f);
             int shy = (int)(hy * sy + 0.5f);
-            bool solid = !c->hasMask() && !((c->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask());
-            gx_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, r_x, r_y, r_w, r_h, solid);
+            bool solid = !c->hasMask() && !((c->getFlags() & sdlCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask());
+            sdl_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, r_x, r_y, r_w, r_h, solid);
             return;
         }
-        gx_canvas->blitTForm(x, y, c, r_x, r_y, r_w, r_h, m, filter);
+        sdl_canvas->blitTForm(x, y, c, r_x, r_y, r_w, r_h, m, filter);
         return;
     }
     if (c->hasMask()) {
-        gx_canvas->blit(x, y, c, r_x, r_y, r_w, r_h, false);
+        sdl_canvas->blit(x, y, c, r_x, r_y, r_w, r_h, false);
     }
-    else if ((c->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask()) {
-        gx_canvas->blitAlpha(x, y, c, r_x, r_y, r_w, r_h, 0xffffffff, false);
+    else if ((c->getFlags() & sdlCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask()) {
+        sdl_canvas->blitAlpha(x, y, c, r_x, r_y, r_w, r_h, 0xffffffff, false);
     }
     else {
-        gx_canvas->blit(x, y, c, r_x, r_y, r_w, r_h, true);
+        sdl_canvas->blit(x, y, c, r_x, r_y, r_w, r_h, true);
     }
 }
 
 void bbDrawImageRectStretch(bbImage* i, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh)
 {
     debugImage(i, "DrawImageRectStretch", 0);
-    gxCanvas* c = i->getFrames()[0];
-    gx_canvas->blitstretch(dx, dy, dw, dh, c, sx, sy, sw, sh, true);
+    sdlCanvas* c = i->getFrames()[0];
+    sdl_canvas->blitstretch(dx, dy, dw, dh, c, sx, sy, sw, sh, true);
 }
 
 void bbDrawBlockRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_h, int frame)
 {
     debugImage(i, "DrawBlockRect", frame);
-    gxCanvas* c = i->getFrames()[frame];
+    sdlCanvas* c = i->getFrames()[frame];
     if (!i->isIdentity()) {
         float m[2][2]; i->getCombinedMat(m);
         bool isScaleOnly = fabsf(m[0][1]) < 1e-6f && fabsf(m[1][0]) < 1e-6f && m[0][0] > 0.0f && m[1][1] > 0.0f;
@@ -1827,34 +1868,34 @@ void bbDrawBlockRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_
             int dh = (int)(r_h * sy + 0.5f);
             int shx = (int)(hx * sx + 0.5f);
             int shy = (int)(hy * sy + 0.5f);
-            gx_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, r_x, r_y, r_w, r_h, true);
+            sdl_canvas->blitstretch(x + hx - shx, y + hy - shy, dw, dh, c, r_x, r_y, r_w, r_h, true);
             return;
         }
-        gx_canvas->blitTForm(x, y, c, r_x, r_y, r_w, r_h, m, filter);
+        sdl_canvas->blitTForm(x, y, c, r_x, r_y, r_w, r_h, m, filter);
         return;
     }
-    gx_canvas->blit(x, y, c, r_x, r_y, r_w, r_h, true);
+    sdl_canvas->blit(x, y, c, r_x, r_y, r_w, r_h, true);
 }
 
 void bbMaskImage(bbImage* i, int r, int g, int b)
 {
     debugImage(i, "MaskImage");
     unsigned argb = (r << 16) | (g << 8) | b;
-    const std::vector<gxCanvas*>& f = i->getFrames();
+    const std::vector<sdlCanvas*>& f = i->getFrames();
     for (int k = 0; k < f.size(); ++k) f[k]->setMask(argb);
 }
 
 void bbHandleImage(bbImage* i, int x, int y)
 {
     debugImage(i, "HandleImage");
-    const std::vector<gxCanvas*>& f = i->getFrames();
+    const std::vector<sdlCanvas*>& f = i->getFrames();
     for (int k = 0; k < f.size(); ++k) f[k]->setHandle(x, y);
 }
 
 void bbMidHandle(bbImage* i)
 {
     debugImage(i, "MidHandle");
-    const std::vector<gxCanvas*>& f = i->getFrames();
+    const std::vector<sdlCanvas*>& f = i->getFrames();
     for (int k = 0; k < f.size(); ++k) f[k]->setHandle(f[k]->getWidth() / 2, f[k]->getHeight() / 2);
 }
 
@@ -1866,7 +1907,7 @@ void bbAutoMidHandle(int enable)
 int bbImageWidth(bbImage* i)
 {
     debugImage(i, "ImageWidth");
-    gxCanvas* c = i->getFrames()[0];
+    sdlCanvas* c = i->getFrames()[0];
     int hx, hy; c->getHandle(&hx, &hy);
     int w = c->getWidth(), h = c->getHeight();
     if (i->isIdentity()) return (int)((w - hx) + 0.5f);
@@ -1885,7 +1926,7 @@ int bbImageWidth(bbImage* i)
 int bbImageHeight(bbImage* i)
 {
     debugImage(i, "ImageHeight");
-    gxCanvas* c = i->getFrames()[0];
+    sdlCanvas* c = i->getFrames()[0];
     int hx, hy; c->getHandle(&hx, &hy);
     int w = c->getWidth(), h = c->getHeight();
     if (i->isIdentity()) return (int)((h - hy) + 0.5f);
@@ -1916,7 +1957,7 @@ int bbImageYHandle(bbImage* i)
     return y;
 }
 
-static void getImageQuad(bbImage* i, gxCanvas* c, int x, int y, vec2 out[4]) {
+static void getImageQuad(bbImage* i, sdlCanvas* c, int x, int y, vec2 out[4]) {
     int hx, hy; c->getHandle(&hx, &hy);
     int w = c->getWidth(), h = c->getHeight();
     float m[2][2]; i->getCombinedMat(m);
@@ -1960,8 +2001,8 @@ int bbImagesOverlap(bbImage* i1, int x1, int y1, bbImage* i2, int x2, int y2)
 {
     debugImage(i1, "ImagesOverlap");
     debugImage(i2, "ImagesOverlap");
-    gxCanvas* c1 = i1->getFrames()[0];
-    gxCanvas* c2 = i2->getFrames()[0];
+    sdlCanvas* c1 = i1->getFrames()[0];
+    sdlCanvas* c2 = i2->getFrames()[0];
     if (!i1->isIdentity() || !i2->isIdentity()) {
         vec2 q1[4], q2[4];
         getImageQuad(i1, c1, x1, y1, q1);
@@ -1975,8 +2016,8 @@ int bbImagesCollide(bbImage* i1, int x1, int y1, int f1, bbImage* i2, int x2, in
 {
     debugImage(i1, "ImagesCollide", f1);
     debugImage(i2, "ImagesCollide", f2);
-    gxCanvas* c1 = i1->getFrames()[f1];
-    gxCanvas* c2 = i2->getFrames()[f2];
+    sdlCanvas* c1 = i1->getFrames()[f1];
+    sdlCanvas* c2 = i2->getFrames()[f2];
     if (!i1->isIdentity() || !i2->isIdentity()) {
         vec2 q1[4], q2[4];
         getImageQuad(i1, c1, x1, y1, q1);
@@ -1995,7 +2036,7 @@ int bbRectsOverlap(int x1, int y1, int w1, int h1, int x2, int y2, int w2, int h
 int bbImageRectOverlap(bbImage* i, int x, int y, int x2, int y2, int w2, int h2)
 {
     debugImage(i, "ImageRectOverlap");
-    gxCanvas* c = i->getFrames()[0];
+    sdlCanvas* c = i->getFrames()[0];
     if (!i->isIdentity()) {
         vec2 q[4]; getImageQuad(i, c, x, y, q);
         vec2 r[4] = { {(float)x2,(float)y2}, {(float)(x2+w2),(float)y2}, {(float)(x2+w2),(float)(y2+h2)}, {(float)x2,(float)(y2+h2)} };
@@ -2007,7 +2048,7 @@ int bbImageRectOverlap(bbImage* i, int x, int y, int x2, int y2, int w2, int h2)
 int bbImageRectCollide(bbImage* i, int x, int y, int f, int x2, int y2, int w2, int h2)
 {
     debugImage(i, "ImageRectCollide", f);
-    gxCanvas* c = i->getFrames()[f];
+    sdlCanvas* c = i->getFrames()[f];
     if (!i->isIdentity()) {
         vec2 q[4]; getImageQuad(i, c, x, y, q);
         vec2 r[4] = { {(float)x2,(float)y2}, {(float)(x2+w2),(float)y2}, {(float)(x2+w2),(float)(y2+h2)}, {(float)x2,(float)(y2+h2)} };
@@ -2053,7 +2094,7 @@ void bbScaleImageFast(bbImage* i, float xscale, float yscale)
 void bbResizeImageFast(bbImage* i, float w, float h)
 {
     debugImage(i, "ResizeImageFast");
-    gxCanvas* c = i->getFrames()[0];
+    sdlCanvas* c = i->getFrames()[0];
     int cw = c->getWidth(), ch = c->getHeight();
     if (cw < 1) cw = 1;
     if (ch < 1) ch = 1;
@@ -2144,10 +2185,10 @@ void bbResizeImage(bbImage* i, float w, float h)
 
     i->saveOrigPixels();
 
-    const std::vector<gxCanvas*>& f = i->getFrames();
+    const std::vector<sdlCanvas*>& f = i->getFrames();
     for (int k = 0; k < (int)f.size(); ++k)
     {
-        gxCanvas* c = f[k];
+        sdlCanvas* c = f[k];
         int hx, hy; c->getHandle(&hx, &hy);
 
         const std::vector<uint32_t>& src = i->getOrigPixels(k);
@@ -2160,8 +2201,8 @@ void bbResizeImage(bbImage* i, float w, float h)
         }
         const std::vector<uint32_t>& sampleSrc = mipData.empty() ? src : mipData;
 
-        int srcFlags = c->getFlags() & (gxCanvas::CANVAS_TEXTURE | gxCanvas::CANVAS_TEX_ALPHA);
-        gxCanvas* t = gx_graphics->createCanvas(iw, ih, srcFlags);
+        int srcFlags = c->getFlags() & (sdlCanvas::CANVAS_TEXTURE | sdlCanvas::CANVAS_TEX_ALPHA);
+        sdlCanvas* t = sdl_graphics->createCanvas(iw, ih, srcFlags);
         t->setHandle(hx, hy);
         t->copyMaskFrom(c);
 
@@ -2197,18 +2238,18 @@ void bbTFormFilter(int enable)
 }
 
 BBStr* bbGetEffectError() {
-    if (gx_graphics) {
-        return new BBStr(gx_graphics->getLastEffectError());
+    if (sdl_graphics) {
+        return new BBStr(sdl_graphics->getLastEffectError());
     }
     return new BBStr("");
 }
 
 static int p_ox, p_oy, p_hx, p_hy, p_vpx, p_vpy, p_vpw, p_vph;
 
-static gxCanvas* startPrinting()
+static sdlCanvas* startPrinting()
 {
 
-    gxCanvas* c = gx_graphics->getFrontCanvas();
+    sdlCanvas* c = sdl_graphics->getFrontCanvas();
 
     c->lock();
     c->unlock();
@@ -2220,7 +2261,7 @@ static gxCanvas* startPrinting()
     c->setOrigin(0, 0);
     c->setHandle(0, 0);
     c->setViewport(0, 0, c->getWidth(), c->getHeight());
-    if (c != gx_canvas)
+    if (c != sdl_canvas)
     {
         c->setFont(curr_font);
         c->setColor(curr_color);
@@ -2238,18 +2279,18 @@ static gxCanvas* startPrinting()
     return c;
 }
 
-static void endPrinting(gxCanvas* c)
+static void endPrinting(sdlCanvas* c)
 {
     c->setViewport(p_vpx, p_vpy, p_vpw, p_vph);
     c->setHandle(p_hx, p_hy);
     c->setOrigin(p_ox, p_oy);
-    if (c == gx_canvas) c->setColor(curr_color);
-    if (!gx_runtime->idle()) RTEX(0);
+    if (c == sdl_canvas) c->setColor(curr_color);
+    if (!sdl_runtime->idle()) RTEX(0);
 }
 
 void bbWrite(BBStr* str)
 {
-    gxCanvas* c = startPrinting();
+    sdlCanvas* c = startPrinting();
     c->text(curs_x, curs_y, *str);
     curs_x += curr_font->getWidth(*str);
     endPrinting(c);
@@ -2258,7 +2299,7 @@ void bbWrite(BBStr* str)
 
 void bbPrint(BBStr* str)
 {
-    gxCanvas* c = startPrinting();
+    sdlCanvas* c = startPrinting();
     c->text(curs_x, curs_y, *str);
     curs_x = 0;
     curs_y += curr_font->getHeight() + 3; //avoid multiline overlapping by adding 3 to the font height
@@ -2268,14 +2309,14 @@ void bbPrint(BBStr* str)
 
 BBStr* bbInput(BBStr* prompt)
 {
-    gxCanvas* c = startPrinting();
+    sdlCanvas* c = startPrinting();
     std::string t = *prompt; delete prompt;
 
     //get temp canvas
     if (!p_canvas || p_canvas->getWidth() < c->getWidth() || p_canvas->getHeight() < curr_font->getHeight() * 2)
     {
-        if (p_canvas) gx_graphics->freeCanvas(p_canvas);
-        p_canvas = gx_graphics->createCanvas(c->getWidth(), curr_font->getHeight() * 2, 0);
+        if (p_canvas) sdl_graphics->freeCanvas(p_canvas);
+        p_canvas = sdl_graphics->createCanvas(c->getWidth(), curr_font->getHeight() * 2, 0);
         if (!p_canvas)
         {
             endPrinting(c);
@@ -2302,11 +2343,11 @@ BBStr* bbInput(BBStr* prompt)
         int cw = curr_font->getWidth(curs < str.size() ? str.substr(curs, 1) : "X");
 
         //wait for a key
-        int key = 0, st = gx_runtime->getMilliSecs(), tc = -1;
+        int key = 0, st = sdl_runtime->getMilliSecs(), tc = -1;
 
-        while (gx_runtime->idle())
+        while (sdl_runtime->idle())
         {
-            int t = gx_runtime->getMilliSecs();
+            int t = sdl_runtime->getMilliSecs();
             int n = (t - st) / 320;
             if (n != tc)
             {
@@ -2320,11 +2361,11 @@ BBStr* bbInput(BBStr* prompt)
                     c->setColor(curr_color);
                     c->text(cx, curs_y, str.substr(curs, 1));
                 }
-                gx_graphics->flip(false);
+                sdl_graphics->flip(false);
             }
-            if (key = gx_keyboard->getKey())
+            if (key = sdl_keyboard->getKey())
             {
-                if (int asc = gx_input->toUnicode(key))
+                if (int asc = sdl_input->toUnicode(key))
                 {
                     rep_delay = 280;
                     last_key = key;
@@ -2333,11 +2374,11 @@ BBStr* bbInput(BBStr* prompt)
                     break;
                 }
             }
-            if (last_key && gx_keyboard->keyDown(last_key))
+            if (last_key && sdl_keyboard->keyDown(last_key))
             {
                 if (t - last_time > rep_delay)
                 {
-                    if (key = gx_input->toUnicode(last_key))
+                    if (key = sdl_input->toUnicode(last_key))
                     {
                         last_time += rep_delay;
                         rep_delay = 40;
@@ -2346,7 +2387,7 @@ BBStr* bbInput(BBStr* prompt)
                 }
             }
             else last_key = 0;
-            gx_runtime->delay(20);
+            sdl_runtime->delay(20);
         }
 
         //check the key
@@ -2366,19 +2407,19 @@ BBStr* bbInput(BBStr* prompt)
         case 27:
             curs = 0; str = "";
             break;
-        case gxInput::ASC_DELETE:
+        case sdlInput::ASC_DELETE:
             if (curs < str.size()) str = str.substr(0, curs) + str.substr(curs + 1);
             break;
-        case gxInput::ASC_HOME:
+        case sdlInput::ASC_HOME:
             curs = 0;
             break;
-        case gxInput::ASC_END:
+        case sdlInput::ASC_END:
             curs = str.size();
             break;
-        case gxInput::ASC_LEFT:
+        case sdlInput::ASC_LEFT:
             if (curs) --curs;
             break;
-        case gxInput::ASC_RIGHT:
+        case sdlInput::ASC_RIGHT:
             if (curs < str.size()) ++curs;
             break;
         case '\r':
@@ -2406,34 +2447,34 @@ BBStr* bbInput(BBStr* prompt)
 
 void bbLocate(int x, int y)
 {
-    gxCanvas* c = gx_graphics->getFrontCanvas();
+    sdlCanvas* c = sdl_graphics->getFrontCanvas();
     curs_x = x < 0 ? 0 : (x > c->getWidth() ? c->getWidth() : x);
     curs_y = y < 0 ? 0 : (y > c->getHeight() ? c->getHeight() : y);
 }
 
 void bbShowPointer()
 {
-    gx_runtime->setPointerVisible(true);
+    sdl_runtime->setPointerVisible(true);
 }
 
 void bbHidePointer()
 {
-    gx_runtime->setPointerVisible(false);
+    sdl_runtime->setPointerVisible(false);
 }
 
 bool graphics_create() {
     p_canvas = 0;
     filter = true;
-    gx_driver = 0;
+    sdl_driver = 0;
     freeGraphics();
     auto_dirty = true;
     auto_midhandle = false;
-    gx_graphics = gx_runtime->openGraphics(400, 300, 0, 0, gxGraphics::GRAPHICS_WINDOWED | 4); // do this so fonts arent null at launch like how DX7 managed it
-    if (gx_graphics)
+    sdl_graphics = sdl_runtime->openGraphics(400, 300, 0, 0, sdlGraphics::GRAPHICS_WINDOWED | 4); // do this so fonts arent null at launch like how DX7 managed it
+    if (sdl_graphics)
     {
         curr_clsColor = 0;
         curr_color = 0xffffffff;
-        curr_font = gx_graphics->getDefaultFont();
+        curr_font = sdl_graphics->getDefaultFont();
         bbSetBuffer(bbFrontBuffer());
         return true;
     }
@@ -2444,10 +2485,10 @@ bool graphics_destroy()
 {
     freeGraphics();
     gfx_modes.clear();
-    if (gx_graphics)
+    if (sdl_graphics)
     {
-        gx_runtime->closeGraphics(gx_graphics);
-        gx_graphics = 0;
+        sdl_runtime->closeGraphics(sdl_graphics);
+        sdl_graphics = 0;
     }
     return true;
 }
@@ -2621,6 +2662,7 @@ void graphics_link(void (*rtSym)(const char* sym, void* pc))
     rtSym("SetTFormMethod%method", bbSetTFormMethod);
     rtSym("TFormFilter%enable", bbTFormFilter);
     rtSym("$GetEffectError", bbGetEffectError);
+    rtSym("$GetShaderError", bbGetEffectError);
 
     rtSym("%ImagesOverlap%image1%x1%y1%image2%x2%y2", bbImagesOverlap);
     rtSym("%ImagesCollide%image1%x1%y1%frame1%image2%x2%y2%frame2", bbImagesCollide);

@@ -3,8 +3,8 @@
 
 #include <memory>
 
-#include "../gxruntime/gxcanvas.h"
-#include "../gxruntime/asyncimage.h"
+#include "../sdlruntime/sdlcanvas.h"
+#include "../sdlruntime/asyncimage.h"
 
 class CachedTexture {
 public:
@@ -17,7 +17,7 @@ public:
 
 	std::string getName()const;
 
-	const std::vector<gxCanvas*>& getFrames()const;
+	const std::vector<sdlCanvas*>& getFrames()const;
 
 	bool valid()const;
 

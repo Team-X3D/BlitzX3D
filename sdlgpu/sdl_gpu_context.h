@@ -1,10 +1,9 @@
 #ifndef SDL_GPU_CONTEXT_H
 #define SDL_GPU_CONTEXT_H
 
-#include "sdl_gpu_input.h"
-
 struct SDL_Window;
 struct SDL_GPUDevice;
+class sdlRuntime;
 
 namespace sdlgpu {
 
@@ -18,7 +17,7 @@ void CenterWindow(SDL_Window* win);
 void ShowGameWindow(SDL_Window* win);
 void SetWindowFullscreen(SDL_Window* win, bool fullscreen);
 void SetCursorVisible(bool vis);
-void PumpEvents(SDL_Window* win, InputSink* input, WindowHost* host);
+void PumpEvents(SDL_Window* win, ::sdlRuntime* rt);
 int SdlScancodeToDIK(int sdlScancode);
 SDL_GPUDevice* CreateGPUDevice();
 void DestroyGPUDevice(SDL_GPUDevice* dev);

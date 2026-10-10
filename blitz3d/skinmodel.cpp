@@ -24,7 +24,7 @@ void SkinModel::render( const RenderContext &rc ){
 
 	for( k=0;k<_surfs.size();++k ){
 		Surface *surf=_surfs[k];
-		if( gxMesh *mesh=surf->getMesh( _surf_bones ) ){
+		if( sdlMesh *mesh=surf->getMesh( _surf_bones ) ){
 			enqueue( mesh,0,surf->numVertices(),0,surf->numTriangles(),surf->getBrush() );
 		}
 	}

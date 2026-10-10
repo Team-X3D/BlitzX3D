@@ -2,8 +2,8 @@
 #include "md2rep.h"
 #include "md2norms.h"
 
-extern gxRuntime* gx_runtime;
-extern gxGraphics* gx_graphics;
+extern sdlRuntime* sdl_runtime;
+extern sdlGraphics* sdl_graphics;
 
 static Vector* normals = 0;
 static float tex_coords[2][2] = { {0,0},{0,0} };
@@ -145,7 +145,7 @@ MD2Rep::MD2Rep(const std::string& f) :
 	}
 
 	//create mesh and setup tris
-	mesh = gx_graphics->createMesh(n_verts, n_tris, 0);
+	mesh = sdl_graphics->createMesh(n_verts, n_tris, 0);
 	mesh->lock(true);
 	for (k = 0; k < n_tris; ++k) {
 		const t_tri& t = t_tris[k];
@@ -163,7 +163,7 @@ MD2Rep::MD2Rep(const std::string& f) :
 }
 
 MD2Rep::~MD2Rep() {
-	if (mesh) gx_graphics->freeMesh(mesh);
+	if (mesh) sdl_graphics->freeMesh(mesh);
 }
 
 void MD2Rep::render(Vert* v, int frame, float time) {

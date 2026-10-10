@@ -3,7 +3,7 @@
 
 #include "geom.h"
 #include "object.h"
-#include "../gxruntime/gxlight.h"
+#include "../sdlruntime/sdllight.h"
 
 class World;
 
@@ -20,11 +20,11 @@ public:
 
 	bool beginRender(float tween);
 
-	gxLight* getGxLight()const { return light; }
+	sdlLight* getGxLight()const { return light; }
 
 private:
 	friend class World;
-	gxLight* light;
+	sdlLight* light;
 };
 
 #endif

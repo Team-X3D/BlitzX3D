@@ -6,8 +6,8 @@
 static Vector *normals;
 static float white[]={1,1,1};
 
-extern gxRuntime *gx_runtime;
-extern gxGraphics *gx_graphics;
+extern sdlRuntime *sdl_runtime;
+extern sdlGraphics *sdl_graphics;
 
 struct MD2Model::Rep{
 
@@ -58,7 +58,7 @@ struct MD2Model::Rep{
 
 	vector<Frame> frames;
 	vector<TexCoords> tex_coords;
-	gxMesh *mesh;
+	sdlMesh *mesh;
 
 	Box box;
 
@@ -105,7 +105,7 @@ struct MD2Model::Rep{
 
 		//load frames
 		string tt="MD2 Frames:"+itoa( header.numFrames );
-		gx_runtime->debugLog( tt.c_str() );
+		sdl_runtime->debugLog( tt.c_str() );
 
 		in.pubseekpos( header.offsetFrames );
 		frames.resize( header.numFrames );
@@ -138,7 +138,7 @@ struct MD2Model::Rep{
 		delete md2_verts;
 
 		//create initial mesh
-		mesh=gx_graphics->createMesh( verts.size(),triangles.size(),0 );
+		mesh=sdl_graphics->createMesh( verts.size(),triangles.size(),0 );
 		mesh->lock();
 		for( k=0;k<triangles.size();++k ){
 			const Triangle &t=triangles[k];
@@ -230,7 +230,7 @@ struct MD2Model::Rep{
 	int ref_cnt;
 	Header header;
 	vector<Frame> frames;
-	gxMesh *mesh;
+	sdlMesh *mesh;
 	Box box;
 
 	Rep( const string &file );
@@ -290,7 +290,7 @@ ref_cnt(1),mesh(0){
 
 	//load frames
 	string tt="MD2 Frames:"+itoa( header.numFrames );
-	gx_runtime->debugLog( tt.c_str() );
+	sdl_runtime->debugLog( tt.c_str() );
 
 	in.pubseekpos( header.offsetFrames );
 	frames.resize( header.numFrames );
@@ -323,7 +323,7 @@ ref_cnt(1),mesh(0){
 	delete md2_verts;
 
 	//create initial mesh
-	mesh=gx_graphics->createMesh( verts.size(),triangles.size(),0 );
+	mesh=sdl_graphics->createMesh( verts.size(),triangles.size(),0 );
 	mesh->lock();
 	for( k=0;k<triangles.size();++k ){
 		const Triangle &t=triangles[k];
@@ -351,7 +351,7 @@ ref_cnt(1),mesh(0){
 }
 
 MD2Model::Rep::~Rep(){
-	if( mesh ) gx_graphics->freeMesh( mesh );
+	if( mesh ) sdl_graphics->freeMesh( mesh );
 }
 
 void MD2Model::Rep::render( MD2Model *model,float render_t,int render_a,int render_b ){

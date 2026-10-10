@@ -1,6 +1,6 @@
 //{{NO_DEPENDENCIES}}
-// Microsoft Visual C++ Éú³ÉµÄ°üº¬ÎÄ¼þ¡£
-// ¹© bbruntime_dll.rc Ê¹ÓÃ
+// Microsoft Visual C++ ï¿½ï¿½ï¿½ÉµÄ°ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½
+// ï¿½ï¿½ bbruntime_dll.rc Ê¹ï¿½ï¿½
 //
 #define IDI_ICON1                       109
 #define IDR_BBMODULE                    1111

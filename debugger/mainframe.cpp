@@ -6,7 +6,7 @@
 #include "flamegraph.h"
 #include "../MultiLang/MultiLang.h"
 
-#include "../gxruntime/gxutf8.h"
+#include "../sdlruntime/sdlutf8.h"
 
 #define WM_IDLEUPDATECMDUI  0x0363
 

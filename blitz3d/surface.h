@@ -97,9 +97,9 @@ public:
 
 	void updateNormals();
 
-	gxMesh* getMesh();
-	gxMesh* getMesh(const std::vector<Bone>& bones);
-	gxMesh* getSkinMesh();
+	sdlMesh* getMesh();
+	sdlMesh* getMesh(const std::vector<Bone>& bones);
+	sdlMesh* getSkinMesh();
 
 	std::string getName()const { return name; }
 	const Brush& getBrush()const { return brush; }
@@ -111,8 +111,8 @@ public:
 private:
 	Brush brush;
 	std::string name;
-	gxMesh* mesh;
-	gxMesh* skin_mesh;
+	sdlMesh* mesh;
+	sdlMesh* skin_mesh;
 	std::vector<Vertex> vertices;
 	std::vector<Triangle> triangles;
 	int mesh_vs, mesh_ts;

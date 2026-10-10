@@ -18,7 +18,7 @@ void Emitter::beginRender( float tween ){
 	pos=getRenderTform().v;
 
 	for( int k=0;k<channels.size();++k ){
-		gxChannel *chan=channels[k];
+		sdlChannel *chan=channels[k];
 		if( !chan->isPlaying() ){
 			channels[k]=0;
 			continue;
@@ -27,9 +27,9 @@ void Emitter::beginRender( float tween ){
 	}
 }
 
-gxChannel *Emitter::emitSound( gxSound *sound ){
+sdlChannel *Emitter::emitSound( sdlSound *sound ){
 
-	gxChannel *chan=sound->play3d( &pos.x,&vel.x );
+	sdlChannel *chan=sound->play3d( &pos.x,&vel.x );
 
 	for( int k=0;k<channels.size();++k ){
 		if( chan=channels[k] ) return chan;

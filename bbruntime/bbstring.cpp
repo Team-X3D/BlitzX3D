@@ -1,6 +1,6 @@
 #include "std.h"
 #include "bbsys.h"
-#include "../gxruntime/gxutf8.h"
+#include "../sdlruntime/sdlutf8.h"
 #include "../bbruntime/bbgraphics.h"
 #include <time.h>
 #include "../MultiLang/MultiLang.h"

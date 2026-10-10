@@ -10,10 +10,10 @@ static float tex_coords1[2][2] = { {1,0},{1,0} };
 static float tex_coords2[2][2] = { {1,1},{1,1} };
 static float tex_coords3[2][2] = { {0,1},{0,1} };
 
-extern gxRuntime* gx_runtime;
-extern gxGraphics* gx_graphics;
+extern sdlRuntime* sdl_runtime;
+extern sdlGraphics* sdl_graphics;
 
-static gxMesh* mesh;
+static sdlMesh* mesh;
 static int mesh_size;
 static std::vector<int> mesh_indices;
 
@@ -24,11 +24,11 @@ static bool stage_reflected;
 
 static int allocIndex() {
 	if(!mesh_indices.size()) {
-		if(mesh_size) gx_graphics->freeMesh(mesh);
+		if(mesh_size) sdl_graphics->freeMesh(mesh);
 		for(int k = 0; k < 256; ++k) {
 			mesh_indices.push_back(mesh_size++);
 		}
-		mesh = gx_graphics->createMesh(mesh_size * 4, mesh_size * 2, 0);
+		mesh = sdl_graphics->createMesh(mesh_size * 4, mesh_size * 2, 0);
 		stage_verts.resize(mesh_size * 4);
 		stage_slots.assign(mesh_size, 0);
 	}
@@ -40,7 +40,7 @@ static int allocIndex() {
 static void freeIndex(int n) {
 	mesh_indices.push_back(n);
 	if(mesh_indices.size() != mesh_size) return;
-	gx_graphics->freeMesh(mesh);
+	sdl_graphics->freeMesh(mesh);
 	mesh_indices.clear();
 	stage_verts.clear();
 	stage_slots.clear();

@@ -2,12 +2,12 @@
 #define BBGRAPHICS_H
 
 #include "bbsys.h"
-#include "../gxruntime/gxgraphics.h"
+#include "../sdlruntime/sdlgraphics.h"
 #include "../blitz3d/texture.h"
 
-extern gxGraphics* gx_graphics;
-extern gxCanvas* gx_canvas;
-extern gxScene* gx_scene;
+extern sdlGraphics* sdl_graphics;
+extern sdlCanvas* sdl_canvas;
+extern sdlScene* sdl_scene;
 
 class bbImage;
 
@@ -32,8 +32,8 @@ float    bbDPIScaleY();
 
 //mode functions
 void	 bbGraphics(int w, int h, int d, int mode);
-gxCanvas* bbFrontBuffer();
-gxCanvas* bbBackBuffer();
+sdlCanvas* bbFrontBuffer();
+sdlCanvas* bbBackBuffer();
 void	 bbEndGraphics();
 int		 bbInFocus();
 int		 bbGraphicsLost();
@@ -43,22 +43,22 @@ void	 bbFlip(int vwait);
 int		 bbGetFPS();
 
 //graphics buffer functions
-void	 bbSetBuffer(gxCanvas* buff);
-void bbSetBufferDepth(gxCanvas* buff, gxCanvas* depthBuff);
-gxCanvas* bbGraphicsBuffer();
-int		 bbLoadBuffer(gxCanvas* surf, BBStr* str);
-int		 bbSaveBuffer(gxCanvas* surf, BBStr* str);
+void	 bbSetBuffer(sdlCanvas* buff);
+void bbSetBufferDepth(sdlCanvas* buff, sdlCanvas* depthBuff);
+sdlCanvas* bbGraphicsBuffer();
+int		 bbLoadBuffer(sdlCanvas* surf, BBStr* str);
+int		 bbSaveBuffer(sdlCanvas* surf, BBStr* str);
 
 //fast read/write operations...
-void	 bbLockBuffer(gxCanvas* buff);
-void	 bbUnlockBuffer(gxCanvas* buff);
-int  bbBufferWidth(gxCanvas* buff);
-int  bbBufferHeight(gxCanvas* buff);
-void bbDrawBufferRect(gxCanvas* src, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
-int		 bbReadPixel(int x, int y, gxCanvas* buff);
-void	 bbWritePixel(int x, int y, int argb, gxCanvas* buff);
-int		 bbReadPixelFast(int x, int y, gxCanvas* buff);
-void	 bbWritePixelFast(int x, int y, int argb, gxCanvas* buff);
+void	 bbLockBuffer(sdlCanvas* buff);
+void	 bbUnlockBuffer(sdlCanvas* buff);
+int  bbBufferWidth(sdlCanvas* buff);
+int  bbBufferHeight(sdlCanvas* buff);
+void bbDrawBufferRect(sdlCanvas* src, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
+int		 bbReadPixel(int x, int y, sdlCanvas* buff);
+void	 bbWritePixel(int x, int y, int argb, sdlCanvas* buff);
+int		 bbReadPixelFast(int x, int y, sdlCanvas* buff);
+void	 bbWritePixelFast(int x, int y, int argb, sdlCanvas* buff);
 
 
 //2d rendering functions
@@ -79,17 +79,17 @@ int		 bbColorRed();
 int		 bbColorGreen();
 int		 bbColorBlue();
 int		 bbColorAlpha();
-void bbSet2DEffect(gxEffect* effect);
+void bbSet2DEffect(sdlEffect* effect);
 void bbClear2DEffect();
-gxEffect* bbGet2DEffect();
+sdlEffect* bbGet2DEffect();
 
 BBStr* bbConvertToANSI(BBStr* str);
 BBStr* bbConvertToUTF8(BBStr* str);
 
 //font functions
-gxFont* bbLoadFont(BBStr* name, int height, bool bold, bool italic, bool underlined);
-void	 bbFreeFont(gxFont* f);
-void	 bbSetFont(gxFont* f);
+sdlFont* bbLoadFont(BBStr* name, int height, bool bold, bool italic, bool underlined);
+void	 bbFreeFont(sdlFont* f);
+void	 bbSetFont(sdlFont* f);
 int		 bbFontWidth();
 int		 bbFontHeight();
 int		 bbStringWidth(BBStr* str);
@@ -106,7 +106,7 @@ Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int columns, int rows, in
 void	 bbFreeImage(bbImage* i);
 int		 bbSaveImage(bbImage* i, BBStr* filename, int frame);
 void	 bbGrabImage(bbImage* i, int x, int y, int n);
-gxCanvas* bbImageBuffer(bbImage* i, int n);
+sdlCanvas* bbImageBuffer(bbImage* i, int n);
 void	 bbDrawImage(bbImage* i, int x, int y, int frame);
 void	 bbDrawBlock(bbImage* i, int x, int y, int frame);
 void	 bbTileImage(bbImage* i, int x, int y, int frame);

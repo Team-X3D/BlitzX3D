@@ -2,8 +2,9 @@
 #include "sdl_gpu_lock.h"
 #include "sdl_gpu_pipeline.h"
 #include "sdl_gpu_texture.h"
-#include "sdl_gpu_common.h"
-#include "sdl_gpu_surface.h"
+
+#include "../sdlruntime/std.h"
+#include "../sdlruntime/sdlcanvas.h"
 
 #include <cstring>
 #include <unordered_map>
@@ -40,8 +41,8 @@ struct PendingQuad {
 };
 
 struct PendingItem {
-	Surface* target = nullptr;
-	Surface* atlas = nullptr;
+	::sdlCanvas* target = nullptr;
+	::sdlCanvas* atlas = nullptr;
 	SDL_GPUTexture* tex = nullptr;
 	bool smooth = true;
 	unsigned canvasW = 1;
@@ -70,7 +71,7 @@ std::vector<PendingItem> g_pending;
 std::vector<TextVertex> g_staged;
 std::vector<DrawRange> g_ranges;
 
-Surface* g_activeTarget = nullptr;
+::sdlCanvas* g_activeTarget = nullptr;
 
 bool g_backClearSet = false;
 unsigned g_backClearColor = 0;
@@ -346,7 +347,7 @@ void InvalidatePendingTexture(SDL_GPUTexture* tex) {
 	}
 }
 
-bool QueueTextQuads(SDL_GPUDevice* dev, Surface* target, Surface* atlas, bool smooth, unsigned canvasW, unsigned canvasH, const TextQuad* quads, unsigned count) {
+bool QueueTextQuads(SDL_GPUDevice* dev, ::sdlCanvas* target, ::sdlCanvas* atlas, bool smooth, unsigned canvasW, unsigned canvasH, const TextQuad* quads, unsigned count) {
 	GpuLock lock;
 	if (!dev || !atlas || !quads || !count || !canvasW || !canvasH) return false;
 	SDL_GPUTexture* tex = GetCanvasTexture(dev, atlas);
@@ -378,7 +379,7 @@ bool QueueTextQuads(SDL_GPUDevice* dev, Surface* target, Surface* atlas, bool sm
 	return true;
 }
 
-bool QueueTextSolid(SDL_GPUDevice* dev, Surface* target, unsigned canvasW, unsigned canvasH, float dx, float dy, float dw, float dh, unsigned color) {
+bool QueueTextSolid(SDL_GPUDevice* dev, ::sdlCanvas* target, unsigned canvasW, unsigned canvasH, float dx, float dy, float dw, float dh, unsigned color) {
 	GpuLock lock;
 	if (!dev || !canvasW || !canvasH || dw <= 0.0f || dh <= 0.0f) return false;
 	SDL_GPUTexture* tex = EnsureTextWhite(dev);
@@ -402,12 +403,12 @@ bool QueueTextSolid(SDL_GPUDevice* dev, Surface* target, unsigned canvasW, unsig
 	return true;
 }
 
-bool QueueRectFilled(SDL_GPUDevice* dev, Surface* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
+bool QueueRectFilled(SDL_GPUDevice* dev, ::sdlCanvas* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
 	if (w <= 0.0f || h <= 0.0f) return true;
 	return QueueTextSolid(dev, target, canvasW, canvasH, x, y, w, h, color);
 }
 
-bool QueueRectOutline(SDL_GPUDevice* dev, Surface* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
+bool QueueRectOutline(SDL_GPUDevice* dev, ::sdlCanvas* target, unsigned canvasW, unsigned canvasH, float x, float y, float w, float h, unsigned color) {
 	GpuLock lock;
 	if (w <= 0.0f || h <= 0.0f) return true;
 	if (!QueueTextSolid(dev, target, canvasW, canvasH, x, y, w, 1.0f, color)) return false;
@@ -421,7 +422,7 @@ bool QueueRectOutline(SDL_GPUDevice* dev, Surface* target, unsigned canvasW, uns
 	return true;
 }
 
-bool QueueSpriteQuad(SDL_GPUDevice* dev, Surface* target, SDL_GPUTexture* tex, bool smooth, unsigned canvasW, unsigned canvasH, unsigned texW, unsigned texH, const TextQuad* quad) {
+bool QueueSpriteQuad(SDL_GPUDevice* dev, ::sdlCanvas* target, SDL_GPUTexture* tex, bool smooth, unsigned canvasW, unsigned canvasH, unsigned texW, unsigned texH, const TextQuad* quad) {
 	GpuLock lock;
 	if (!dev || !tex || !quad || !canvasW || !canvasH || !texW || !texH) return false;
 	if (quad->destW <= 0.0f || quad->destH <= 0.0f || quad->srcW <= 0.0f || quad->srcH <= 0.0f) return true;
@@ -522,7 +523,7 @@ void DrawPendingText(SDL_GPUDevice* dev, SDL_Window* win, SDL_GPURenderPass* pas
 	DrawRanges(dev, pass, pipe, g_ranges);
 }
 
-static bool TakePendingForTarget(Surface* target, std::vector<DrawRange>& ranges) {
+static bool TakePendingForTarget(::sdlCanvas* target, std::vector<DrawRange>& ranges) {
 	std::vector<PendingItem> keep;
 	keep.reserve(g_pending.size());
 	for (auto& item : g_pending) {
@@ -541,7 +542,7 @@ static bool TakePendingForTarget(Surface* target, std::vector<DrawRange>& ranges
 	return !ranges.empty();
 }
 
-bool FlushPendingTextToCanvas(SDL_GPUDevice* dev, Surface* canvas) {
+bool FlushPendingTextToCanvas(SDL_GPUDevice* dev, ::sdlCanvas* canvas) {
 	GpuLock lock;
 	if (!dev || !canvas) return false;
 	bool has = false;
@@ -599,7 +600,7 @@ bool FlushPendingTextToCanvas(SDL_GPUDevice* dev, Surface* canvas) {
 bool FlushPendingTextTargets(SDL_GPUDevice* dev) {
 	GpuLock lock;
 	if (!dev) return false;
-	std::vector<Surface*> targets;
+	std::vector<::sdlCanvas*> targets;
 	for (auto& item : g_pending) {
 		if (!item.target) continue;
 		bool seen = false;
@@ -613,15 +614,15 @@ bool FlushPendingTextTargets(SDL_GPUDevice* dev) {
 	return ok;
 }
 
-void SetActiveCanvasTarget(SDL_GPUDevice* dev, Surface* canvas) {
+void SetActiveCanvasTarget(SDL_GPUDevice* dev, ::sdlCanvas* canvas) {
 	GpuLock lock;
 	if (g_activeTarget == canvas) return;
-	Surface* prev = g_activeTarget;
+	::sdlCanvas* prev = g_activeTarget;
 	g_activeTarget = canvas;
 	if (prev && dev) FlushPendingTextToCanvas(dev, prev);
 }
 
-bool IsActiveCanvasTarget(Surface* canvas) {
+bool IsActiveCanvasTarget(::sdlCanvas* canvas) {
 	GpuLock lock;
 	return canvas && g_activeTarget == canvas;
 }
@@ -656,7 +657,7 @@ void ClearPendingText() {
 	g_backClearSet = false;
 }
 
-void InvalidateTextAtlas(Surface* atlas) {
+void InvalidateTextAtlas(::sdlCanvas* atlas) {
 	GpuLock lock;
 	if (!atlas) return;
 	if (g_activeTarget == atlas) g_activeTarget = nullptr;

@@ -1,0 +1,221 @@
+#ifndef SDLSCENE_H
+#define SDLSCENE_H
+
+#include <map>
+#include <d3d9.h>
+#include "d3dxmath.h"
+
+#include "sdllight.h"
+#include "sdleffect.h"
+#include "../sdlgpu/sdl_gpu_scene.h"
+
+class sdlCanvas;
+
+class sdlMesh;
+class sdlLight;
+class sdlGraphics;
+class sdlTexture;
+class sdlEffect;
+
+class sdlScene {
+public:
+	sdlGraphics* graphics;
+	IDirect3DDevice9Ex* dir3dDev;
+
+	sdlScene(sdlGraphics* graphics, sdlCanvas* target);
+	~sdlScene();
+
+
+	/***** GX INTERFACE *****/
+public:
+	enum {
+		MAX_TEXTURES = 8
+	};
+	enum {
+		FX_FULLBRIGHT = 0x0001,
+		FX_VERTEXCOLOR = 0x0002,
+		FX_FLATSHADED = 0x0004,
+		FX_NOFOG = 0x0008,
+		FX_DOUBLESIDED = 0x0010,
+		FX_VERTEXALPHA = 0x0020,
+		FX_WIREFRAME = 0x0040,
+
+		FX_ALPHATEST = 0x2000,
+		FX_CONDLIGHT = 0x4000,
+		FX_EMISSIVE = 0x8000
+	};
+	enum {
+		BLEND_REPLACE = 0,
+		BLEND_ALPHA = 1,
+		BLEND_MULTIPLY = 2,
+		BLEND_ADD = 3,
+		BLEND_DOT3 = 4,
+		BLEND_MULTIPLY2 = 5,
+		BLEND_BUMPENVMAP = 6,
+	};
+	enum {
+		ZMODE_NORMAL = 0,
+		ZMODE_DISABLE = 1,
+		ZMODE_CMPONLY = 2
+	};
+	enum {
+		FOG_NONE = 0,
+		FOG_LINEAR = 1,
+		FOG_EXP = 2,
+		FOG_EXP2 = 3,
+	};
+	enum {
+		TEX_COORDS2 = 0x0001
+	};
+	struct Matrix {
+		float elements[4][3];
+	};
+	struct RenderState {
+		float color[3];
+		float shininess, alpha;
+		int blend, fx;
+		struct TexState {
+			sdlCanvas* canvas;
+			const Matrix* matrix;
+			int blend, flags;
+			DWORD bumpEnvMat[2][2];
+			DWORD bumpEnvScale;
+			DWORD bumpEnvOffset;
+		}tex_states[MAX_TEXTURES];
+		sdlEffect* effect;
+	};
+
+	//state
+	int  hwTexUnits();
+	int  gfxDriverCaps3D();
+
+	void setWBuffer(bool enable);
+	void setHWMultiTex(bool enable);
+	void setDither(bool enable);
+	void setAntialias(bool enable);
+	void setWireframe(bool enable);
+	void setFlippedTris(bool enable);
+	void setAmbient(const float rgb[]);
+	void setAmbient2(const float rgb[]);
+	void setFogColor(const float rgb[3]);
+	void setFogRange(float nr, float fr);
+	void setFogDensity(float den);
+	void setFogMode(int mode);
+	void setZMode(int mode);
+	void setViewport(int x, int y, int w, int h);
+	void setOrthoProj(float nr, float fr, float nr_w, float nr_h);
+	void setPerspProj(float nr, float fr, float nr_w, float nr_h);
+	void setViewMatrix(const Matrix* matrix);
+	void setWorldMatrix(const Matrix* matrix);
+	void setEyePosition(const float pos[3]);
+	void setRenderState(const RenderState& state);
+	void setEffect(sdlEffect* effect);
+	void setCullMode(int mode);
+	void setDepthBias(float bias, float slope);
+	void setReverseZ(bool enable);
+	void setColorWrite(bool enable);
+	void setScissorRect(bool enable, int x, int y, int w, int h);
+	void setTextureDivisor(int div);
+	void setDepthTarget(sdlCanvas* c) { depthTarget = c; }
+	sdlCanvas* getDepthTarget() const { return depthTarget; }
+	void setBumpNormalize(bool enable) { bumpNormalize = enable; }
+
+	//rendering
+	bool begin(const std::vector<sdlLight*>& lights);
+	void invalidateD3DCaches();
+	void clear(const float rgb[3], float alpha, float z, bool clear_argb, bool clear_z);
+	void render(sdlMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt);
+	void renderSkinned(sdlMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* bone_data, int bone_cnt);
+	void end();
+	bool hasGpuImage() const;
+	bool presentGpuFrame(struct SDL_GPUDevice* dev, struct SDL_Window* win);
+	bool presentGpuFrameWithCanvas(struct SDL_GPUDevice* dev, struct SDL_Window* win, sdlCanvas* canvas);
+	bool blitFrameToTexture(struct SDL_GPUDevice* dev, sdlCanvas* dest, int dx, int dy, int dw, int dh, int sx, int sy, int sw, int sh);
+
+	//lighting
+	sdlLight* createLight(int flags);
+	void freeLight(sdlLight* l);
+
+	//info
+	int getTrianglesDrawn()const;
+	sdlEffect* getEffect() const;
+
+	DWORD textureLodBias = 0;
+	int textureAnisotropic = 0;
+	int textureDivisor = 0;
+
+private:
+	sdlCanvas* target;
+	sdlCanvas* depthTarget = nullptr;
+	bool wbuffer, dither, antialias, wireframe, flipped;
+	unsigned ambient, ambient2, fogcolor;
+	int caps_level, fogmode, zmode, max_lights;
+	float fogrange_nr, fogrange_fr, fog_density;
+	D3DVIEWPORT9 viewport;
+	bool ortho_proj;
+	float frustum_nr, frustum_fr, frustum_w, frustum_h;
+	D3DMATRIX projmatrix, viewmatrix, worldmatrix;
+	D3DMATRIX inv_viewmatrix;
+	D3DMATERIAL9 material;
+	float shininess;
+	int blend, fx;
+	struct TexState {
+		sdlCanvas* canvas;
+		int blend, flags;
+		DWORD bumpEnvMat[2][2];
+		DWORD bumpEnvScale;
+		DWORD bumpEnvOffset;
+		D3DMATRIX matrix;
+		bool mat_valid;
+	};
+	TexState texstate[MAX_TEXTURES];
+	int n_texs, tris_drawn;
+
+	sdlEffect* currentEffect;
+	D3DXMATRIX currentWorld, currentView, currentProj;
+	float eyePos[3];
+
+	sdlgpu::GpuSceneFrame gpuFrame;
+	bool gpuOnlyFrame = true;
+	bool gpuWinHidden = false;
+	bool gpuShadersOk = false;
+
+	bool bumpNormalize = false;
+	float bumpUniformScale = 1.0f;
+
+	std::set<sdlLight*> _allLights;
+	std::vector<sdlLight*> _curLights;
+
+	int d3d_rs[210];
+	int d3d_tss[8][33];
+	int d3d_samp[8][16];
+	IDirect3DBaseTexture9* d3d_tex[8];
+
+	RenderState lastRenderState;
+	bool lastRenderStateValid;
+	int lightModeCache = -1;
+
+	uint64_t lastStateKey;
+
+	void setRS(int n, int t);
+	void setTSS(int n, int s, int t);
+	void setSamp(int n, int s, int t);
+	void setTex(int n, IDirect3DBaseTexture9* t);
+
+	void setLights();
+	void setZMode();
+	void setAmbient();
+	void setFogMode();
+	void setTriCull();
+	void setTexState(int index, const TexState& state, bool set_blend);
+	void setEffectInternal(sdlEffect* e);
+	void setSkinShaderConstants();
+	void computeGpuMVP(float out[16]) const;
+	void computeGpuWorld(float out[16]) const;
+	void computeGpuMeshUniforms(sdlgpu::MeshUniforms& u) const;
+	void computeGpuSkinnedUniforms(sdlgpu::MeshUniforms& u) const;
+	void fillGpuDrawParams(struct sdlgpu::MeshDrawParams& p, struct SDL_GPUDevice* dev);
+	bool gpuTexGenOk() const;
+};
+
+#endif

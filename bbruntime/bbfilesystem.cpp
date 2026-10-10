@@ -5,7 +5,7 @@
 #include "../MultiLang/MultiLang.h"
 #include "unzip.h"
 
-gxFileSystem* gx_filesys;
+sdlFileSystem* sdl_filesys;
 
 struct bbFile : public bbStream {
 	std::filebuf* buf;
@@ -39,8 +39,8 @@ static inline void debugFile(bbFile* f, const char* function) {
 	}
 }
 
-static inline void debugDir(gxDir* d, const char* function) {
-	if (!gx_filesys->verifyDir(d)) {
+static inline void debugDir(sdlDir* d, const char* function) {
+	if (!sdl_filesys->verifyDir(d)) {
 		// durhh...... only log fatal eerorrs in debug builds... i think i'm smarht!
 		errorfunc = function;
 		errorlog = MultiLang::directory_not_exist;
@@ -86,36 +86,36 @@ int bbSeekFile(bbFile* f, int pos) {
 	return f->buf->pubseekoff(pos, std::ios_base::beg);
 }
 
-gxDir* bbReadDir(BBStr* d) {
+sdlDir* bbReadDir(BBStr* d) {
 	std::string t = *d; delete d;
-	return gx_filesys->openDir(t, 0);
+	return sdl_filesys->openDir(t, 0);
 }
 
-void bbCloseDir(gxDir* d) {
-	gx_filesys->closeDir(d);
+void bbCloseDir(sdlDir* d) {
+	sdl_filesys->closeDir(d);
 }
 
-BBStr* bbNextFile(gxDir* d) {
+BBStr* bbNextFile(sdlDir* d) {
 	debugDir(d, "NextFile");
 	return new BBStr(d->getNextFile());
 }
 
 BBStr* bbCurrentDir() {
-	return new BBStr(gx_filesys->getCurrentDir());
+	return new BBStr(sdl_filesys->getCurrentDir());
 }
 
 void bbChangeDir(BBStr* d) {
-	gx_filesys->setCurrentDir(*d);
+	sdl_filesys->setCurrentDir(*d);
 	delete d;
 }
 
 void bbCreateDir(BBStr* d) {
-	gx_filesys->createDir(*d);
+	sdl_filesys->createDir(*d);
 	delete d;
 }
 
 void bbDeleteDir(BBStr* d) {
-	gx_filesys->deleteDir(*d);
+	sdl_filesys->deleteDir(*d);
 	delete d;
 }
 
@@ -175,13 +175,13 @@ void bbDeleteFolder(BBStr* d) {
 
 int bbFileType(BBStr* f) {
 	std::string t = *f; delete f;
-	int n = gx_filesys->getFileType(t);
-	return n == gxFileSystem::FILE_TYPE_FILE ? 1 : (n == gxFileSystem::FILE_TYPE_DIR ? 2 : 0);
+	int n = sdl_filesys->getFileType(t);
+	return n == sdlFileSystem::FILE_TYPE_FILE ? 1 : (n == sdlFileSystem::FILE_TYPE_DIR ? 2 : 0);
 }
 
 int	bbFileSize(BBStr* f) {
 	std::string t = *f; delete f;
-	return gx_filesys->getFileSize(t);
+	return sdl_filesys->getFileSize(t);
 }
 
 int	bbFileTime(BBStr* f) {
@@ -205,16 +205,16 @@ BBStr* bbFileExtension(BBStr* f) {
 void bbCopyFile(BBStr* f, BBStr* to) {
 	std::string src = *f, dest = *to;
 	delete f; delete to;
-	gx_filesys->copyFile(src, dest);
+	sdl_filesys->copyFile(src, dest);
 }
 
 void bbCreateFile(BBStr* f) {
 	std::string fn = *f; delete f;
-	gx_filesys->createFile(fn);
+	sdl_filesys->createFile(fn);
 }
 
 void bbDeleteFile(BBStr* f) {
-	gx_filesys->deleteFile(*f);
+	sdl_filesys->deleteFile(*f);
 	delete f;
 }
 
@@ -240,7 +240,7 @@ BBStr* bbAbsolutePath(BBStr* path) {
 }
 
 bool filesystem_create() {
-	if (gx_filesys = gx_runtime->openFileSystem(0)) {
+	if (sdl_filesys = sdl_runtime->openFileSystem(0)) {
 		return true;
 	}
 	return false;
@@ -248,7 +248,7 @@ bool filesystem_create() {
 
 bool filesystem_destroy() {
 	while (file_set.size()) bbCloseFile(*file_set.begin());
-	gx_runtime->closeFileSystem(gx_filesys);
+	sdl_runtime->closeFileSystem(sdl_filesys);
 	return true;
 }
 

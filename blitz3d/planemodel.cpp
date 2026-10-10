@@ -5,20 +5,20 @@
 
 static Vector vts[17][17];
 
-extern gxGraphics* gx_graphics;
+extern sdlGraphics* sdl_graphics;
 
 struct PlaneModel::Rep {
 
 	int ref_cnt;
-	gxMesh* mesh;
+	sdlMesh* mesh;
 	int sub_divs;
 
 	Rep(int n) :
 		ref_cnt(1), sub_divs(n) {
-		mesh = gx_graphics->createMesh(5 * sub_divs * sub_divs, 3 * sub_divs * sub_divs, 0);
+		mesh = sdl_graphics->createMesh(5 * sub_divs * sub_divs, 3 * sub_divs * sub_divs, 0);
 	}
 	~Rep() {
-		gx_graphics->freeMesh(mesh);
+		sdl_graphics->freeMesh(mesh);
 	}
 	void render(PlaneModel* model, const RenderContext& rc) {
 

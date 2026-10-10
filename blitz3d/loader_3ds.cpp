@@ -3,10 +3,10 @@
 #include "meshmodel.h"
 #include "animation.h"
 
-extern gxRuntime* gx_runtime;
+extern sdlRuntime* sdl_runtime;
 
 #ifdef BETA
-#define _log( X ) gx_runtime->debugLog( (string(X)).c_str() );
+#define _log( X ) sdl_runtime->debugLog( (string(X)).c_str() );
 #else
 #define _log( X )
 #endif

@@ -13,7 +13,7 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
-// Ó¢Óï(ÃÀ¹ú) resources
+// Ó¢ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
@@ -290,12 +290,12 @@ BEGIN
     IDR_DEBUGFRAME          "Blitz Basic Debugger"
 END
 
-#endif    // Ó¢Óï(ÃÀ¹ú) resources
+#endif    // Ó¢ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½) resources
 /////////////////////////////////////////////////////////////////////////////
 
 
 /////////////////////////////////////////////////////////////////////////////
-// Ó¢Óï(ÐÂÎ÷À¼) resources
+// Ó¢ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENZ)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_NZ
@@ -356,7 +356,7 @@ END
 
 IDB_BITMAP2             BITMAP                  "b3dlogo.bmp"
 
-#endif    // Ó¢Óï(ÐÂÎ÷À¼) resources
+#endif    // Ó¢ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½) resources
 /////////////////////////////////////////////////////////////////////////////
 
 

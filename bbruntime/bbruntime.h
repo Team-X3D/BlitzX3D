@@ -1,6 +1,6 @@
 /*
 Platform neutral runtime library.
-To be statically linked with an appropriate gxruntime driver.
+To be statically linked with an appropriate sdlruntime driver.
 */
 
 #ifndef BBRUNTIME_H
@@ -9,10 +9,10 @@ To be statically linked with an appropriate gxruntime driver.
 //My friend Kat Purpy gave me this macro and I tweaked it a bit to fit B3D.
 #define INIT(thing) if(!thing##_create()) {sue(#thing "_create() failed!"); return false;}
 
-#include "../gxruntime/gxruntime.h"
+#include "../sdlruntime/sdlruntime.h"
 
 void bbruntime_link(void (*rtSym)(const char* sym, void* pc));
-const char* bbruntime_run(gxRuntime* runtime, void (*pc)(), bool debug);
+const char* bbruntime_run(sdlRuntime* runtime, void (*pc)(), bool debug);
 void bbruntime_panic(const wchar_t* err);
 
 void bbSetExceptionHandler(void* handler);

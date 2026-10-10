@@ -70,7 +70,7 @@
       <ProgramDataBaseFileName>.\Debug\</ProgramDataBaseFileName>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <CallingConvention>StdCall</CallingConvention>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\freetype\include;$(ProjectDir)..\bass\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\freetype\include;$(ProjectDir)..\bass\include;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\include\;</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
@@ -97,10 +97,19 @@
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>delayimp.lib;SDL_image-static.lib;SDL3_ttf-static.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;$(ProjectDir)..\Win32\$(Configuration);..\ffmpeg\lib;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
       <DelayLoadDLLs>d3dx9_43.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
+    <PostBuildEvent>
+      <Command>copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
+if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -137,7 +146,7 @@
       <MinimalRebuild>false</MinimalRebuild>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\freetype\include;$(ProjectDir)..\bass\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\freetype\include;$(ProjectDir)..\bass\include;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\include\;</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Midl>
@@ -161,14 +170,21 @@
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
-      <AdditionalDependencies>delayimp.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;SDL_image-static.lib;SDL3_ttf-static.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;d3dx9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;..\ffmpeg\lib;$(SolutionDir)packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(DXSDK_DIR)Lib\x86;$(ProjectDir)..\Win32\$(Configuration);..\ffmpeg\lib;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
       <DelayLoadDLLs>d3dx9_43.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\bass\bin\bass.dll" "$(OutDir)bass.dll"</Command>
+      <Command>copy /Y "$(ProjectDir)..\bass\bin\bass.dll" "$(OutDir)bass.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
+if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -201,10 +217,7 @@
     <ProjectReference Include="..\blitz3d\blitz3d.vcxproj">
       <Project>{60bb991f-8721-4a17-9f70-79d0ee5507fa}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\freetype\builds\windows\vc2010\freetype.vcxproj">
-      <Project>{78b079bd-9fc7-4b9e-b4a6-96da0f00248b}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\gxruntime\gxruntime.vcxproj">
+    <ProjectReference Include="..\sdlruntime\sdlruntime.vcxproj">
       <Project>{a124d746-4a3b-401d-ae99-6a838595bc8c}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
@@ -220,20 +233,14 @@
       <Project>{f064d5d3-af96-4c8b-8980-221d65d899d3}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+    <ProjectReference Include="..\freetype\builds\windows\vc2010\freetype.vcxproj">
+      <Project>{78b079bd-9fc7-4b9e-b4a6-96da0f00248b}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="..\packages\FreeImageNative.redist.3.17.0\build\native\FreeImageNative.redist.targets" Condition="Exists('..\packages\FreeImageNative.redist.3.17.0\build\native\FreeImageNative.redist.targets')" />
-    <Import Project="..\packages\FreeImageNative.3.17.0\build\native\FreeImageNative.targets" Condition="Exists('..\packages\FreeImageNative.3.17.0\build\native\FreeImageNative.targets')" />
   </ImportGroup>
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('..\packages\FreeImageNative.redist.3.17.0\build\native\FreeImageNative.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\FreeImageNative.redist.3.17.0\build\native\FreeImageNative.redist.targets'))" />
-    <Error Condition="!Exists('..\packages\FreeImageNative.3.17.0\build\native\FreeImageNative.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\FreeImageNative.3.17.0\build\native\FreeImageNative.targets'))" />
-  </Target>
 </Project>

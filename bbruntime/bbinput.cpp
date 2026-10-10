@@ -1,23 +1,23 @@
 #include "std.h"
 #include "bbsys.h"
-#include "../gxruntime/gxutf8.h"
+#include "../sdlruntime/sdlutf8.h"
 
-gxInput* gx_input;
-gxDevice* gx_mouse;
-gxDevice* gx_keyboard;
-std::vector<gxDevice*> gx_joysticks;
+sdlInput* sdl_input;
+sdlDevice* sdl_mouse;
+sdlDevice* sdl_keyboard;
+std::vector<sdlDevice*> sdl_joysticks;
 
 static int mouse_x, mouse_y, mouse_z;
 static const float JLT = -1.0f / 3.0f;
 static const float JHT = 1.0f / 3.0f;
 
 bool input_create() {
-	if (gx_input = gx_runtime->openInput(0)) {
-		gx_keyboard = gx_input->getKeyboard();
-		gx_mouse = gx_input->getMouse();
-		gx_joysticks.clear();
-		for (int k = 0; k < gx_input->numJoysticks(); ++k) {
-			gx_joysticks.push_back(gx_input->getJoystick(k));
+	if (sdl_input = sdl_runtime->openInput(0)) {
+		sdl_keyboard = sdl_input->getKeyboard();
+		sdl_mouse = sdl_input->getMouse();
+		sdl_joysticks.clear();
+		for (int k = 0; k < sdl_input->numJoysticks(); ++k) {
+			sdl_joysticks.push_back(sdl_input->getJoystick(k));
 		}
 		mouse_x = mouse_y = mouse_z = 0;
 		return true;
@@ -26,31 +26,31 @@ bool input_create() {
 }
 
 bool input_destroy() {
-	gx_joysticks.clear();
-	gx_runtime->closeInput(gx_input);
-	gx_input = 0;
+	sdl_joysticks.clear();
+	sdl_runtime->closeInput(sdl_input);
+	sdl_input = 0;
 	return true;
 }
 
 int bbKeyDown(int n) {
-	if (!gx_keyboard) return 0;
-	return gx_keyboard->keyDown(n);
+	if (!sdl_keyboard) return 0;
+	return sdl_keyboard->keyDown(n);
 }
 
 int bbKeyHit(int n) {
-	if (!gx_keyboard) return 0;
-	return gx_keyboard->keyHit(n);
+	if (!sdl_keyboard) return 0;
+	return sdl_keyboard->keyHit(n);
 }
 
 int bbGetKey() {
-	if (!gx_input || !gx_keyboard) return 0;
-	return gx_input->toUnicode(gx_keyboard->getKey());
+	if (!sdl_input || !sdl_keyboard) return 0;
+	return sdl_input->toUnicode(sdl_keyboard->getKey());
 }
 
 BBStr* bbTextInput(BBStr* s) {
 	BBStr t = *s;
 	char tBuf[9];
-	std::vector<int> chars = gx_input->getChars();
+	std::vector<int> chars = sdl_input->getChars();
 	for (int i = 0; i < chars.size(); i++) {
 		if (chars[i] == 8) { //backspace
 			if (t.size() > 0) UTF8::popBack(t);
@@ -70,43 +70,43 @@ BBStr* bbTextInput(BBStr* s) {
 
 int bbWaitKey() {
 	for (;;) {
-		if (!gx_runtime->idle()) RTEX(0);
-		if (gx_keyboard) {
-			if (int key = gx_keyboard->getKey()) {
-				if (key = gx_input->toUnicode(key)) return key;
+		if (!sdl_runtime->idle()) RTEX(0);
+		if (sdl_keyboard) {
+			if (int key = sdl_keyboard->getKey()) {
+				if (key = sdl_input->toUnicode(key)) return key;
 			}
 		}
-		gx_runtime->delay(20);
+		sdl_runtime->delay(20);
 	}
 }
 
 void bbFlushKeys() {
-	gx_input->getChars();
-	if (gx_keyboard) gx_keyboard->flush();
+	sdl_input->getChars();
+	if (sdl_keyboard) sdl_keyboard->flush();
 }
 
 int bbMouseDown(int n) {
-	if (!gx_mouse) return 0;
-	return gx_mouse->keyDown(n);
+	if (!sdl_mouse) return 0;
+	return sdl_mouse->keyDown(n);
 }
 
 int bbMouseHit(int n) {
-	if (!gx_mouse) return 0;
-	return gx_mouse->keyHit(n);
+	if (!sdl_mouse) return 0;
+	return sdl_mouse->keyHit(n);
 }
 
 int bbGetMouse() {
-	if (!gx_mouse) return 0;
-	return gx_mouse->getKey();
+	if (!sdl_mouse) return 0;
+	return sdl_mouse->getKey();
 }
 
 int bbWaitMouse() {
 	for (;;) {
-		if (!gx_runtime->idle()) RTEX(0);
-		if (gx_mouse) {
-			if (int key = gx_mouse->getKey()) return key;
+		if (!sdl_runtime->idle()) RTEX(0);
+		if (sdl_mouse) {
+			if (int key = sdl_mouse->getKey()) return key;
 		}
-		gx_runtime->delay(20);
+		sdl_runtime->delay(20);
 	}
 }
 
@@ -115,15 +115,15 @@ int bbMouseWait() {
 }
 
 int bbMouseX() {
-	return gx_mouse ? gx_mouse->getAxisState(0) : 0;
+	return sdl_mouse ? sdl_mouse->getAxisState(0) : 0;
 }
 
 int bbMouseY() {
-	return gx_mouse ? gx_mouse->getAxisState(1) : 0;
+	return sdl_mouse ? sdl_mouse->getAxisState(1) : 0;
 }
 
 int bbMouseZ() {
-	return gx_mouse ? gx_mouse->getAxisState(2) / 120 : 0;
+	return sdl_mouse ? sdl_mouse->getAxisState(2) / 120 : 0;
 }
 
 int bbMouseXSpeed() {
@@ -145,146 +145,146 @@ int bbMouseZSpeed() {
 }
 
 void bbFlushMouse() {
-	if (gx_mouse) gx_mouse->flush();
+	if (sdl_mouse) sdl_mouse->flush();
 }
 
 void bbMoveMouse(int x, int y) {
-	gx_input->moveMouse(mouse_x = x, mouse_y = y);
+	sdl_input->moveMouse(mouse_x = x, mouse_y = y);
 }
 
 int bbJoyType(int port) {
-	return gx_input->getJoystickType(port);
+	return sdl_input->getJoystickType(port);
 }
 
 int bbJoyConnected(int port) {
-	if (!gx_input) return 0;
-	return gx_input->getControllerConnected(port) ? 1 : 0;
+	if (!sdl_input) return 0;
+	return sdl_input->getControllerConnected(port) ? 1 : 0;
 }
 
 int bbJoyDown(int n, int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->keyDown(n);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->keyDown(n);
 }
 
 int bbJoyHit(int n, int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->keyHit(n);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->keyHit(n);
 }
 
 int bbGetJoy(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->getKey();
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->getKey();
 }
 
 int bbWaitJoy(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
 	for (;;) {
-		if (!gx_runtime->idle()) RTEX(0);
-		if (int key = gx_joysticks[port]->getKey()) return key;
-		gx_runtime->delay(20);
+		if (!sdl_runtime->idle()) RTEX(0);
+		if (int key = sdl_joysticks[port]->getKey()) return key;
+		sdl_runtime->delay(20);
 	}
 }
 
 float bbJoyX(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->getAxisState(0);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->getAxisState(0);
 }
 
 float bbJoyY(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->getAxisState(1);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->getAxisState(1);
 }
 
 float bbJoyZ(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->getAxisState(2);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->getAxisState(2);
 }
 
 float bbJoyU(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->getAxisState(3);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->getAxisState(3);
 }
 
 float bbJoyV(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_joysticks[port]->getAxisState(4);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_joysticks[port]->getAxisState(4);
 }
 
 float bbJoyPitch(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_input->getJoystickType(port) == 3 ?
-		gx_joysticks[port]->getAxisState(4) * 180 :
-		gx_joysticks[port]->getAxisState(5) * 180;
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_input->getJoystickType(port) == 3 ?
+		sdl_joysticks[port]->getAxisState(4) * 180 :
+		sdl_joysticks[port]->getAxisState(5) * 180;
 }
 
 float bbJoyYaw(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_input->getJoystickType(port) == 3 ?
-		gx_joysticks[port]->getAxisState(3) * 180 :
-		gx_joysticks[port]->getAxisState(6) * 180;
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_input->getJoystickType(port) == 3 ?
+		sdl_joysticks[port]->getAxisState(3) * 180 :
+		sdl_joysticks[port]->getAxisState(6) * 180;
 }
 
 float bbJoyRoll(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	return gx_input->getJoystickType(port) == 3 ?
-		gx_joysticks[port]->getAxisState(2) * 90 :
-		gx_joysticks[port]->getAxisState(7) * 180;
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	return sdl_input->getJoystickType(port) == 3 ?
+		sdl_joysticks[port]->getAxisState(2) * 90 :
+		sdl_joysticks[port]->getAxisState(7) * 180;
 }
 
 int bbJoyHat(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return -1;
-	return gx_joysticks[port]->getAxisState(8);
+	if (port < 0 || port >= sdl_joysticks.size()) return -1;
+	return sdl_joysticks[port]->getAxisState(8);
 }
 
 int	bbJoyXDir(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	float t = gx_joysticks[port]->getAxisState(0);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	float t = sdl_joysticks[port]->getAxisState(0);
 	return t < JLT ? -1 : (t > JHT ? 1 : 0);
 }
 
 int bbJoyYDir(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	float t = gx_joysticks[port]->getAxisState(1);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	float t = sdl_joysticks[port]->getAxisState(1);
 	return t < JLT ? -1 : (t > JHT ? 1 : 0);
 }
 
 int	bbJoyZDir(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	float t = gx_joysticks[port]->getAxisState(2);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	float t = sdl_joysticks[port]->getAxisState(2);
 	return t < JLT ? -1 : (t > JHT ? 1 : 0);
 }
 
 float bbJoyLeftTrigger(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	if (gx_input->getJoystickType(port) == 3) {
-		return gx_joysticks[port]->getAxisState(5);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	if (sdl_input->getJoystickType(port) == 3) {
+		return sdl_joysticks[port]->getAxisState(5);
 	}
-	return gx_joysticks[port]->getAxisState(2); // Default to Z of Joystick for compatibility support
+	return sdl_joysticks[port]->getAxisState(2); // Default to Z of Joystick for compatibility support
 }
 
 float bbJoyRightTrigger(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	if (gx_input->getJoystickType(port) == 3) {
-		return gx_joysticks[port]->getAxisState(6);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	if (sdl_input->getJoystickType(port) == 3) {
+		return sdl_joysticks[port]->getAxisState(6);
 	}
 	return 0; // No fallback, just return early
 }
 
 int	bbJoyUDir(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	float t = gx_joysticks[port]->getAxisState(3);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	float t = sdl_joysticks[port]->getAxisState(3);
 	return t < JLT ? -1 : (t > JHT ? 1 : 0);
 }
 
 int	bbJoyVDir(int port) {
-	if (port < 0 || port >= gx_joysticks.size()) return 0;
-	float t = gx_joysticks[port]->getAxisState(4);
+	if (port < 0 || port >= sdl_joysticks.size()) return 0;
+	float t = sdl_joysticks[port]->getAxisState(4);
 	return t < JLT ? -1 : (t > JHT ? 1 : 0);
 }
 
 void bbJoyVibrate(int port, float left, float right) {
-	if (port < 0 || port >= gx_joysticks.size()) return;
-	gx_input->rumble(port, left, right);
+	if (port < 0 || port >= sdl_joysticks.size()) return;
+	sdl_input->rumble(port, left, right);
 }
 
 void bbStopJoyVibrate(int port) {
@@ -292,19 +292,19 @@ void bbStopJoyVibrate(int port) {
 }
 
 int bbJoyCount() {
-	return gx_input ? gx_input->numJoysticks() : 0;
+	return sdl_input ? sdl_input->numJoysticks() : 0;
 }
 
 void bbFlushJoy() {
-	for (int k = 0; k < gx_joysticks.size(); ++k) gx_joysticks[k]->flush();
+	for (int k = 0; k < sdl_joysticks.size(); ++k) sdl_joysticks[k]->flush();
 }
 
 void  bbEnableDirectInput(int enable) {
-	gx_runtime->enableDirectInput(!!enable);
+	sdl_runtime->enableDirectInput(!!enable);
 }
 
 int  bbDirectInputEnabled() {
-	return gx_runtime->directInputEnabled();
+	return sdl_runtime->directInputEnabled();
 }
 
 BBStr* bbGetKeyName(int key) {

@@ -1,15 +1,15 @@
 #include "std.h"
 #include "light.h"
-#include "../gxruntime/gxscene.h"
+#include "../sdlruntime/sdlscene.h"
 
-extern gxScene* gx_scene;
+extern sdlScene* sdl_scene;
 
 Light::Light(int type) {
-	light = gx_scene->createLight(type);
+	light = sdl_scene->createLight(type);
 }
 
 Light::~Light() {
-	if (gx_scene) gx_scene->freeLight(light);
+	if (sdl_scene) sdl_scene->freeLight(light);
 }
 
 void Light::setRange(float r) {

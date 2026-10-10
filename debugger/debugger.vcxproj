@@ -194,7 +194,7 @@
     <ClInclude Include="tabber.h" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\gxruntime\gxruntime.vcxproj">
+    <ProjectReference Include="..\sdlruntime\sdlruntime.vcxproj">
       <Project>{a124d746-4a3b-401d-ae99-6a838595bc8c}</Project>
     </ProjectReference>
   </ItemGroup>

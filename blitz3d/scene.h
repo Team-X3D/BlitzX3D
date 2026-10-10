@@ -6,7 +6,7 @@
 #include <vector>
 #include "entity.h"
 
-class gxLight;
+class sdlLight;
 class Mirror;
 class Listener;
 
@@ -20,7 +20,7 @@ public:
     bool active = true;
     std::unordered_set<Entity*> members;
 
-    std::vector<gxLight*> lights;
+    std::vector<sdlLight*> lights;
     std::vector<Mirror*> mirrors;
     std::vector<Listener*> listeners;
     std::unordered_map<int, std::vector<CollInfo>> collisions;

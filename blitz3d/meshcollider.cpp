@@ -6,7 +6,7 @@ static std::vector<Vector> tri_centres;
 
 extern float stats3d[10];
 
-extern gxRuntime* gx_runtime;
+extern sdlRuntime* sdl_runtime;
 
 static bool triTest(const Vector a[3], const Vector b[3]) {
 	bool pb0 = false, pb1 = false, pb2 = false;

@@ -10,7 +10,7 @@
 
 #include "../config/config.h"
 #include "../stdutil/stdutil.h"
-#include "../gxruntime/gxruntime.h"
+#include "../sdlruntime/sdlruntime.h"
 #include "../bbruntime/constants.h"
 
 #include <set>

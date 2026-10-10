@@ -3,8 +3,8 @@
 #include "meshcollider.h"
 #include "world.h"
 
-extern gxGraphics* gx_graphics;
-extern gxRuntime* gx_runtime;
+extern sdlGraphics* sdl_graphics;
+extern sdlRuntime* sdl_runtime;
 
 bool MeshModel::gpu_skinning_enabled = false;
 
@@ -205,13 +205,13 @@ void MeshModel::createBones() {
 
 bool MeshModel::wantGpuSkinning() {
 	if (!gpu_skinning_enabled) return false;
-	if (!gx_graphics) return false;
-	if (!gx_graphics->skinningSupported()) return false;
-	if (!gx_graphics->getSkinningShader()) return false;
-	if ((int)surf_bones.size() > gxMesh::MAX_SKIN_BONES) {
+	if (!sdl_graphics) return false;
+	if (!sdl_graphics->skinningSupported()) return false;
+	if (!sdl_graphics->getSkinningShader()) return false;
+	if ((int)surf_bones.size() > sdlMesh::MAX_SKIN_BONES) {
 		if (!warned_bone_overflow) {
-			std::string msg = "GPU skinning: mesh has " + std::to_string((int)surf_bones.size()) + " bones (max " + std::to_string((int)gxMesh::MAX_SKIN_BONES) + "), falling back to CPU skinning";
-			gx_runtime->debugLog(msg.c_str());
+			std::string msg = "GPU skinning: mesh has " + std::to_string((int)surf_bones.size()) + " bones (max " + std::to_string((int)sdlMesh::MAX_SKIN_BONES) + "), falling back to CPU skinning";
+			sdl_runtime->debugLog(msg.c_str());
 			warned_bone_overflow = true;
 		}
 		return false;
@@ -249,7 +249,7 @@ bool MeshModel::render(const RenderContext& rc) {
 	if(!surf_bones.size()) {
 		for(int k = 0; k < rep->surfaces.size(); ++k) {
 			Surface* s = rep->surfaces[k];
-			if(gxMesh* mesh = s->getMesh()) {
+			if(sdlMesh* mesh = s->getMesh()) {
 				enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k]);
 			}
 		}
@@ -274,14 +274,14 @@ bool MeshModel::render(const RenderContext& rc) {
 	bool trans = false;
 	for(k = 0; k < rep->surfaces.size(); ++k) {
 		Surface* s = rep->surfaces[k];
-		if(brushes[k].getBlend() == gxScene::BLEND_REPLACE) {
+		if(brushes[k].getBlend() == sdlScene::BLEND_REPLACE) {
 			if (use_gpu) {
-				if (gxMesh* mesh = s->getSkinMesh()) {
+				if (sdlMesh* mesh = s->getSkinMesh()) {
 					enqueueSkinned(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k], packed_bones.data(), (int)surf_bones.size());
 					continue;
 				}
 			}
-			if(gxMesh* mesh = s->getMesh(surf_bones)) {
+			if(sdlMesh* mesh = s->getMesh(surf_bones)) {
 				enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k]);
 			}
 		}
@@ -300,14 +300,14 @@ void MeshModel::renderQueue(int type) {
 
 		for(int k = 0; k < rep->surfaces.size(); ++k) {
 			Surface* s = rep->surfaces[k];
-			if(brushes[k].getBlend() != gxScene::BLEND_REPLACE) {
+			if(brushes[k].getBlend() != sdlScene::BLEND_REPLACE) {
 				if (use_gpu) {
-					if (gxMesh* mesh = s->getSkinMesh()) {
+					if (sdlMesh* mesh = s->getSkinMesh()) {
 						enqueueSkinned(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k], packed_bones.data(), (int)surf_bones.size());
 						continue;
 					}
 				}
-				if(gxMesh* mesh = s->getMesh(surf_bones)) {
+				if(sdlMesh* mesh = s->getMesh(surf_bones)) {
 					enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k]);
 				}
 			}

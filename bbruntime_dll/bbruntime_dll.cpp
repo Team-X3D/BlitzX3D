@@ -10,7 +10,7 @@
 #include "../bbruntime/bbruntime.h"
 #include "../bbruntime/bbangel.h"
 
-#include "../gxruntime/gxutf8.h"
+#include "../sdlruntime/sdlutf8.h"
 
 #include "../MultiLang/MultiLang.h"
 #include "../bbruntime/bbsys.h"
@@ -93,7 +93,7 @@ public:
 			writeCrashLog("=== BLITZ RUNTIME ERROR ===");
 			writeCrashLog("%s", full.c_str());
 			writeCrashLog("---");
-			MessageBoxW(gx_runtime->hwnd, UTF8::convertToUtf16(full).c_str(), MultiLang::runtime_error, MB_APPLMODAL);
+			MessageBoxW(sdl_runtime->hwnd, UTF8::convertToUtf16(full).c_str(), MultiLang::runtime_error, MB_APPLMODAL);
 		}
 	}
 	virtual void debugSys(void* msg) {}
@@ -103,7 +103,7 @@ public:
 static HINSTANCE hinst;
 static std::map<const char*, void*> syms;
 std::map<const char*, void*>::iterator sym_it;
-static gxRuntime* gx_runtime;
+static sdlRuntime* sdl_runtime;
 static void* module_pc = nullptr;
 
 inline const char* getCharPtr(std::string str) {
@@ -144,8 +144,8 @@ void throw_mav() {
 				caught = std::format("{0}: {1}", errorfunc, errorlog);
 			}
 			s = replace_all(s, "_CaughtError_", caught);
-			s = replace_all(s, "_AvailPhys_", to_string(gx_runtime->getAvailPhys()));
-			s = replace_all(s, "_AvailVirtual_", to_string(gx_runtime->getAvailVirtual()));
+			s = replace_all(s, "_AvailPhys_", to_string(sdl_runtime->getAvailPhys()));
+			s = replace_all(s, "_AvailVirtual_", to_string(sdl_runtime->getAvailVirtual()));
 		}
 		s = replace_all(s, "_AS_Stacktrace_", getAngelStackTrace());
 		mav_message = UTF8::convertToAnsi(s);
@@ -323,12 +323,12 @@ void Runtime::execute(void (*pc)(), const char* args, Debugger* dbg) {
 	//something different than 100%.
 	SetProcessDPIAware();
 
-	if(gx_runtime = gxRuntime::openRuntime(hinst, params, dbg)) {
-		bbruntime_run(gx_runtime, pc, debug);
+	if(sdl_runtime = sdlRuntime::openRuntime(hinst, params, dbg)) {
+		bbruntime_run(sdl_runtime, pc, debug);
 
-		gxRuntime* t = gx_runtime;
-		gx_runtime = 0;
-		gxRuntime::closeRuntime(t);
+		sdlRuntime* t = sdl_runtime;
+		sdl_runtime = 0;
+		sdlRuntime::closeRuntime(t);
 	}
 
 #ifndef _DEBUG
@@ -338,15 +338,15 @@ void Runtime::execute(void (*pc)(), const char* args, Debugger* dbg) {
 }
 
 void Runtime::asyncStop() {
-	if(gx_runtime) gx_runtime->asyncStop();
+	if(sdl_runtime) sdl_runtime->asyncStop();
 }
 
 void Runtime::asyncRun() {
-	if(gx_runtime) gx_runtime->asyncRun();
+	if(sdl_runtime) sdl_runtime->asyncRun();
 }
 
 void Runtime::asyncEnd() {
-	if(gx_runtime) gx_runtime->asyncEnd();
+	if(sdl_runtime) sdl_runtime->asyncEnd();
 }
 
 void Runtime::checkmem(std::streambuf* buf) {
@@ -475,12 +475,7 @@ extern "C" BOOL _stdcall _DllMainCRTStartup(HANDLE, DWORD, LPVOID);
 static const char* DX9_DOWNLOAD_URL = "https://www.microsoft.com/en-us/download/details.aspx?id=35";
 
 static bool isD3DX943Missing() {
-	HMODULE h = LoadLibraryExA("d3dx9_43.dll", NULL, 0);
-	if (h) {
-		FreeLibrary(h);
-		return false;
-	}
-	return GetLastError() == ERROR_MOD_NOT_FOUND;
+	return false;
 }
 
 static HRESULT CALLBACK DX9TaskDialogCallback(HWND, UINT msg, WPARAM wParam, LPARAM, LONG_PTR) {

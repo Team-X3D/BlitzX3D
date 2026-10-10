@@ -2,8 +2,8 @@
 #include "terrainrep.h"
 #include <queue>
 
-extern gxRuntime* gx_runtime;
-extern gxGraphics* gx_graphics;
+extern sdlRuntime* sdl_runtime;
+extern sdlGraphics* sdl_graphics;
 extern float stats3d[10];
 
 static Vector eye_vec;
@@ -146,7 +146,7 @@ TerrainRep::TerrainRep(int n) :
 }
 
 TerrainRep::~TerrainRep() {
-	if(mesh) gx_graphics->freeMesh(mesh);
+	if(mesh) sdl_graphics->freeMesh(mesh);
 	delete[] errors;
 	delete[] cells;
 }
@@ -168,9 +168,9 @@ void TerrainRep::setDetail(int n, bool m) {
 		max_verts = n;
 		verts = new Vert[max_verts];
 	}
-	if(mesh) gx_graphics->freeMesh(mesh);
+	if(mesh) sdl_graphics->freeMesh(mesh);
 	mesh_verts = mesh_tris = n;
-	mesh = gx_graphics->createMesh(mesh_verts, mesh_tris, 0);
+	mesh = sdl_graphics->createMesh(mesh_verts, mesh_tris, 0);
 }
 
 void TerrainRep::setShading(bool t) {
@@ -474,8 +474,8 @@ void TerrainRep::render(Model* model, const RenderContext& rc) {
 	if(vert_cnt > mesh_verts || tri_cnt > mesh_tris) {
 		int vc = vert_cnt + 32; if(vc > mesh_verts) mesh_verts = vc;
 		int tc = tri_cnt + 32; if(tc > mesh_tris) mesh_tris = tc;
-		if(mesh) gx_graphics->freeMesh(mesh);
-		mesh = gx_graphics->createMesh(mesh_verts, mesh_tris, 0);
+		if(mesh) sdl_graphics->freeMesh(mesh);
+		mesh = sdl_graphics->createMesh(mesh_verts, mesh_tris, 0);
 	}
 
 	mesh->lock(true);
@@ -542,7 +542,7 @@ bool TerrainRep::collide(const Line& line, float radius, Collision* curr_coll, c
 
 	if(id >= end_tri_id || !errors[id].error) {
 		if(v0.v == v1.v || v0.v == v2.v || v1.v == v2.v) {
-			gx_runtime->debugLog("OUCH!");
+			sdl_runtime->debugLog("OUCH!");
 		}
 		return b.overlaps(box) ?
 			curr_coll->triangleCollide(line, radius, tform * v0.v, tform * v2.v, tform * v1.v)

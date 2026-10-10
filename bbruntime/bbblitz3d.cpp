@@ -22,13 +22,13 @@
 #include "../blitz3d/listener.h"
 #include "../blitz3d/cachedtexture.h"
 #include "../MultiLang/MultiLang.h"
-#include "../gxruntime/gxeffect.h"
-#include "../gxruntime/gxsound.h"
+#include "../sdlruntime/sdleffect.h"
+#include "../sdlruntime/sdlsound.h"
 #include "../blitz3d/scene.h"
 
 //Why is everything static?
-gxScene* gx_scene;
-extern gxFileSystem* gx_filesys;
+sdlScene* sdl_scene;
+extern sdlFileSystem* sdl_filesys;
 
 static int tri_count;
 static World* world;
@@ -68,7 +68,7 @@ if (!debugEntity(e, func)) return;
     if (!debugEntity(e, func)) return ret;
 
 static inline void debug3d(const char* function) {
-	if (!gx_scene) {
+	if (!sdl_scene) {
 		ErrorLog(function, MultiLang::graphics_not_set);
 	}
 }
@@ -241,11 +241,7 @@ static void erase(Entity* e) {
 		erase(p);
 	}
 	if (e->getListener()) listener = 0;
-	auto it = entity_map.find(e);
-	if (it != entity_map.end()) {
-		it->second.alive = false;
-	}
-	//if (debug) entity_set.erase(e);
+	entity_map.erase(e);
 }
 
 static Entity* findChild(Entity* e, const std::string& t) {
@@ -267,52 +263,52 @@ void bbLoaderMatrix(BBStr* ext, float xx, float xy, float xz, float yx, float yy
 
 int bbHWTexUnits() {
 	debug3d("HWTexUnits");
-	return gx_scene->hwTexUnits();
+	return sdl_scene->hwTexUnits();
 }
 
 int bbGfxDriverCaps3D() {
 	debug3d("GfxDriverCaps3D");
-	return gx_scene->gfxDriverCaps3D();
+	return sdl_scene->gfxDriverCaps3D();
 }
 
 void bbHWMultiTex(int enable) {
 	debug3d("HWMultiTex");
-	gx_scene->setHWMultiTex(!!enable);
+	sdl_scene->setHWMultiTex(!!enable);
 }
 
 void bbGpuSkinning(int enable) {
 	debug3d("GpuSkinning");
 	/*
 	MeshModel::setGpuSkinningEnabled(!!enable);
-	if (enable && gx_graphics) gx_graphics->ensureSkinningShader();
+	if (enable && sdl_graphics) sdl_graphics->ensureSkinningShader();
 	*/
 }
 
 void bbWBuffer(int enable) {
 	debug3d("WBuffer");
-	gx_scene->setWBuffer(!!enable);
+	sdl_scene->setWBuffer(!!enable);
 }
 
 void bbDither(int enable) {
 	debug3d("Dither");
-	gx_scene->setDither(!!enable);
+	sdl_scene->setDither(!!enable);
 }
 
 void bbAntiAlias(int enable) {
 	debug3d("AntiAlias");
-	if (gx_runtime) gx_runtime->setAntialiasRequest(!!enable);
-	if (gx_scene) gx_scene->setAntialias(!!enable);
+	if (sdl_runtime) sdl_runtime->setAntialiasRequest(!!enable);
+	if (sdl_scene) sdl_scene->setAntialias(!!enable);
 }
 
 void bbWireFrame(int enable) {
 	debug3d("WireFrame");
-	gx_scene->setWireframe(!!enable);
+	sdl_scene->setWireframe(!!enable);
 }
 
 void bbAmbientLight(float r, float g, float b) {
 	debug3d("AmbientLight");
 	Vector t(r * ctof, g * ctof, b * ctof);
-	gx_scene->setAmbient(&(t.x));
+	sdl_scene->setAmbient(&(t.x));
 }
 
 void bbClearCollisions() {
@@ -330,9 +326,9 @@ static int update_ms;
 void bbUpdateWorld(float elapsed) {
 	debug3d("UpdateWorld");
 #ifdef BETA
-	update_ms = gx_runtime->getMilliSecs();
+	update_ms = sdl_runtime->getMilliSecs();
 	world->update(elapsed);
-	update_ms = gx_runtime->getMilliSecs() - update_ms;
+	update_ms = sdl_runtime->getMilliSecs() - update_ms;
 #else
 	world->update(elapsed);
 	return;
@@ -348,14 +344,14 @@ void bbRenderWorld(float tween) {
 	debug3d("RenderWorld");
 
 	CachedTexture::flushAll();
-	gxSound::flushAll();
+	sdlSound::flushAll();
 
 	//Should we remove this stuff?
 #ifdef BETA
-	int tris = gx_scene->getTrianglesDrawn();
-	int render_ms = gx_runtime->getMilliSecs();
+	int tris = sdl_scene->getTrianglesDrawn();
+	int render_ms = sdl_runtime->getMilliSecs();
 	world->render(tween);
-	render_ms = gx_runtime->getMilliSecs() - render_ms;
+	render_ms = sdl_runtime->getMilliSecs() - render_ms;
 
 	extern int bbKeyHit(int);
 	extern void bbDelay(int);
@@ -372,10 +368,10 @@ void bbRenderWorld(float tween) {
 
 	if (!stats_mode) return;
 
-	tris = gx_scene->getTrianglesDrawn() - tris;
+	tris = sdl_scene->getTrianglesDrawn() - tris;
 
 	static int time;
-	int frame_ms = gx_runtime->getMilliSecs() - time;
+	int frame_ms = sdl_runtime->getMilliSecs() - time;
 	time += frame_ms;
 
 	int fps = frame_ms ? 1000 / frame_ms : 1000;
@@ -391,15 +387,15 @@ void bbRenderWorld(float tween) {
 
 	bbText(0, bbGraphicsHeight() - bbFontHeight(), new BBStr(t), 0, 0);
 #else
-	tri_count = gx_scene->getTrianglesDrawn();
+	tri_count = sdl_scene->getTrianglesDrawn();
 	world->render(tween);
-	tri_count = gx_scene->getTrianglesDrawn() - tri_count;
+	tri_count = sdl_scene->getTrianglesDrawn() - tri_count;
 	return;
 #endif
 }
 
 void bbRenderEntity(Entity* e, Camera* cam, float tween) {
-	if (!gx_scene) {
+	if (!sdl_scene) {
 		ErrorLog("RenderEntity", MultiLang::graphics_not_set);
 		return;
 	}
@@ -438,23 +434,23 @@ int bbRunningUnderWine() {
 // MEMORYINFO //
 ////////////////
 int bbMemoryLoad() {
-	return gx_runtime->getMemoryLoad();
+	return sdl_runtime->getMemoryLoad();
 }
 
 int bbTotalPhys() {
-	return gx_runtime->getTotalPhys();
+	return sdl_runtime->getTotalPhys();
 }
 
 int bbAvailPhys() {
-	return gx_runtime->getAvailPhys();
+	return sdl_runtime->getAvailPhys();
 }
 
 int bbTotalVirtual() {
-	return gx_runtime->getTotalVirtual();
+	return sdl_runtime->getTotalVirtual();
 }
 
 int bbAvailVirtual() {
-	return gx_runtime->getAvailVirtual();
+	return sdl_runtime->getAvailVirtual();
 }
 
 //////////////////////
@@ -568,26 +564,26 @@ void bbPositionTexture(Texture* t, float u_pos, float v_pos) {
 }
 
 void bbTextureLodBias(float bias) {
-	gx_scene->textureLodBias = *((DWORD*)&bias);
+	sdl_scene->textureLodBias = *((DWORD*)&bias);
 }
 
 void bbTextureAnisotropic(int level) {
-	gx_scene->textureAnisotropic = level;
+	sdl_scene->textureAnisotropic = level;
 }
 
 void bbBumpNormalize(int enable) {
-	if (gx_scene) gx_scene->setBumpNormalize(enable != 0);
+	if (sdl_scene) sdl_scene->setBumpNormalize(enable != 0);
 }
 
 int bbTextureWidth(Texture* t) {
 	debugTexture(t, "TextureWidth");
-	gxCanvas* c = t->getCanvas(0);
+	sdlCanvas* c = t->getCanvas(0);
 	return c ? c->getWidth() : 0;
 }
 
 int bbTextureHeight(Texture* t) {
 	debugTexture(t, "TextureHeight");
-	gxCanvas* c = t->getCanvas(0);
+	sdlCanvas* c = t->getCanvas(0);
 	return c ? c->getHeight() : 0;
 }
 
@@ -599,23 +595,23 @@ BBStr* bbTextureName(Texture* t) {
 
 void bbSetCubeFace(Texture* t, int face) {
 	debugTexture(t, "SetCubeFace");
-	if (gxCanvas* c = t->getCanvas(0)) {
+	if (sdlCanvas* c = t->getCanvas(0)) {
 		c->setCubeFace(face);
 	}
 }
 
 void bbSetCubeMode(Texture* t, int mode) {
 	debugTexture(t, "SetCubeMode");
-	if (gxCanvas* c = t->getCanvas(0)) {
+	if (sdlCanvas* c = t->getCanvas(0)) {
 		c->setCubeMode(mode);
 	}
 }
 
-gxCanvas* bbTextureBuffer(Texture* t, int frame) {
+sdlCanvas* bbTextureBuffer(Texture* t, int frame) {
 	//v1.04
 	debugTexture(t, "TextureBuffer");
 	if (!t || !texture_set.count(t)) return 0;
-	if (gxCanvas* c = t->getCanvas(frame)) {
+	if (sdlCanvas* c = t->getCanvas(frame)) {
 		if (c->getDepth()) return c;
 	}
 	return 0;
@@ -711,7 +707,7 @@ Texture* bbGetEntityTexture(Model* m, int index) {
 	return tex;
 }
 
-gxCanvas* bbGetEntityTextureBuffer(Model* m, int tid, int bid) {
+sdlCanvas* bbGetEntityTextureBuffer(Model* m, int tid, int bid) {
 	return bbTextureBuffer(bbGetEntityTexture(m, tid), bid);
 }
 
@@ -750,6 +746,7 @@ Entity* bbLoadMesh(BBStr* f, Entity* p) {
 	collapseMesh(m, e);
 	Entity* r = insertEntity(m, p);
 	nameEntityFromFile(r, file);
+	CachedTexture::flushAll();
 	return r;
 }
 
@@ -765,6 +762,7 @@ Entity* bbLoadAnimMesh(BBStr* f, Entity* p) {
 	}
 	Entity* r = insertEntity(e, p);
 	nameEntityFromFile(r, file);
+	CachedTexture::flushAll();
 	return r;
 }
 
@@ -927,25 +925,22 @@ void bbGetMeshBox(MeshModel* m, float* x, float* y, float* z, float* width, floa
 
 //EFFECTS
 
-gxEffect* bbLoadEffect(BBStr* filename) {
+sdlEffect* bbLoadEffect(BBStr* filename) {
 	debug3d("LoadEffect");
 	std::string f = *filename;
 	delete filename;
-	gxEffect* e = gx_graphics->createEffect(f);
-	if (!e) {
-		// error..........
-		return nullptr;
-	}
+	sdlEffect* e = sdl_graphics->createEffect(f);
+	if (!e) return nullptr;
 	return e;
 }
 
-void bbFreeEffect(gxEffect* effect) {
+void bbFreeEffect(sdlEffect* effect) {
 	if (!effect) return;
-	if (gx_graphics->verifyEffect(effect))
-		gx_graphics->freeEffect(effect);
+	if (sdl_graphics->verifyEffect(effect))
+		sdl_graphics->freeEffect(effect);
 }
 
-void bbSetEntityEffect(Entity* e, gxEffect* effect) {
+void bbSetEntityEffect(Entity* e, sdlEffect* effect) {
 	debugEntity(e, "SetEntityEffect");
 	if (Model* m = e->getModel()) {
 		m->setEffect(effect);
@@ -955,41 +950,41 @@ void bbSetEntityEffect(Entity* e, gxEffect* effect) {
 	}
 }
 
-void bbSetBrushEffect(Brush* b, gxEffect* effect) {
+void bbSetBrushEffect(Brush* b, sdlEffect* effect) {
 	debugBrush(b, "SetBrushEffect");
 	b->setEffect(effect);
 }
 
-void bbSetEffectFloat(gxEffect* effect, BBStr* name, float value) {
+void bbSetEffectFloat(sdlEffect* effect, BBStr* name, float value) {
 	if (!effect || !name) return;
-	if (!gx_graphics->verifyEffect(effect)) { delete name; return; }
+	if (!sdl_graphics->verifyEffect(effect)) { delete name; return; }
 	effect->setFloat(*name, value);
 	delete name;
 }
 
-void bbEffectBool(gxEffect* effect, BBStr* name, int value) {
+void bbEffectBool(sdlEffect* effect, BBStr* name, int value) {
 	bbSetEffectFloat(effect, name, value ? 1.0f : 0.0f);
 }
 
-void bbEffectInt(gxEffect* effect, BBStr* name, int value) {
+void bbEffectInt(sdlEffect* effect, BBStr* name, int value) {
 	bbSetEffectFloat(effect, name, (float)value);
 }
 
-void bbSetEffectVector(gxEffect* effect, BBStr* name, float x, float y, float z, float w) {
+void bbSetEffectVector(sdlEffect* effect, BBStr* name, float x, float y, float z, float w) {
 	if (!effect || !name) return;
-	if (!gx_graphics->verifyEffect(effect)) { delete name; return; }
+	if (!sdl_graphics->verifyEffect(effect)) { delete name; return; }
 	float vec[4] = { x, y, z, w };
 	effect->setVector(*name, vec);
 	delete name;
 }
 
-void bbSetEffectMatrix(gxEffect* effect, BBStr* name,
+void bbSetEffectMatrix(sdlEffect* effect, BBStr* name,
 	float m11, float m12, float m13, float m14,
 	float m21, float m22, float m23, float m24,
 	float m31, float m32, float m33, float m34,
 	float m41, float m42, float m43, float m44) {
 	if (!effect || !name) return;
-	if (!gx_graphics->verifyEffect(effect)) { delete name; return; }
+	if (!sdl_graphics->verifyEffect(effect)) { delete name; return; }
 	D3DXMATRIX mat = {
 		m11, m12, m13, m14,
 		m21, m22, m23, m24,
@@ -1000,13 +995,12 @@ void bbSetEffectMatrix(gxEffect* effect, BBStr* name,
 	delete name;
 }
 
-void bbSetEffectTexture(gxEffect* effect, BBStr* name, Texture* tex) {
+void bbSetEffectTexture(sdlEffect* effect, BBStr* name, Texture* tex) {
 	if (!effect || !tex) return;
-	if (!gx_graphics->verifyEffect(effect)) { delete name; return; }
-	gxCanvas* c = tex->getCanvas(0);
+	if (!sdl_graphics->verifyEffect(effect)) { delete name; return; }
+	sdlCanvas* c = tex->getCanvas(0);
 	if (c) {
-		IDirect3DBaseTexture9* d3dtex = c->getTexSurface();
-		effect->setTexture(*name, d3dtex);
+		effect->setTextureCanvas(*name, c);
 	}
 	delete name;
 }
@@ -1210,7 +1204,7 @@ int  bbTriangleVertex(Surface* s, int n, int v) {
 Entity* bbCreateCamera(Entity* p) {
 	debugParent(p, "CreateCamera");
 	int x, y, w, h;
-	gx_canvas->getViewport(&x, &y, &w, &h);
+	sdl_canvas->getViewport(&x, &y, &w, &h);
 	Camera* c = new Camera();
 	c->setViewport(x, y, w, h);
 	c->setClsColor(Vector(0, 0, 0));
@@ -1317,12 +1311,12 @@ Matrix* bbCameraMatrix(Camera* c, int typ, float tween) {
 
 void bbSetScissorRect(int enable, int x, int y, int width, int height) {
 	debug3d("SetScissorRect");
-	gx_scene->setScissorRect(enable != 0, x, y, width, height);
+	sdl_scene->setScissorRect(enable != 0, x, y, width, height);
 }
 
 void bbSetTextureDivisor(int div) {
 	debug3d("SetTextureDivisor");
-	gx_scene->setTextureDivisor(div);
+	sdl_scene->setTextureDivisor(div);
 }
 
 int  bbCameraProject(Camera* c, float x, float y, float z) {
@@ -1528,7 +1522,7 @@ Entity* bbCreatePivot(Entity* p) {
 Entity* bbCreateSprite(Entity* p) {
 	debugParent(p, "CreateSprite");
 	Sprite* s = new Sprite();
-	s->setFX(gxScene::FX_FULLBRIGHT);
+	s->setFX(sdlScene::FX_FULLBRIGHT);
 	return insertEntity(s, p);
 }
 
@@ -1539,11 +1533,11 @@ Entity* bbLoadSprite(BBStr* file, int flags, Entity* p) {
 	if (!t.getCanvas(0)) return 0;
 	Sprite* s = new Sprite();
 	s->setTexture(0, t, 0);
-	s->setFX(gxScene::FX_FULLBRIGHT);
+	s->setFX(sdlScene::FX_FULLBRIGHT);
 
-	if (flags & gxCanvas::CANVAS_TEX_MASK) s->setBlend(gxScene::BLEND_REPLACE);
-	else if (flags & gxCanvas::CANVAS_TEX_ALPHA) s->setBlend(gxScene::BLEND_ALPHA);
-	else s->setBlend(gxScene::BLEND_ADD);
+	if (flags & sdlCanvas::CANVAS_TEX_MASK) s->setBlend(sdlScene::BLEND_REPLACE);
+	else if (flags & sdlCanvas::CANVAS_TEX_ALPHA) s->setBlend(sdlScene::BLEND_ALPHA);
+	else s->setBlend(sdlScene::BLEND_ADD);
 
 	return insertEntity(s, p);
 }
@@ -1608,7 +1602,7 @@ Entity* bbCreateDecal(Texture* tex, Entity* p) {
 	if (tex) debugTexture(tex, "CreateDecal");
 	MeshModel* m = new MeshModel();
 	if (tex) m->setTexture(0, *tex, 0);
-	m->setBlend(gxScene::BLEND_ALPHA);
+	m->setBlend(sdlScene::BLEND_ALPHA);
 	return insertEntity(m, p);
 }
 
@@ -1708,22 +1702,23 @@ static Vector terrainVector(Terrain* t, float x, float y, float z) {
 
 Entity* bbCreateTerrain(int n, Entity* p) {
 	debugParent(p, "CreateTerrain");
+	if (n < 1 || n > 4096) { ErrorLog("CreateTerrain", MultiLang::illegal_terrain_size); return 0; }
 	int shift = 0;
 	while ((1 << shift) < n) ++shift;
-	if ((1 << shift) != n) ErrorLog("CreateTerrain", MultiLang::illegal_terrain_size);
+	if ((1 << shift) != n) { ErrorLog("CreateTerrain", MultiLang::illegal_terrain_size); return 0; }
 	Terrain* t = new Terrain(shift);
 	return insertEntity(t, p);
 }
 
 Entity* bbLoadTerrain(BBStr* file, Entity* p) {
 	debugParent(p, "LoadTerrain");
-	gxCanvas* c = gx_graphics->loadCanvas(*file, gxCanvas::CANVAS_HIGHCOLOR);
-	if (!c) ErrorLog("LoadTerrain", MultiLang::unable_load_heightmap);
+	sdlCanvas* c = sdl_graphics->loadCanvas(*file, sdlCanvas::CANVAS_HIGHCOLOR);
+	if (!c) { ErrorLog("LoadTerrain", MultiLang::unable_load_heightmap); return 0; }
 	int w = c->getWidth(), h = c->getHeight();
-	if (w != h) ErrorLog("LoadTerrain", MultiLang::terrain_must_be_square);
+	if (w != h) { sdl_graphics->freeCanvas(c); ErrorLog("LoadTerrain", MultiLang::terrain_must_be_square); return 0; }
 	int shift = 0;
 	while ((1 << shift) < w) ++shift;
-	if ((1 << shift) != w) ErrorLog("LoadTerrain", MultiLang::illegal_terrain_size);
+	if ((1 << shift) != w || shift > 12) { sdl_graphics->freeCanvas(c); ErrorLog("LoadTerrain", MultiLang::illegal_terrain_size); return 0; }
 	Terrain* t = new Terrain(shift);
 	c->lock();
 	for (int y = 0; y < h; ++y) {
@@ -1735,7 +1730,7 @@ Entity* bbLoadTerrain(BBStr* file, Entity* p) {
 		}
 	}
 	c->unlock();
-	gx_graphics->freeCanvas(c);
+	sdl_graphics->freeCanvas(c);
 	return insertEntity(t, p);
 }
 
@@ -1789,7 +1784,7 @@ Entity* bbCreateListener(Entity* p, float roll, float dopp, float dist) {
 	return insertEntity(listener, p);
 }
 
-gxChannel* bbEmitSound(gxSound* sound, Object* o) {
+sdlChannel* bbEmitSound(sdlSound* sound, Object* o) {
 	debugObject(o, "CreateListener");
 	if (!listener) ErrorLog("CreateListener", MultiLang::no_listener_created);
 	return o->emitSound(sound);
@@ -2516,7 +2511,8 @@ void  bbClearWorld(int e, int b, int t, int fx) {
 			next = ent->successor();
 			if (ent->pinned()) continue;
 			if (current == 0 || ent->getScene() == current) {
-				bbFreeEntity(ent);
+				if (entity_map.find(ent) != entity_map.end()) bbFreeEntity(ent);
+				else delete ent;
 			}
 		}
 	}
@@ -2535,7 +2531,7 @@ void  bbClearWorld(int e, int b, int t, int fx) {
 		}
 	}
 	if (fx) {
-		gx_graphics->clearEffects();
+		sdl_graphics->clearEffects();
 	}
 }
 
@@ -2608,9 +2604,9 @@ int bbSceneExists(int id) {
 
 void blitz3d_open() {
 	// MessageBoxA(NULL, "blitz3d_open: entered", "Debug", MB_OK);
-	gx_scene = gx_graphics->createScene(0);
+	sdl_scene = sdl_graphics->createScene(0);
 	// MessageBoxA(NULL, "blitz3d_open: after createScene", "Debug", MB_OK);
-	if (!gx_scene) RTEX(MultiLang::unable_create_gxscene_instance);
+	if (!sdl_scene) RTEX(MultiLang::unable_create_gxscene_instance);
 	// MessageBoxA(NULL, "blitz3d_open: scene valid", "Debug", MB_OK);
 	world = new World();
 	// MessageBoxA(NULL, "blitz3d_open: after new World", "Debug", MB_OK);
@@ -2618,7 +2614,7 @@ void blitz3d_open() {
 	picked.collision = Collision();
 	picked.with = 0; picked.coords = Vector();
 	Texture::clearFilters();
-	Texture::addFilter("", gxCanvas::CANVAS_TEX_RGB | gxCanvas::CANVAS_TEX_MIPMAP);
+	Texture::addFilter("", sdlCanvas::CANVAS_TEX_RGB | sdlCanvas::CANVAS_TEX_MIPMAP);
 	loader_mat_map.clear();
 	loader_mat_map["x"] = Transform();
 	loader_mat_map["3ds"] = Transform(Matrix(Vector(1, 0, 0), Vector(0, 0, 1), Vector(0, 1, 0)));
@@ -2627,20 +2623,20 @@ void blitz3d_open() {
 }
 
 void blitz3d_close() {
-	if (!gx_scene) return;
-	gxScene* scene = gx_scene;
+	if (!sdl_scene) return;
+	sdlScene* scene = sdl_scene;
 	bbClearWorld(1, 1, 1, 1);
 	Texture::clearFilters();
 	loader_mat_map.clear();
 	delete world;
-	gx_scene = 0;
-	if (gx_graphics) gx_graphics->freeScene(scene);
+	sdl_scene = 0;
+	if (sdl_graphics) sdl_graphics->freeScene(scene);
 	MeshModel::setGpuSkinningEnabled(false);
 }
 
 bool blitz3d_create() {
 	tri_count = 0;
-	gx_scene = 0; world = 0;
+	sdl_scene = 0; world = 0;
 	return true;
 }
 
@@ -2702,6 +2698,15 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("SetEffectVector%effect$name#x#y#z#w", bbSetEffectVector);
 	rtSym("SetEffectMatrix%effect$name#m11#m12#m13#m14#m21#m22#m23#m24#m31#m32#m33#m34#m41#m42#m43#m44", bbSetEffectMatrix);
 	rtSym("SetEffectTexture%effect$name%texture", bbSetEffectTexture);
+
+	rtSym("%LoadShader$filename", bbLoadEffect);
+	rtSym("FreeShader%shader", bbFreeEffect);
+	rtSym("SetEntityShader%entity%shader", bbSetEntityEffect);
+	rtSym("SetBrushShader%brush%shader", bbSetBrushEffect);
+	rtSym("SetShaderFloat%shader$name#value", bbSetEffectFloat);
+	rtSym("SetShaderVector%shader$name#x#y#z#w", bbSetEffectVector);
+	rtSym("SetShaderMatrix%shader$name#m11#m12#m13#m14#m21#m22#m23#m24#m31#m32#m33#m34#m41#m42#m43#m44", bbSetEffectMatrix);
+	rtSym("SetShaderTexture%shader$name%texture", bbSetEffectTexture);
 
 	rtSym("ScaleTexture%texture#u_scale#v_scale", bbScaleTexture);
 	rtSym("RotateTexture%texture#angle", bbRotateTexture);

@@ -32,7 +32,7 @@ private:
 
 	Cell* cells;
 	Error* errors;
-	gxMesh* mesh;
+	sdlMesh* mesh;
 
 	int cell_size, cell_shift, cell_mask;
 	int end_tri_id, detail, mesh_verts, mesh_tris;

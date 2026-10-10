@@ -5,7 +5,7 @@ struct SDL_GPUDevice;
 struct SDL_GPUTexture;
 struct SDL_GPUCommandBuffer;
 
-namespace sdlgpu { class Surface; }
+class sdlCanvas;
 
 namespace sdlgpu {
 
@@ -13,7 +13,7 @@ namespace sdlgpu {
 	bool UploadTextureRGBA(SDL_GPUDevice* dev, SDL_GPUTexture* tex, unsigned w, unsigned h, const void* px);
 	bool UploadTextureRGBA(SDL_GPUDevice* dev, SDL_GPUTexture* tex, unsigned w, unsigned h, const void* px, bool cycle);
 	void ReleaseTexture(SDL_GPUDevice* dev, SDL_GPUTexture* tex);
-	void InvalidateCanvasTextures(Surface* canvas);
+	void InvalidateCanvasTextures(::sdlCanvas* canvas);
 
 	SDL_GPUTexture* CreateColorTarget(SDL_GPUDevice* dev, unsigned w, unsigned h);
 	SDL_GPUTexture* CreateColorTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, float r, float g, float b, float a);
@@ -22,14 +22,15 @@ namespace sdlgpu {
 	SDL_GPUTexture* CreateDepthTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, int formatValue, float depth, unsigned char stencil);
 	SDL_GPUTexture* CreateDepthTarget(SDL_GPUDevice* dev, unsigned w, unsigned h, int formatValue, float depth, unsigned char stencil, int sampleCount);
 
-	SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, Surface* canvas);
-	SDL_GPUTexture* EnsureCanvasRenderTarget(SDL_GPUDevice* dev, Surface* canvas);
-	SDL_GPUTexture* EnsureCanvasCubeTexture(SDL_GPUDevice* dev, Surface* canvas);
-	SDL_GPUTexture* EnsureCanvasDepthTarget(SDL_GPUDevice* dev, Surface* canvas, unsigned w, unsigned h);
-	bool DownloadCanvasTexture(SDL_GPUDevice* dev, Surface* canvas);
-	bool SeedCanvasTexture(SDL_GPUDevice* dev, Surface* canvas, unsigned w, unsigned h, const void* rgba);
-	SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, Surface* canvas);
-	SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, Surface* canvas, SDL_GPUCommandBuffer* cmds, bool* didUpload = nullptr);
+	SDL_GPUTexture* GetCanvasTexture(SDL_GPUDevice* dev, ::sdlCanvas* canvas);
+	SDL_GPUTexture* GetCanvasMaskedTexture(SDL_GPUDevice* dev, ::sdlCanvas* canvas, unsigned maskRGB);
+	SDL_GPUTexture* EnsureCanvasRenderTarget(SDL_GPUDevice* dev, ::sdlCanvas* canvas);
+	SDL_GPUTexture* EnsureCanvasCubeTexture(SDL_GPUDevice* dev, ::sdlCanvas* canvas);
+	SDL_GPUTexture* EnsureCanvasDepthTarget(SDL_GPUDevice* dev, ::sdlCanvas* canvas, unsigned w, unsigned h);
+	bool DownloadCanvasTexture(SDL_GPUDevice* dev, ::sdlCanvas* canvas);
+	bool SeedCanvasTexture(SDL_GPUDevice* dev, ::sdlCanvas* canvas, unsigned w, unsigned h, const void* rgba);
+	SDL_GPUTexture* GetCanvasOverlayTexture(SDL_GPUDevice* dev, ::sdlCanvas* canvas, bool keyCls = true);
+	SDL_GPUTexture* GetCanvasOverlayTextureBatched(SDL_GPUDevice* dev, ::sdlCanvas* canvas, SDL_GPUCommandBuffer* cmds, bool* didUpload = nullptr, bool keyCls = true);
 
 	void TeardownTexturePools(SDL_GPUDevice* dev);
 }

@@ -3,10 +3,10 @@
 #include "texture.h"
 #include "cachedtexture.h"
 
-#include "../gxruntime/gxgraphics.h"
+#include "../sdlruntime/sdlgraphics.h"
 
-extern gxScene* gx_scene;
-extern gxGraphics* gx_graphics;
+extern sdlScene* sdl_scene;
+extern sdlGraphics* sdl_graphics;
 
 struct Filter {
 	std::string t;
@@ -41,28 +41,28 @@ struct Texture::Rep {
 
 	float sx, sy, tx, ty, rot;
 	bool mat_used, mat_valid;
-	gxScene::Matrix matrix;
+	sdlScene::Matrix matrix;
 	bool pinned = false;
 
 	Rep(int w, int h, int flags, int cnt) :
 		ref_cnt(1), cached_tex(w, h, flags, cnt),
-		tex_blend(gxScene::BLEND_MULTIPLY), tex_flags(0),
+		tex_blend(sdlScene::BLEND_MULTIPLY), tex_flags(0),
 		bumpEnvMat{ {0, 0}, {0, 0} }, bumpEnvScale(0), bumpEnvOffset(0),
 		sx(1), sy(1), tx(0), ty(0), rot(0), mat_used(false), mat_valid(false) {
 		transparent =
-			(flags & gxCanvas::CANVAS_TEX_ALPHA) &&
-			!(flags & gxCanvas::CANVAS_TEX_MASK);
+			(flags & sdlCanvas::CANVAS_TEX_ALPHA) &&
+			!(flags & sdlCanvas::CANVAS_TEX_MASK);
 		memset(&matrix, 0, sizeof(matrix));
 	}
 
 	Rep(const std::string& f, int flags, int w, int h, int first, int cnt) :
 		ref_cnt(1), cached_tex(f, flags, w, h, first, cnt),
-		tex_blend(gxScene::BLEND_MULTIPLY), tex_flags(0),
+		tex_blend(sdlScene::BLEND_MULTIPLY), tex_flags(0),
 		bumpEnvMat{ {0, 0}, {0, 0} }, bumpEnvScale(0), bumpEnvOffset(0),
 		sx(1), sy(1), tx(0), ty(0), rot(0), mat_used(false), mat_valid(false) {
 		transparent =
-			(flags & gxCanvas::CANVAS_TEX_ALPHA) &&
-			!(flags & gxCanvas::CANVAS_TEX_MASK);
+			(flags & sdlCanvas::CANVAS_TEX_ALPHA) &&
+			!(flags & sdlCanvas::CANVAS_TEX_MASK);
 		memset(&matrix, 0, sizeof(matrix));
 	}
 
@@ -81,20 +81,20 @@ Texture::Texture() :rep(0) {
 }
 
 Texture::Texture(const std::string& f, int flags) {
-	flags = filterFile(f, flags) | gxCanvas::CANVAS_TEXTURE;
-	if(flags & gxCanvas::CANVAS_TEX_MASK) flags |= gxCanvas::CANVAS_TEX_RGB | gxCanvas::CANVAS_TEX_ALPHA;
+	flags = filterFile(f, flags) | sdlCanvas::CANVAS_TEXTURE;
+	if(flags & sdlCanvas::CANVAS_TEX_MASK) flags |= sdlCanvas::CANVAS_TEX_RGB | sdlCanvas::CANVAS_TEX_ALPHA;
 	rep = new Rep(f, flags, 0, 0, 0, 1);
 }
 
 Texture::Texture(const std::string& f, int flags, int w, int h, int first, int cnt) {
-	flags = filterFile(f, flags) | gxCanvas::CANVAS_TEXTURE;
-	if(flags & gxCanvas::CANVAS_TEX_MASK) flags |= gxCanvas::CANVAS_TEX_RGB | gxCanvas::CANVAS_TEX_ALPHA;
+	flags = filterFile(f, flags) | sdlCanvas::CANVAS_TEXTURE;
+	if(flags & sdlCanvas::CANVAS_TEX_MASK) flags |= sdlCanvas::CANVAS_TEX_RGB | sdlCanvas::CANVAS_TEX_ALPHA;
 	rep = new Rep(f, flags, w, h, first, cnt);
 }
 
 Texture::Texture(int w, int h, int flags, int cnt) {
-	flags |= gxCanvas::CANVAS_TEXTURE;
-	if(flags & gxCanvas::CANVAS_TEX_MASK) flags |= gxCanvas::CANVAS_TEX_RGB | gxCanvas::CANVAS_TEX_ALPHA;
+	flags |= sdlCanvas::CANVAS_TEXTURE;
+	if(flags & sdlCanvas::CANVAS_TEX_MASK) flags |= sdlCanvas::CANVAS_TEX_RGB | sdlCanvas::CANVAS_TEX_ALPHA;
 	rep = new Rep(w, h, flags, cnt);
 }
 
@@ -165,15 +165,15 @@ bool Texture::isTransparent()const {
 	return rep ? rep->transparent : false;
 }
 
-gxCanvas* Texture::getCanvas(int n)const {
+sdlCanvas* Texture::getCanvas(int n)const {
 	if (!rep) return 0;
-	const std::vector<gxCanvas*>& frames = rep->cached_tex.getFrames();
+	const std::vector<sdlCanvas*>& frames = rep->cached_tex.getFrames();
 	return n >= 0 && n < (int)frames.size() ? frames[n] : 0;
 }
 
 int Texture::getCanvasFlags()const {
 	if (!rep) return 0;
-	const std::vector<gxCanvas*>& frames = rep->cached_tex.getFrames();
+	const std::vector<sdlCanvas*>& frames = rep->cached_tex.getFrames();
 	return frames.size() ? frames[0]->getFlags() : 0;
 }
 
@@ -205,7 +205,7 @@ DWORD Texture::getBumpEnvOffset()const {
 	return rep ? rep->bumpEnvOffset : 0;
 }
 
-const gxScene::Matrix* Texture::getMatrix()const {
+const sdlScene::Matrix* Texture::getMatrix()const {
 	if(!rep || !rep->mat_used) return 0;
 	if(!rep->mat_valid) {
 		float c = cos(rep->rot), s = sin(rep->rot);

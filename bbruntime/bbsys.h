@@ -2,12 +2,12 @@
 #define BBSYS_H
 
 #include "basic.h"
-#include "../gxruntime/gxruntime.h"
+#include "../sdlruntime/sdlruntime.h"
 
 #include <string>
 
 extern bool debug;
-extern gxRuntime* gx_runtime;
+extern sdlRuntime* sdl_runtime;
 extern const char* errorfunc;
 extern const char* errorlog;
 
@@ -26,7 +26,7 @@ const char* bbReleaseFile();
 struct bbEx {
 	const char* err;
 	bbEx(const char* e) : err(e) {
-		if (e && !angel_is_executing()) gx_runtime->debugError(e);
+		if (e && !angel_is_executing()) sdl_runtime->debugError(e);
 	}
 };
 

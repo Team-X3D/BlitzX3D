@@ -1,16 +1,16 @@
 #include "std.h"
 #include "brush.h"
 
-#include "../gxruntime/gxgraphics.h"
+#include "../sdlruntime/sdlgraphics.h"
 
 struct Brush::Rep {
 	union { int ref_cnt; Rep* next; };
 	int blend, max_tex;
 	bool blend_valid;
-	gxScene::RenderState rs;
-	Texture texs[gxScene::MAX_TEXTURES];
-	int tex_frame[gxScene::MAX_TEXTURES];
-	gxEffect* effect;
+	sdlScene::RenderState rs;
+	Texture texs[sdlScene::MAX_TEXTURES];
+	int tex_frame[sdlScene::MAX_TEXTURES];
+	sdlEffect* effect;
 	float roughness = 0.0f, metallic = 0.0f;
 	bool pinned = false;
 
@@ -20,7 +20,7 @@ struct Brush::Rep {
 		ref_cnt(1), blend(0), max_tex(0), blend_valid(true), effect(nullptr) {
 		memset(&rs, 0, sizeof(rs));
 		memset(tex_frame, 0, sizeof(tex_frame));
-		rs.blend = gxScene::BLEND_REPLACE;
+		rs.blend = sdlScene::BLEND_REPLACE;
 		rs.color[0] = rs.color[1] = rs.color[2] = rs.alpha = 1;
 	}
 
@@ -73,7 +73,7 @@ Brush::Brush(const Brush& a, const Brush& b) :
 
 	rep->rs.fx |= b.rep->rs.fx;
 
-	rep->rs.fx = (rep->rs.fx & ~(unsigned)gxScene::FX_NOFOG) | (b.rep->rs.fx & gxScene::FX_NOFOG);
+	rep->rs.fx = (rep->rs.fx & ~(unsigned)sdlScene::FX_NOFOG) | (b.rep->rs.fx & sdlScene::FX_NOFOG);
 
 	if (b.rep->max_tex > rep->max_tex) rep->max_tex = b.rep->max_tex;
 
@@ -131,13 +131,13 @@ void Brush::setFX(int fx) {
 
 void Brush::setTexture(int index, const Texture& t, int n) {
 	write();
-	gxScene::RenderState& rs = rep->rs;
+	sdlScene::RenderState& rs = rep->rs;
 
 	rep->texs[index] = t;
 	rep->tex_frame[index] = n;
 
 	rep->max_tex = 0;
-	for (int k = 0; k < gxScene::MAX_TEXTURES; ++k) {
+	for (int k = 0; k < sdlScene::MAX_TEXTURES; ++k) {
 		if (rep->texs[k].valid()) rep->max_tex = k + 1;
 	}
 	rep->blend_valid = false;
@@ -173,14 +173,14 @@ int Brush::getBlend()const {
 
 	rep->blend_valid = true;	//well, it will be...
 
-	gxScene::RenderState& rs = rep->rs;
+	sdlScene::RenderState& rs = rep->rs;
 
 	//alphatest
-	if (rep->texs[0].getCanvasFlags() & gxCanvas::CANVAS_TEX_MASK) {
-		rs.fx |= gxScene::FX_ALPHATEST;
+	if (rep->texs[0].getCanvasFlags() & sdlCanvas::CANVAS_TEX_MASK) {
+		rs.fx |= sdlScene::FX_ALPHATEST;
 	}
 	else {
-		rs.fx &= ~gxScene::FX_ALPHATEST;
+		rs.fx &= ~sdlScene::FX_ALPHATEST;
 	}
 
 	//0 = default/replace
@@ -188,26 +188,26 @@ int Brush::getBlend()const {
 	//2 = multiply
 	//3 = add
 	if (rep->blend) {
-		if (rep->blend != gxScene::BLEND_ALPHA) {
+		if (rep->blend != sdlScene::BLEND_ALPHA) {
 			return rs.blend = rep->blend;
 		}
 		for (int k = 0; k < rep->max_tex; ++k) {
 			if (rep->texs[k].isTransparent()) {
-				return rs.blend = gxScene::BLEND_ALPHA;
+				return rs.blend = sdlScene::BLEND_ALPHA;
 			}
 		}
 	}
 	else if (rep->max_tex == 1 && rep->texs[0].isTransparent()) {
 		//single transparent texture?
-		return rs.blend = gxScene::BLEND_ALPHA;
+		return rs.blend = sdlScene::BLEND_ALPHA;
 	}
 
 	//vertex alpha or entityalpha?
-	if ((rs.fx & gxScene::FX_VERTEXALPHA) || rs.alpha < 1) {
-		return rs.blend = gxScene::BLEND_ALPHA;
+	if ((rs.fx & sdlScene::FX_VERTEXALPHA) || rs.alpha < 1) {
+		return rs.blend = sdlScene::BLEND_ALPHA;
 	}
 
-	return rs.blend = gxScene::BLEND_REPLACE;
+	return rs.blend = sdlScene::BLEND_REPLACE;
 }
 
 int Brush::getFX()const {
@@ -218,10 +218,10 @@ Texture Brush::getTexture(int index)const {
 	return rep->texs[index];
 }
 
-const gxScene::RenderState& Brush::getRenderState()const {
+const sdlScene::RenderState& Brush::getRenderState()const {
 	getBlend();
 	for (int k = 0; k < rep->max_tex; ++k) {
-		gxScene::RenderState::TexState* ts = &rep->rs.tex_states[k];
+		sdlScene::RenderState::TexState* ts = &rep->rs.tex_states[k];
 		ts->canvas = rep->texs[k].getCanvas(rep->tex_frame[k]);
 		ts->matrix = rep->texs[k].getMatrix();
 		ts->blend = rep->texs[k].getBlend();
@@ -234,8 +234,8 @@ const gxScene::RenderState& Brush::getRenderState()const {
 		ts->bumpEnvOffset = rep->texs[k].getBumpEnvOffset();
 	}
 	// Clear unused slots so stale shit never leaks through!
-	for (int k = rep->max_tex; k < gxScene::MAX_TEXTURES; ++k) {
-		gxScene::RenderState::TexState* ts = &rep->rs.tex_states[k];
+	for (int k = rep->max_tex; k < sdlScene::MAX_TEXTURES; ++k) {
+		sdlScene::RenderState::TexState* ts = &rep->rs.tex_states[k];
 		ts->canvas = nullptr;
 		ts->matrix = nullptr;
 		ts->blend = 0;
@@ -259,7 +259,7 @@ bool Brush::operator<(const Brush& t)const {
 	if (rep->rs.fx != t.rep->rs.fx) return rep->rs.fx < t.rep->rs.fx;
 	if (rep->max_tex != t.rep->max_tex) return rep->max_tex < t.rep->max_tex;
 	if (rep->effect != t.rep->effect) return rep->effect < t.rep->effect;
-	for (int k = 0; k < gxScene::MAX_TEXTURES; ++k) {
+	for (int k = 0; k < sdlScene::MAX_TEXTURES; ++k) {
 		const Texture& ta = rep->texs[k];
 		const Texture& tb = t.rep->texs[k];
 		CachedTexture* ca = ta.getCachedTexture();
@@ -274,19 +274,19 @@ bool Brush::operator<(const Brush& t)const {
 		if (ta.getBumpEnvMat(1, 1) != tb.getBumpEnvMat(1, 1)) return ta.getBumpEnvMat(1, 1) < tb.getBumpEnvMat(1, 1);
 		if (ta.getBumpEnvScale() != tb.getBumpEnvScale()) return ta.getBumpEnvScale() < tb.getBumpEnvScale();
 		if (ta.getBumpEnvOffset() != tb.getBumpEnvOffset()) return ta.getBumpEnvOffset() < tb.getBumpEnvOffset();
-		const gxScene::Matrix* ma = ta.getMatrix();
-		const gxScene::Matrix* mb = tb.getMatrix();
+		const sdlScene::Matrix* ma = ta.getMatrix();
+		const sdlScene::Matrix* mb = tb.getMatrix();
 		if (ma != mb) return ma < mb;
 	}
 	return false;
 }
 
-void Brush::setEffect(gxEffect* e) {
+void Brush::setEffect(sdlEffect* e) {
 	write()->effect = e;
 	rep->blend_valid = false;
 }
 
-gxEffect* Brush::getEffect() const {
+sdlEffect* Brush::getEffect() const {
 	return rep->effect;
 }
 

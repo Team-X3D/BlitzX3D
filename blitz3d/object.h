@@ -7,7 +7,7 @@
 #include "animator.h"
 #include "collision.h"
 
-class gxSound;
+class sdlSound;
 
 struct ObjCollision {
 	Object* with;
@@ -42,7 +42,7 @@ public:
 	void setAnimation(const Animation& t) { anim = t; }
 	void setAnimator(Animator* t);
 
-	gxChannel* emitSound(gxSound* sound);
+	sdlChannel* emitSound(sdlSound* sound);
 
 	//overridables!
 	virtual bool collide(const Line& line, float radius, ::Collision* curr_coll, const Transform& t) { return false; }
@@ -85,7 +85,7 @@ private:
 	int mask = 0;
 	float elapsed;
 	Vector velocity;
-	std::vector<gxChannel*> channels;
+	std::vector<sdlChannel*> channels;
 	Vector capt_pos, capt_scl;
 	Quat capt_rot;
 	mutable Object* last_copy;

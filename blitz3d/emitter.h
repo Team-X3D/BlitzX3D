@@ -4,8 +4,8 @@
 
 #include "object.h"
 
-class gxSound;
-class gxChannel;
+class sdlSound;
+class sdlChannel;
 
 class Emitter : public Object{
 public:
@@ -21,12 +21,12 @@ public:
 	void beginRender( float tween );
 
 	//Public interface
-	gxChannel *emitSound( gxSound *sound );
+	sdlChannel *emitSound( sdlSound *sound );
 
 private:
 	Vector pos,vel;
 
-	vector<gxChannel*> channels;
+	vector<sdlChannel*> channels;
 };
 
 #endif

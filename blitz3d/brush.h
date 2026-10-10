@@ -19,7 +19,7 @@ public:
 	void setBlend(int blend);
 	void setFX(int fx);
 	void setTexture(int index, const Texture& t, int frame);
-	void setEffect(gxEffect* effect);
+	void setEffect(sdlEffect* effect);
 	const Vector& getColor()const;
 	float getAlpha()const;
 	float getShininess()const;
@@ -30,8 +30,8 @@ public:
 	int getFX()const;
 	Texture getTexture(int index)const;
 
-	const gxScene::RenderState& getRenderState()const;
-	gxEffect* getEffect() const;
+	const sdlScene::RenderState& getRenderState()const;
+	sdlEffect* getEffect() const;
 
 	void setPinned(bool pinned);
 	bool pinned()const;

@@ -1,7 +1,8 @@
 #include "sdl_gpu_mesh.h"
 #include "sdl_gpu_lock.h"
 #include "sdl_gpu_pipeline.h"
-#include "sdl_gpu_common.h"
+
+#include "../sdlruntime/std.h"
 
 #include <cstdio>
 #include <cstring>

@@ -2,8 +2,8 @@
 #define BBBLITZ3D_H
 
 #include "bbsys.h"
-#include "../gxruntime/gxscene.h"
+#include "../sdlruntime/sdlscene.h"
 
-extern gxScene* gx_scene;
+extern sdlScene* sdl_scene;
 
 #endif

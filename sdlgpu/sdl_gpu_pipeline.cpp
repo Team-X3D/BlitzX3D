@@ -2,7 +2,8 @@
 #include "sdl_gpu_lock.h"
 #include "sdl_gpu_mesh.h"
 #include "sdl_gpu_upload.h"
-#include "sdl_gpu_common.h"
+
+#include "../sdlruntime/std.h"
 
 #include <algorithm>
 #include <cmath>
@@ -310,11 +311,11 @@ namespace sdlgpu {
 		SDL_GPUTextureFormat picked = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
 		if (dev) {
 			const SDL_GPUTextureFormat order[] = {
+				SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+				SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
 				SDL_GPU_TEXTUREFORMAT_D24_UNORM,
 				SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
 				SDL_GPU_TEXTUREFORMAT_D16_UNORM,
-				SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-				SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
 			};
 			for (SDL_GPUTextureFormat f : order) {
 				if (SDL_GPUTextureSupportsFormat(dev, f, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
@@ -630,6 +631,7 @@ namespace sdlgpu {
 		float matA[MESH_MAX_STAGES][4];
 		float matB[MESH_MAX_STAGES][4];
 		float bumpEnv[MESH_MAX_STAGES][4];
+		float fog[4];
 	};
 
 	static void PushMeshFragUniforms(SDL_GPUCommandBuffer* cmds, const MeshDrawParams& p) {
@@ -640,6 +642,7 @@ namespace sdlgpu {
 		memcpy(fu.mat1A, p.uvMat1A, sizeof(fu.mat1A));
 		memcpy(fu.mat1B, p.uvMat1B, sizeof(fu.mat1B));
 		memcpy(fu.bump, p.bumpMat, sizeof(fu.bump));
+		memcpy(fu.fog, p.fogParams, sizeof(fu.fog));
 		fu.flat[0] = p.flat;
 		int n = p.stageCount;
 		if (n < 0) n = 0;

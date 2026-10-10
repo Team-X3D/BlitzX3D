@@ -5,7 +5,7 @@
 
 #include "cachedtexture.h"
 
-#include "../gxruntime/gxcanvas.h"
+#include "../sdlruntime/sdlcanvas.h"
 
 class Texture {
 public:
@@ -29,8 +29,8 @@ public:
 
 	int getCanvasFlags()const;
 	bool valid()const;
-	gxCanvas* getCanvas(int frame)const;
-	const gxScene::Matrix* getMatrix()const;
+	sdlCanvas* getCanvas(int frame)const;
+	const sdlScene::Matrix* getMatrix()const;
 	int getBlend()const;
 	int getFlags()const;
 	DWORD getBumpEnvMat(int x, int y)const;

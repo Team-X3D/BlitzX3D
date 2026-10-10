@@ -128,12 +128,12 @@ namespace sdlgpu {
 		}
 	}
 
-	bool GXSHADERDATA_API RuntimeCompilerAvailable() {
+	bool SDLSHADERDATA_API RuntimeCompilerAvailable() {
 		std::string err;
 		return EnsureDxc(err);
 	}
 
-	std::string GXSHADERDATA_API ShaderAssetStem(const std::string& sourcePath) {
+	std::string SDLSHADERDATA_API ShaderAssetStem(const std::string& sourcePath) {
 		size_t slash = sourcePath.find_last_of("/\\");
 		size_t dot = sourcePath.find_last_of('.');
 		if (dot == std::string::npos || (slash != std::string::npos && dot < slash)) return sourcePath;
@@ -429,7 +429,7 @@ namespace sdlgpu {
 		return false;
 	}
 
-	bool GXSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err) {
+	bool SDLSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err) {
 		if (!source || !psEntry || !psEntry[0]) {
 			err = "No pixel entry point";
 			return false;
@@ -455,7 +455,7 @@ namespace sdlgpu {
 		}
 	}
 
-	bool GXSHADERDATA_API SaveShaderAsset(const std::string& stem, const ShaderAsset& asset, std::string& err) {
+	bool SDLSHADERDATA_API SaveShaderAsset(const std::string& stem, const ShaderAsset& asset, std::string& err) {
 		std::ostringstream refl;
 		refl << "b3dshader 1\n";
 		WriteStageRefl(refl, "ps", asset.ps);
@@ -486,7 +486,7 @@ namespace sdlgpu {
 		return true;
 	}
 
-	bool GXSHADERDATA_API LoadShaderAsset(const std::string& stem, ShaderAsset& out, std::string& err) {
+	bool SDLSHADERDATA_API LoadShaderAsset(const std::string& stem, ShaderAsset& out, std::string& err) {
 		std::ifstream rf(stem + ".refl", std::ios::binary);
 		if (!rf) {
 			err = "Shader asset not found";
@@ -553,7 +553,7 @@ namespace sdlgpu {
 		return true;
 	}
 
-	bool GXSHADERDATA_API ShaderAssetExists(const std::string& stem) {
+	bool SDLSHADERDATA_API ShaderAssetExists(const std::string& stem) {
 		std::ifstream rf(stem + ".refl", std::ios::binary);
 		return (bool)rf;
 	}
