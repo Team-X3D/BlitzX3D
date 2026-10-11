@@ -42,13 +42,13 @@ jobs:
 
           Write-Host "=== SDL3 ==="
           cmake -S vendor\SDL3 -B "$bld\SDL3" -G "Visual Studio 17 2022" -A Win32 `
-            "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" `
+            "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" `
             -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TESTS=OFF -DSDL_TEST_LIBRARY=OFF
           cmake --build "$bld\SDL3" --config Release --target install
 
           Write-Host "=== SDL_image ==="
           cmake -S vendor\SDL_image -B "$bld\SDL_image" -G "Visual Studio 17 2022" -A Win32 `
-            "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" `
+            "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" `
             -DBUILD_SHARED_LIBS=OFF `
             -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF `
             -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_JXL=OFF
@@ -56,8 +56,9 @@ jobs:
 
           Write-Host "=== SDL_ttf ==="
           cmake -S vendor\SDL_ttf -B "$bld\SDL_ttf" -G "Visual Studio 17 2022" -A Win32 `
-            "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" `
+            "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" `
             -DBUILD_SHARED_LIBS=OFF `
+            -DSDLTTF_HARFBUZZ=OFF `
             -DSDLTTF_SAMPLES=OFF
           cmake --build "$bld\SDL_ttf" --config Release --target install
 
