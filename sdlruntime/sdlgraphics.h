@@ -169,9 +169,9 @@ private:
 	bool skin_shader_load_failed;
 	int skin_caps_checked;   //-1 unknown, 0 unsupported, 1 supported
 
-	sdlCanvas* copy_scratch;
-	int copy_scratch_w, copy_scratch_h;
-	D3DFORMAT copy_scratch_fmt;
+	sdlCanvas* copy_scratch = nullptr;
+	int copy_scratch_w = 0, copy_scratch_h = 0;
+	D3DFORMAT copy_scratch_fmt = D3DFMT_UNKNOWN;
 };
 
 #endif
