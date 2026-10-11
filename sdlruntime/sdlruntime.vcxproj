@@ -88,7 +88,7 @@
       <MinimalRebuild>false</MinimalRebuild>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\include\;..\freetype\include;..\angelscript\sdk\angelscript\include;..\ffmpeg\include;$(ProjectDir);..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\vendor\SDL_ttf\include;$(ProjectDir)..\vendor\SDL_image\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\include\;..\freetype\include;..\angelscript\sdk\angelscript\include;..\ffmpeg\include;$(ProjectDir);..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\vendor\SDL_ttf\include;$(ProjectDir)..\vendor\SDL_image\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <ResourceCompile>
@@ -123,7 +123,7 @@
       <ProgramDataBaseFileName>.\Debug\</ProgramDataBaseFileName>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <CallingConvention>StdCall</CallingConvention>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\include\;..\freetype\include;..\angelscript\sdk\angelscript\include;..\ffmpeg\include;$(ProjectDir);..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\vendor\SDL_ttf\include;$(ProjectDir)..\vendor\SDL_image\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\include\;..\freetype\include;..\angelscript\sdk\angelscript\include;..\ffmpeg\include;$(ProjectDir);..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\vendor\SDL_ttf\include;$(ProjectDir)..\vendor\SDL_image\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>

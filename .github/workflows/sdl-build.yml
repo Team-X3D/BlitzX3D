@@ -1,0 +1,103 @@
+name: SDL Build
+
+on:
+  push:
+    branches: [ SDL-GPU-X ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install required VS workloads (MFC/ATL v143)
+        shell: pwsh
+        run: |
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          Write-Host "VS install path: $vsPath"
+          Start-Process -FilePath "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" -ArgumentList `
+            "modify", "--installPath", "`"$vsPath`"", `
+            "--add", "Microsoft.VisualStudio.Component.VC.ATLMFC", `
+            "--add", "Microsoft.VisualStudio.Component.VC.ATL", `
+            "--quiet", "--norestart", "--wait" `
+            -Wait -PassThru | Select-Object -ExpandProperty ExitCode
+
+      - name: Build SDL3 / SDL_image / SDL_ttf (static)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $prefix = Join-Path $env:GITHUB_WORKSPACE "sdl-prefix"
+          $bld = Join-Path $env:GITHUB_WORKSPACE "sdl-cmake"
+
+          Write-Host "=== SDL3 ==="
+          cmake -S vendor\SDL3 -B "$bld\SDL3" -G "Visual Studio 17 2022" -A Win32 `
+            -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TESTS=OFF -DSDL_TEST_LIBRARY=OFF
+          cmake --build "$bld\SDL3" --config Release --target install
+
+          Write-Host "=== SDL_image ==="
+          cmake -S vendor\SDL_image -B "$bld\SDL_image" -G "Visual Studio 17 2022" -A Win32 `
+            -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF `
+            -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_JXL=OFF
+          cmake --build "$bld\SDL_image" --config Release --target install
+
+          Write-Host "=== SDL_ttf ==="
+          cmake -S vendor\SDL_ttf -B "$bld\SDL_ttf" -G "Visual Studio 17 2022" -A Win32 `
+            -DCMAKE_INSTALL_PREFIX="$prefix" -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 `
+            -DSDLTTF_SAMPLES=OFF
+          cmake --build "$bld\SDL_ttf" --config Release --target install
+
+          New-Item -ItemType Directory -Force -Path "Win32\Release" | Out-Null
+          Copy-Item "$prefix\lib\SDL3_image-static.lib" "Win32\Release\SDL_image-static.lib" -Force
+          Copy-Item "$prefix\lib\SDL3_ttf-static.lib"   "Win32\Release\SDL3_ttf-static.lib"  -Force
+          Get-ChildItem "Win32\Release\*.lib" | Select-Object Name, Length
+
+      - name: Restore NuGet packages
+        run: nuget restore blitz3d.sln
+        continue-on-error: true
+
+      - name: Build solution (Release)
+        run: msbuild blitz3d.sln /p:Configuration=Release /m /v:minimal
+
+      - name: Compute next tag
+        id: sdl_tag
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          $max = 0
+          foreach ($t in (git tag --list 'SDLTEST*_UNSTABLE')) {
+            if ($t -match '^SDLTEST(\d+)_UNSTABLE$') {
+              $n = [int]$Matches[1]
+              if ($n -gt $max) { $max = $n }
+            }
+          }
+          $next = $max + 1
+          Write-Host "Next SDL test tag: SDLTEST${next}_UNSTABLE"
+          "name=SDLTEST${next}_UNSTABLE" >> $env:GITHUB_OUTPUT
+
+      - name: Package build
+        shell: pwsh
+        run: Compress-Archive -Path "_release\*" -DestinationPath "${{ steps.sdl_tag.outputs.name }}.zip" -Force
+
+      - name: Publish SDL test release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.sdl_tag.outputs.name }}
+          name: ${{ steps.sdl_tag.outputs.name }}
+          target_commitish: SDL-GPU-X
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: ${{ steps.sdl_tag.outputs.name }}.zip
