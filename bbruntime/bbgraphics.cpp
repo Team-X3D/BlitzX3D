@@ -108,7 +108,7 @@ public:
         frameHasMask.resize(frames.size());
         for (int k = 0; k < (int)frames.size(); ++k)
         {
-            gxCanvas* c = frames[k];
+            sdlCanvas* c = frames[k];
             c->getHandle(&handleX[k], &handleY[k]);
             frameHasMask[k] = c->hasMask();
             maskARGB[k] = c->getMask();
