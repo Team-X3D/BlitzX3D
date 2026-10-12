@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-#include "sdl_gpu_builtin_shaders.h"
+#include "shaders/mesh_shaders.h"
 
 namespace sdlgpu {
 
@@ -61,15 +61,30 @@ namespace sdlgpu {
 	};
 
 	static GpuShader* CreateFromAsset(SDL_GPUDevice* dev, const ShaderAsset& asset, const char* psEntry, const char* vsEntry) {
+		SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
+		bool dxil = (sup & SDL_GPU_SHADERFORMAT_DXIL) != 0;
+		SDL_GPUShaderFormat fmt = dxil ? SDL_GPU_SHADERFORMAT_DXIL : SDL_GPU_SHADERFORMAT_SPIRV;
+
 		GpuShader* s = new GpuShader();
 		s->dev = dev;
 
-		if (asset.ps.spirv.empty()) {
-			g_shaderError = "Pixel shader missing SPIR-V";
+		const std::vector<unsigned char>& psBytes = dxil ? asset.ps.dxil : asset.ps.spirv;
+		if (psBytes.empty()) {
+			g_shaderError = dxil ? "Precompiled pixel shader missing DXIL" : "Precompiled pixel shader missing SPIR-V";
 			delete s;
 			return nullptr;
 		}
-		s->ps = CreateGPUStageShader(dev, asset.ps.spirv, psEntry, false, asset.ps.samplerCount, asset.ps.uniformCount, asset.ps.storageBufferCount, asset.ps.storageTextureCount);
+		SDL_GPUShaderCreateInfo ci{};
+		ci.code = psBytes.data();
+		ci.code_size = psBytes.size();
+		ci.entrypoint = psEntry;
+		ci.format = fmt;
+		ci.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+		ci.num_samplers = asset.ps.samplerCount;
+		ci.num_storage_textures = asset.ps.storageTextureCount;
+		ci.num_storage_buffers = asset.ps.storageBufferCount;
+		ci.num_uniform_buffers = asset.ps.uniformCount;
+		s->ps = SDL_CreateGPUShader(dev, &ci);
 		if (!s->ps) {
 			g_shaderError = SDL_GetError();
 			delete s;
@@ -77,13 +92,24 @@ namespace sdlgpu {
 		}
 
 		if (asset.hasVS) {
-			if (asset.vs.spirv.empty()) {
-				g_shaderError = "Vertex shader missing SPIR-V";
+			const std::vector<unsigned char>& vsBytes = dxil ? asset.vs.dxil : asset.vs.spirv;
+			if (vsBytes.empty()) {
+				g_shaderError = dxil ? "Precompiled vertex shader missing DXIL" : "Precompiled vertex shader missing SPIR-V";
 				SDL_ReleaseGPUShader(dev, s->ps);
 				delete s;
 				return nullptr;
 			}
-			s->vs = CreateGPUStageShader(dev, asset.vs.spirv, vsEntry, true, asset.vs.samplerCount, asset.vs.uniformCount, asset.vs.storageBufferCount, asset.vs.storageTextureCount);
+			SDL_GPUShaderCreateInfo vci{};
+			vci.code = vsBytes.data();
+			vci.code_size = vsBytes.size();
+			vci.entrypoint = vsEntry;
+			vci.format = fmt;
+			vci.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+			vci.num_samplers = asset.vs.samplerCount;
+			vci.num_storage_textures = asset.vs.storageTextureCount;
+			vci.num_storage_buffers = asset.vs.storageBufferCount;
+			vci.num_uniform_buffers = asset.vs.uniformCount;
+			s->vs = SDL_CreateGPUShader(dev, &vci);
 			if (!s->vs) {
 				g_shaderError = SDL_GetError();
 				SDL_ReleaseGPUShader(dev, s->ps);
@@ -115,25 +141,18 @@ namespace sdlgpu {
 	}
 
 	static GpuShader* CompileFromSource(SDL_GPUDevice* dev, const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir) {
-		(void)sourcePath;
-		if (!psEntry || !psEntry[0]) {
-			g_shaderError = "No pixel entry point";
+		SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
+		bool dxil = (sup & SDL_GPU_SHADERFORMAT_DXIL) != 0;
+		bool spirv = (sup & SDL_GPU_SHADERFORMAT_SPIRV) != 0;
+		if (!dxil && !spirv) {
+			g_shaderError = "No supported shader format on this device";
 			return nullptr;
 		}
 		ShaderAsset asset;
 		std::string err;
-		if (!CompileHLSLToSPIRV(source, psEntry, false, includeDir, nullptr, 0, asset.ps.spirv, err)) {
+		if (!CompileShader(source, sourcePath, vsEntry, psEntry, includeDir, dxil, spirv, asset, err)) {
 			g_shaderError = err;
 			return nullptr;
-		}
-		ReflectSPIRV(asset.ps.spirv, false, asset.ps);
-		if (vsEntry && vsEntry[0] && strstr(source, vsEntry)) {
-			asset.hasVS = true;
-			if (!CompileHLSLToSPIRV(source, vsEntry, true, includeDir, nullptr, 0, asset.vs.spirv, err)) {
-				g_shaderError = err;
-				return nullptr;
-			}
-			ReflectSPIRV(asset.vs.spirv, true, asset.vs);
 		}
 		return CreateFromAsset(dev, asset, psEntry, vsEntry);
 	}
@@ -147,6 +166,16 @@ namespace sdlgpu {
 	GpuShader* SDLSHADER_API CreateShaderFromFile(SDL_GPUDevice* dev, const char* path, const char* vsEntry, const char* psEntry, const char* includeDir) {
 		if (!dev || !path) return nullptr;
 		g_shaderError.clear();
+		std::string stem = ShaderAssetStem(path);
+		if (ShaderAssetExists(stem)) {
+			ShaderAsset asset;
+			std::string err;
+			if (!LoadShaderAsset(stem, asset, err)) {
+				g_shaderError = err;
+				return nullptr;
+			}
+			return CreateFromAsset(dev, asset, psEntry, vsEntry);
+		}
 		std::ifstream f(path, std::ios::binary);
 		if (!f) {
 			g_shaderError = "Unable to open shader file";
@@ -161,7 +190,31 @@ namespace sdlgpu {
 	}
 
 	static SDL_GPUShader* MakeBuiltinVS(SDL_GPUDevice* dev, bool skinned) {
-		return CompileBuiltinShader(dev, "mesh", skinned ? "VSMainSkinned" : "VSMain", true, nullptr, 0, 0, 1, skinned ? 1 : 0, 0);
+		SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
+		const uint8_t* code = nullptr;
+		size_t size = 0;
+		SDL_GPUShaderFormat fmt = SDL_GPU_SHADERFORMAT_INVALID;
+		const char* entry = skinned ? "VSMainSkinned" : "VSMain";
+		if (sup & SDL_GPU_SHADERFORMAT_DXIL) {
+			fmt = SDL_GPU_SHADERFORMAT_DXIL;
+			code = skinned ? kSkinVS_DXIL : kMeshVS_DXIL;
+			size = skinned ? kSkinVS_DXIL_size : kMeshVS_DXIL_size;
+		}
+		else if (sup & SDL_GPU_SHADERFORMAT_SPIRV) {
+			fmt = SDL_GPU_SHADERFORMAT_SPIRV;
+			code = skinned ? kSkinVS_SPIRV : kMeshVS_SPIRV;
+			size = skinned ? kSkinVS_SPIRV_size : kMeshVS_SPIRV_size;
+		}
+		if (!code) return nullptr;
+		SDL_GPUShaderCreateInfo ci{};
+		ci.code = code;
+		ci.code_size = size;
+		ci.entrypoint = entry;
+		ci.format = fmt;
+		ci.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+		ci.num_uniform_buffers = 1;
+		ci.num_storage_buffers = skinned ? 1 : 0;
+		return SDL_CreateGPUShader(dev, &ci);
 	}
 
 	SDL_GPUGraphicsPipeline* SDLSHADER_API ShaderPipeline(GpuShader* s, SDL_GPUDevice* dev, int colorFormat, int depthFormat, int blend, int zMode, int cull, bool wireframe, int samples, bool skinned) {

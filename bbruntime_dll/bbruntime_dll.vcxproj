@@ -97,13 +97,18 @@
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
       <AdditionalOptions> /FIXED:NO</AdditionalOptions>
-      <AdditionalDependencies>delayimp.lib;SDL_image-static.lib;SDL3_ttf-static.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\Win32\$(Configuration);..\ffmpeg\lib;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\lib\Win32</AdditionalLibraryDirectories>
+      <AdditionalDependencies>delayimp.lib;SDL_image-static.lib;SDL3_ttf-static.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\Win32\$(Configuration);..\ffmpeg\lib;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
-copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"</Command>
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
+if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -165,16 +170,21 @@ copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"</Command>
       <SubSystem>Windows</SubSystem>
       <OutputFile>..\_release\bin\runtime.dll</OutputFile>
       <ImportLibrary>..\_release\userlibs\runtime.lib</ImportLibrary>
-      <AdditionalDependencies>delayimp.lib;SDL_image-static.lib;SDL3_ttf-static.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;SDL_image-static.lib;SDL3_ttf-static.lib;bcrypt.lib;avformat.lib;FreeImage.lib;avcodec.lib;avutil.lib;swscale.lib;wsock32.lib;wininet.lib;amstrmid.lib;winmm.lib;dxguid.lib;ddraw.lib;d3d9.lib;dsound.lib;dinput8.lib;setupapi.lib;imm32.lib;version.lib;odbc32.lib;odbccp32.lib;spirv-cross-c-shared.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>false</GenerateDebugInformation>
       <AdditionalOptions>/SAFESEH:NO %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\Win32\$(Configuration);..\ffmpeg\lib;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\lib\Win32</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\Win32\$(Configuration);..\ffmpeg\lib;$(ProjectDir)..\packages\FreeImageNative.3.17.0\build\native\lib\Win32;..\tools\spirv-cross\lib</AdditionalLibraryDirectories>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(ProjectDir)..\bass\bin\bass.dll" "$(OutDir)bass.dll"
 copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
-copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"</Command>
+copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
+if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -213,10 +223,6 @@ copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"</Command>
     </ProjectReference>
     <ProjectReference Include="..\sdlgpu\sdlgpu.vcxproj">
       <Project>{7b2e8f41-3c5d-4e6a-9f1b-8d2c4a6e0f53}</Project>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
-    <ProjectReference Include="..\sdl3_shadercross.vcxproj">
-      <Project>{9f3b1a24-5c6d-4e7f-8a90-1b2c3d4e5f60}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
     <ProjectReference Include="..\stdutil\stdutil.vcxproj">

@@ -14,7 +14,7 @@
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_properties.h>
 
-#include "sdl_gpu_builtin_shaders.h"
+#include "shaders/text_shaders.h"
 
 namespace sdlgpu {
 
@@ -176,12 +176,35 @@ SDL_GPUGraphicsPipeline* EnsureTextPipeForFormat(SDL_GPUDevice* dev, SDL_GPUText
 	}
 	auto found = g_textPipes.find((int)fmt);
 	if (found != g_textPipes.end() && found->second) return found->second;
-	SDL_GPUShader* vs = CompileBuiltinShader(dev, "text", "VSMain", true, nullptr, 0, 0, 0, 0, 0);
+	SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
+	const uint8_t* vsCode = nullptr;
+	const uint8_t* psCode = nullptr;
+	size_t vsSize = 0;
+	size_t psSize = 0;
+	SDL_GPUShaderFormat use = SDL_GPU_SHADERFORMAT_INVALID;
+	if (sup & SDL_GPU_SHADERFORMAT_SPIRV) {
+		use = SDL_GPU_SHADERFORMAT_SPIRV;
+		vsCode = kTextVS_SPIRV;
+		vsSize = kTextVS_SPIRV_size;
+		psCode = kTextPS_SPIRV;
+		psSize = kTextPS_SPIRV_size;
+	} else if (sup & SDL_GPU_SHADERFORMAT_DXIL) {
+		use = SDL_GPU_SHADERFORMAT_DXIL;
+		vsCode = kTextVS_DXIL;
+		vsSize = kTextVS_DXIL_size;
+		psCode = kTextPS_DXIL;
+		psSize = kTextPS_DXIL_size;
+	}
+	if (use == SDL_GPU_SHADERFORMAT_INVALID) {
+		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No supported text shader format: %u", (unsigned)sup);
+		return nullptr;
+	}
+	SDL_GPUShader* vs = LoadTextShader(dev, use, SDL_GPU_SHADERSTAGE_VERTEX, "VSMain", vsCode, vsSize, 0);
 	if (!vs) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Text VS failed: %s", SDL_GetError());
 		return nullptr;
 	}
-	SDL_GPUShader* ps = CompileBuiltinShader(dev, "text", "PSMain", false, nullptr, 0, 1, 0, 0, 0);
+	SDL_GPUShader* ps = LoadTextShader(dev, use, SDL_GPU_SHADERSTAGE_FRAGMENT, "PSMain", psCode, psSize, 1);
 	if (!ps) {
 		SDL_ReleaseGPUShader(dev, vs);
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Text PS failed: %s", SDL_GetError());

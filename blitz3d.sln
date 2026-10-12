@@ -44,8 +44,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "sdlruntime", "sdlruntime\sd
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "sdlgpu", "sdlgpu\sdlgpu.vcxproj", "{7B2E8F41-3C5D-4E6A-9F1B-8D2C4A6E0F53}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SDL3_shadercross", "sdl3_shadercross.vcxproj", "{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}"
-EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "linker", "linker\linker.vcxproj", "{0D2839C8-F607-444C-8EAF-61252CED08C9}"
 	ProjectSection(ProjectDependencies) = postProject
 		{324BD9AD-73B9-4764-8943-8CCADC0FC597} = {324BD9AD-73B9-4764-8943-8CCADC0FC597}
@@ -345,18 +343,6 @@ Global
 		{7B2E8F41-3C5D-4E6A-9F1B-8D2C4A6E0F53}.Release|x64.Build.0 = Release|Win32
 		{7B2E8F41-3C5D-4E6A-9F1B-8D2C4A6E0F53}.Release|x86.ActiveCfg = Release|Win32
 		{7B2E8F41-3C5D-4E6A-9F1B-8D2C4A6E0F53}.Release|x86.Build.0 = Release|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Debug|Any CPU.ActiveCfg = Debug|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Debug|Any CPU.Build.0 = Debug|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Debug|x64.ActiveCfg = Debug|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Debug|x64.Build.0 = Debug|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Debug|x86.ActiveCfg = Debug|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Debug|x86.Build.0 = Debug|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Release|Any CPU.ActiveCfg = Release|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Release|Any CPU.Build.0 = Release|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Release|x64.ActiveCfg = Release|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Release|x64.Build.0 = Release|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Release|x86.ActiveCfg = Release|Win32
-		{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

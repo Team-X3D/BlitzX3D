@@ -55,7 +55,7 @@
       <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;NDEBUG;PRO;_LIB;_HAS_STD_BYTE=0;_NO_DEBUG_HEAP=1;SDL_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\ffmpeg\include;..\freetype\include;$(ProjectDir);$(ProjectDir)..;..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\vendor\SDL_shadercross\include;$(ProjectDir)..\vendor\SDL_shadercross\external\SPIRV-Cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\ffmpeg\include;..\freetype\include;$(ProjectDir);$(ProjectDir)..;..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\tools\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -71,7 +71,7 @@
       <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;_DEBUG;PRO;_LIB;SDL_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <CallingConvention>StdCall</CallingConvention>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\ffmpeg\include;..\freetype\include;$(ProjectDir);$(ProjectDir)..;..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\vendor\SDL_shadercross\include;$(ProjectDir)..\vendor\SDL_shadercross\external\SPIRV-Cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\ffmpeg\include;..\freetype\include;$(ProjectDir);$(ProjectDir)..;..\bass\include;$(ProjectDir)..\vendor\SDL3\include;$(ProjectDir)..\tools\spirv-cross\include\spirv_cross;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -80,7 +80,6 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="sdl_gpu_builtin_shaders.cpp" />
     <ClCompile Include="sdl_gpu_context.cpp" />
     <ClCompile Include="sdl_gpu_mesh.cpp" />
     <ClCompile Include="sdl_gpu_pipeline.cpp" />
@@ -96,7 +95,6 @@
     <ClCompile Include="sdl_gpu_texture.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="sdl_gpu_builtin_shaders.h" />
     <ClInclude Include="sdl_gpu_context.h" />
     <ClInclude Include="sdl_gpu_lock.h" />
     <ClInclude Include="sdl_gpu_mesh.h" />

@@ -1,9 +1,6 @@
 #ifndef SDL_GPU_SHADER_DATA_H
 #define SDL_GPU_SHADER_DATA_H
 
-#include <SDL3/SDL_gpu.h>
-
-#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -37,6 +34,7 @@ struct ShaderStageAsset {
 	unsigned uniformCount = 0;
 	unsigned storageBufferCount = 0;
 	unsigned storageTextureCount = 0;
+	std::vector<unsigned char> dxil;
 	std::vector<unsigned char> spirv;
 };
 
@@ -46,20 +44,12 @@ struct ShaderAsset {
 	bool hasVS = false;
 };
 
-struct ShaderDefine {
-	const char* name;
-	const char* value;
-};
-
-void SDLSHADERDATA_API InitShaderCompiler();
-
-bool SDLSHADERDATA_API CompileHLSLToSPIRV(const char* source, const char* entry, bool vertex, const char* includeDir, const ShaderDefine* defines, unsigned defineCount, std::vector<unsigned char>& spirv, std::string& err);
-
-bool SDLSHADERDATA_API ReflectSPIRV(const std::vector<unsigned char>& spirv, bool vertex, ShaderStageAsset& stage);
-
-SDL_GPUShader* SDLSHADERDATA_API CreateGPUStageShader(SDL_GPUDevice* dev, const std::vector<unsigned char>& spirv, const char* entry, bool vertex, unsigned samplers, unsigned uniformBuffers, unsigned storageBuffers, unsigned storageTextures);
-
-SDL_GPUShader* SDLSHADERDATA_API CompileStageShader(SDL_GPUDevice* dev, const char* source, const char* entry, bool vertex, const char* includeDir, const ShaderDefine* defines, unsigned defineCount, unsigned samplers, unsigned uniformBuffers, unsigned storageBuffers, unsigned storageTextures, std::string& err);
+std::string SDLSHADERDATA_API ShaderAssetStem(const std::string& sourcePath);
+bool SDLSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err);
+bool SDLSHADERDATA_API SaveShaderAsset(const std::string& stem, const ShaderAsset& asset, std::string& err);
+bool SDLSHADERDATA_API LoadShaderAsset(const std::string& stem, ShaderAsset& out, std::string& err);
+bool SDLSHADERDATA_API ShaderAssetExists(const std::string& stem);
+bool SDLSHADERDATA_API RuntimeCompilerAvailable();
 
 }
 
