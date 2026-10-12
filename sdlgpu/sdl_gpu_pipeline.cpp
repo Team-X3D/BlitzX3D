@@ -18,11 +18,9 @@
 #include <SDL3/SDL_log.h>
 #include <SDL3/SDL_properties.h>
 
-#include "shaders/mesh_shaders.h"
-#include "shaders/canvas_shaders.h"
-#include "shaders/present_shaders.h"
 #include "sdl_gpu_text.h"
 #include "sdl_gpu_shader.h"
+#include "sdl_gpu_builtin_shaders.h"
 
 namespace sdlgpu {
 
@@ -436,10 +434,6 @@ namespace sdlgpu {
 			if (found != g_meshPipes.end()) return found->second;
 		}
 
-		SDL_GPUShaderFormat supported = CachedShaderFormats(dev);
-		const uint8_t* vsCode = nullptr;
-		const uint8_t* psCode = nullptr;
-		size_t vsSize = 0, psSize = 0;
 		const char* vsEntry = skinned ? "VSMainSkinned" : "VSMain";
 		int psKind = 0;
 		const char* psEntry;
@@ -454,57 +448,25 @@ namespace sdlgpu {
 				: psKind == 4 ? "PSMainCubeCube"
 				: "PSMainCube";
 		}
-		SDL_GPUShaderFormat useFmt = SDL_GPU_SHADERFORMAT_INVALID;
-		if (supported & SDL_GPU_SHADERFORMAT_SPIRV) {
-			useFmt = SDL_GPU_SHADERFORMAT_SPIRV;
-			if (skinned) { vsCode = kSkinVS_SPIRV; vsSize = kSkinVS_SPIRV_size; }
-			else { vsCode = kMeshVS_SPIRV; vsSize = kMeshVS_SPIRV_size; }
-			if (multiStages > 0) {
-				static const uint8_t* const multiCode[] = {
-					kMeshPS1_SPIRV, kMeshPS2_SPIRV, kMeshPS3_SPIRV, kMeshPS4_SPIRV,
-					kMeshPS5_SPIRV, kMeshPS6_SPIRV, kMeshPS7_SPIRV, kMeshPS8_SPIRV };
-				static const size_t multiSize[] = {
-					kMeshPS1_SPIRV_size, kMeshPS2_SPIRV_size, kMeshPS3_SPIRV_size, kMeshPS4_SPIRV_size,
-					kMeshPS5_SPIRV_size, kMeshPS6_SPIRV_size, kMeshPS7_SPIRV_size, kMeshPS8_SPIRV_size };
-				psCode = multiCode[multiStages - 1]; psSize = multiSize[multiStages - 1];
-			}
-			else switch (psKind) {
-				case 1: psCode = kMeshPSCube_SPIRV; psSize = kMeshPSCube_SPIRV_size; break;
-				case 2: psCode = kMeshPSCubeTex_SPIRV; psSize = kMeshPSCubeTex_SPIRV_size; break;
-				case 3: psCode = kMeshPSTexCube_SPIRV; psSize = kMeshPSTexCube_SPIRV_size; break;
-				default: psCode = kMeshPSCubeCube_SPIRV; psSize = kMeshPSCubeCube_SPIRV_size; break;
-			}
+		char stageDefine[8]{};
+		ShaderDefine psDef[1]{};
+		const ShaderDefine* psDefines = nullptr;
+		unsigned psDefCount = 0;
+		if (multiStages > 0) {
+			snprintf(stageDefine, sizeof(stageDefine), "%d", multiStages);
+			psDef[0].name = "NSTAGES";
+			psDef[0].value = stageDefine;
+			psDefines = psDef;
+			psDefCount = 1;
 		}
-		else if (supported & SDL_GPU_SHADERFORMAT_DXIL) {
-			useFmt = SDL_GPU_SHADERFORMAT_DXIL;
-			if (skinned) { vsCode = kSkinVS_DXIL; vsSize = kSkinVS_DXIL_size; }
-			else { vsCode = kMeshVS_DXIL; vsSize = kMeshVS_DXIL_size; }
-			if (multiStages > 0) {
-				static const uint8_t* const multiCode[] = {
-					kMeshPS1_DXIL, kMeshPS2_DXIL, kMeshPS3_DXIL, kMeshPS4_DXIL,
-					kMeshPS5_DXIL, kMeshPS6_DXIL, kMeshPS7_DXIL, kMeshPS8_DXIL };
-				static const size_t multiSize[] = {
-					kMeshPS1_DXIL_size, kMeshPS2_DXIL_size, kMeshPS3_DXIL_size, kMeshPS4_DXIL_size,
-					kMeshPS5_DXIL_size, kMeshPS6_DXIL_size, kMeshPS7_DXIL_size, kMeshPS8_DXIL_size };
-				psCode = multiCode[multiStages - 1]; psSize = multiSize[multiStages - 1];
-			}
-			else switch (psKind) {
-				case 1: psCode = kMeshPSCube_DXIL; psSize = kMeshPSCube_DXIL_size; break;
-				case 2: psCode = kMeshPSCubeTex_DXIL; psSize = kMeshPSCubeTex_DXIL_size; break;
-				case 3: psCode = kMeshPSTexCube_DXIL; psSize = kMeshPSTexCube_DXIL_size; break;
-				default: psCode = kMeshPSCubeCube_DXIL; psSize = kMeshPSCubeCube_DXIL_size; break;
-			}
-		}
-		if (useFmt == SDL_GPU_SHADERFORMAT_INVALID) {
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No supported mesh shader format: %u", (unsigned)supported);
+		SDL_GPUShader* vs = CompileBuiltinShader(dev, "mesh", vsEntry, true, nullptr, 0, 0, 1, skinned ? 1 : 0, 0);
+		if (!vs) {
+			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Mesh VS failed: %s", SDL_GetError());
 			return nullptr;
 		}
-
-		SDL_GPUShader* vs = LoadShader(dev, useFmt, SDL_GPU_SHADERSTAGE_VERTEX, vsEntry, vsCode, vsSize, 0, 1, skinned ? 1 : 0);
-		if (!vs) return nullptr;
 		unsigned fragSamplers = multiStages > 0 ? (unsigned)multiStages : (twoTex ? 2 : 1);
-		SDL_GPUShader* ps = LoadShader(dev, useFmt, SDL_GPU_SHADERSTAGE_FRAGMENT, psEntry, psCode, psSize, fragSamplers, 1);
-		if (!ps) { SDL_ReleaseGPUShader(dev, vs); return nullptr; }
+		SDL_GPUShader* ps = CompileBuiltinShader(dev, "mesh", psEntry, false, psDefines, psDefCount, fragSamplers, 1, 0, 0);
+		if (!ps) { SDL_ReleaseGPUShader(dev, vs); SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Mesh PS failed: %s", SDL_GetError()); return nullptr; }
 
 		static_assert(sizeof(float) * 3 == 12, "layout");
 		static_assert(sizeof(unsigned) == 4, "layout");
@@ -771,21 +733,12 @@ namespace sdlgpu {
 		GpuLock lock;
 		if (g_canvasPipe && g_canvasSamp && g_canvasVB && g_canvasDev == dev && g_canvasFormat == swapFormat) return true;
 		TeardownCanvas();
-		SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
-		const uint8_t* vsCode = nullptr; const uint8_t* psCode = nullptr; size_t vsSize = 0, psSize = 0;
-		SDL_GPUShaderFormat use = SDL_GPU_SHADERFORMAT_INVALID;
-		if (sup & SDL_GPU_SHADERFORMAT_SPIRV) { use = SDL_GPU_SHADERFORMAT_SPIRV; vsCode = kCanvasVS_SPIRV; vsSize = kCanvasVS_SPIRV_size; psCode = kCanvasPS_SPIRV; psSize = kCanvasPS_SPIRV_size; }
-		else if (sup & SDL_GPU_SHADERFORMAT_DXIL) { use = SDL_GPU_SHADERFORMAT_DXIL; vsCode = kCanvasVS_DXIL; vsSize = kCanvasVS_DXIL_size; psCode = kCanvasPS_DXIL; psSize = kCanvasPS_DXIL_size; }
-		if (use == SDL_GPU_SHADERFORMAT_INVALID) {
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "No supported canvas shader format: %u", (unsigned)sup);
-			return false;
-		}
-		SDL_GPUShader* vs = LoadShader(dev, use, SDL_GPU_SHADERSTAGE_VERTEX, "VSMain", vsCode, vsSize, 0, 0);
+		SDL_GPUShader* vs = CompileBuiltinShader(dev, "canvas", "VSMain", true, nullptr, 0, 0, 0, 0, 0);
 		if (!vs) {
 			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Canvas VS failed: %s", SDL_GetError());
 			return false;
 		}
-		SDL_GPUShader* ps = LoadShader(dev, use, SDL_GPU_SHADERSTAGE_FRAGMENT, "PSMain", psCode, psSize, 1, 0);
+		SDL_GPUShader* ps = CompileBuiltinShader(dev, "canvas", "PSMain", false, nullptr, 0, 1, 0, 0, 0);
 		if (!ps) { SDL_ReleaseGPUShader(dev, vs); SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Canvas PS failed: %s", SDL_GetError()); return false; }
 		SDL_GPUVertexBufferDescription vb{}; vb.slot = 0; vb.pitch = 16; vb.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
 		SDL_GPUVertexAttribute attrs[2]{};
@@ -926,16 +879,9 @@ namespace sdlgpu {
 			if (g_gammaPipe && g_gammaPipeDev == dev && g_gammaFmt == fmt) return true;
 			if (g_gammaPipe && g_gammaPipeDev) SDL_ReleaseGPUGraphicsPipeline(g_gammaPipeDev, g_gammaPipe);
 			g_gammaPipe = nullptr; g_gammaFmt = SDL_GPU_TEXTUREFORMAT_INVALID;
-			SDL_GPUShaderFormat sup = CachedShaderFormats(dev);
-			const uint8_t* vsCode = nullptr; const uint8_t* psCode = nullptr;
-			size_t vsSize = 0, psSize = 0;
-			SDL_GPUShaderFormat use = SDL_GPU_SHADERFORMAT_INVALID;
-			if (sup & SDL_GPU_SHADERFORMAT_SPIRV) { use = SDL_GPU_SHADERFORMAT_SPIRV; vsCode = kCanvasVS_SPIRV; vsSize = kCanvasVS_SPIRV_size; psCode = kPresentPS_SPIRV; psSize = kPresentPS_SPIRV_size; }
-			else if (sup & SDL_GPU_SHADERFORMAT_DXIL) { use = SDL_GPU_SHADERFORMAT_DXIL; vsCode = kCanvasVS_DXIL; vsSize = kCanvasVS_DXIL_size; psCode = kPresentPS_DXIL; psSize = kPresentPS_DXIL_size; }
-			if (use == SDL_GPU_SHADERFORMAT_INVALID) return false;
-			SDL_GPUShader* vs = LoadShader(dev, use, SDL_GPU_SHADERSTAGE_VERTEX, "VSMain", vsCode, vsSize, 0, 0);
+			SDL_GPUShader* vs = CompileBuiltinShader(dev, "canvas", "VSMain", true, nullptr, 0, 0, 0, 0, 0);
 			if (!vs) return false;
-			SDL_GPUShader* ps = LoadShader(dev, use, SDL_GPU_SHADERSTAGE_FRAGMENT, "PSMain", psCode, psSize, 2, 0);
+			SDL_GPUShader* ps = CompileBuiltinShader(dev, "present", "PSMain", false, nullptr, 0, 2, 0, 0, 0);
 			if (!ps) { SDL_ReleaseGPUShader(dev, vs); return false; }
 			SDL_GPUVertexBufferDescription vb{}; vb.slot = 0; vb.pitch = 16; vb.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
 			SDL_GPUVertexAttribute attrs[2]{};

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{9F3B1A24-5C6D-4E7F-8A90-1B2C3D4E5F60}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>SDL3_shadercross</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>.\Release\</OutDir>
+    <IntDir>.\Release\obj_shadercross\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>.\Debug\</OutDir>
+    <IntDir>.\Debug\obj_shadercross\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;NDEBUG;_LIB;SDL_STATIC_LIB;SDL_SHADERCROSS_DXC;SPIRV_CROSS_C_API_HLSL;SPIRV_CROSS_C_API_GLSL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)vendor\SDL3\include;$(ProjectDir)vendor\SDL_shadercross\include;$(ProjectDir)vendor\SDL_shadercross\src;$(ProjectDir)vendor\SDL_shadercross\external\SPIRV-Cross;$(ProjectDir)vendor\SDL_shadercross\external\SPIRV-Headers\include;$(ProjectDir)vendor\SDL_shadercross\external\SPIRV-Headers\include\spirv;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Lib>
+      <OutputFile>.\Release\SDL3_shadercross.lib</OutputFile>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <WarningLevel>TurnOffAllWarnings</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>WIN32;_HAS_STD_BYTE=0;_DEBUG;_LIB;SDL_STATIC_LIB;SDL_SHADERCROSS_DXC;SPIRV_CROSS_C_API_HLSL;SPIRV_CROSS_C_API_GLSL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)vendor\SDL3\include;$(ProjectDir)vendor\SDL_shadercross\include;$(ProjectDir)vendor\SDL_shadercross\src;$(ProjectDir)vendor\SDL_shadercross\external\SPIRV-Cross;$(ProjectDir)vendor\SDL_shadercross\external\SPIRV-Headers\include;$(ProjectDir)vendor\SDL_shadercross\external\SPIRV-Headers\include\spirv;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <CallingConvention>Cdecl</CallingConvention>
+    </ClCompile>
+    <Lib>
+      <OutputFile>.\Debug\SDL3_shadercross.lib</OutputFile>
+    </Lib>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="sdl3_shadercross_dxc.cpp" />
+    <ClCompile Include="vendor\SDL_shadercross\src\SDL_shadercross.c" />
+    <ClCompile Include="vendor\SDL_shadercross\external\SPIRV-Cross\spirv_cfg.cpp" />
+    <ClCompile Include="vendor\SDL_shadercross\external\SPIRV-Cross\spirv_cross.cpp" />
+    <ClCompile Include="vendor\SDL_shadercross\external\SPIRV-Cross\spirv_cross_c.cpp" />
+    <ClCompile Include="vendor\SDL_shadercross\external\SPIRV-Cross\spirv_cross_parsed_ir.cpp" />
+    <ClCompile Include="vendor\SDL_shadercross\external\SPIRV-Cross\spirv_glsl.cpp" />
+    <ClCompile Include="vendor\SDL_shadercross\external\SPIRV-Cross\spirv_hlsl.cpp" />
+    <ClCompile Include="vendor\SDL_shadercross\external\SPIRV-Cross\spirv_parser.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="vendor\SDL_shadercross\include\SDL3_shadercross\SDL_shadercross.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
