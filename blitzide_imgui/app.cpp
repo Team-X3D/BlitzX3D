@@ -416,18 +416,15 @@ void App::frame() {
 	setupDockLayout();
 	ImGui::DockSpaceOverViewport(ImHashStr("BlitzX3DDockSpaceV5"));
 
-	ImGuiIO& kio = ImGui::GetIO();
-	bool ctrl = kio.KeyCtrl;
-	bool shift = kio.KeyShift;
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_F)) editFind();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_H)) editReplace();
-	if (ImGui::IsKeyPressed(ImGuiKey_F3)) editFindNext(shift);
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S)) { if (currentIndex >= 0) fileSave(currentIndex); }
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_N)) fileNew();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O)) fileOpen();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_F5, false)) programCompile();
-	if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_F5, false)) programExecute();
-	(void)shift;
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F, ImGuiInputFlags_RouteGlobal)) editFind();
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_H, ImGuiInputFlags_RouteGlobal)) editReplace();
+	if (ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_F3, ImGuiInputFlags_RouteGlobal) || ImGui::Shortcut(ImGuiKey_F3, ImGuiInputFlags_RouteGlobal)) editFindNext(ImGui::IsKeyDown(ImGuiMod_Shift));
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) { if (currentIndex >= 0) fileSave(currentIndex); }
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_N, ImGuiInputFlags_RouteGlobal)) fileNew();
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) fileOpen();
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_W, ImGuiInputFlags_RouteGlobal)) { if (currentIndex >= 0) fileClose(currentIndex); }
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F5, ImGuiInputFlags_RouteGlobal)) programCompile();
+	if (ImGui::Shortcut(ImGuiKey_F5, ImGuiInputFlags_RouteGlobal)) programExecute();
 
 	if (keywordsLoaded) {
 		keywordsLoaded = false;
