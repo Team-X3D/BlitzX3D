@@ -102,13 +102,15 @@
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <PostBuildEvent>
-      <Command>copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
-copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+      <Command>if not exist "$(DxcX86Dir)\dxcompiler.dll" echo warning: dxcompiler.dll not found (tools\dxc-x86 or Windows SDK)
+if exist "$(DxcX86Dir)\dxcompiler.dll" copy /Y "$(DxcX86Dir)\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
+if exist "$(DxcX86Dir)\dxil.dll" copy /Y "$(DxcX86Dir)\dxil.dll" "$(OutDir)dxil.dll"
 copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
-if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
-copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
-copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
-copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
+if not exist "$(DxcX64Dir)\dxc.exe" echo warning: dxc64 not found (tools\dxc-x64 or Windows SDK); Vulkan shader compilation will be unavailable
+if exist "$(DxcX64Dir)\dxc.exe" if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+if exist "$(DxcX64Dir)\dxc.exe" copy /Y "$(DxcX64Dir)\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+if exist "$(DxcX64Dir)\dxcompiler.dll" copy /Y "$(DxcX64Dir)\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+if exist "$(DxcX64Dir)\dxil.dll" copy /Y "$(DxcX64Dir)\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -178,16 +180,24 @@ copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"</Comm
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(ProjectDir)..\bass\bin\bass.dll" "$(OutDir)bass.dll"
-copy /Y "$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
-copy /Y "$(ProjectDir)..\tools\dxc-x86\dxil.dll" "$(OutDir)dxil.dll"
+if not exist "$(DxcX86Dir)\dxcompiler.dll" echo warning: dxcompiler.dll not found (tools\dxc-x86 or Windows SDK)
+if exist "$(DxcX86Dir)\dxcompiler.dll" copy /Y "$(DxcX86Dir)\dxcompiler.dll" "$(OutDir)dxcompiler.dll"
+if exist "$(DxcX86Dir)\dxil.dll" copy /Y "$(DxcX86Dir)\dxil.dll" "$(OutDir)dxil.dll"
 copy /Y "$(ProjectDir)..\tools\spirv-cross\bin\spirv-cross-c-shared.dll" "$(OutDir)spirv-cross-c-shared.dll"
-if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
-copy /Y "$(ProjectDir)..\tools\dxc-x64\dxc.exe" "$(OutDir)dxc64\dxc.exe"
-copy /Y "$(ProjectDir)..\tools\dxc-x64\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
-copy /Y "$(ProjectDir)..\tools\dxc-x64\dxil.dll" "$(OutDir)dxc64\dxil.dll"
+if not exist "$(DxcX64Dir)\dxc.exe" echo warning: dxc64 not found (tools\dxc-x64 or Windows SDK); Vulkan shader compilation will be unavailable
+if exist "$(DxcX64Dir)\dxc.exe" if not exist "$(OutDir)dxc64" mkdir "$(OutDir)dxc64"
+if exist "$(DxcX64Dir)\dxc.exe" copy /Y "$(DxcX64Dir)\dxc.exe" "$(OutDir)dxc64\dxc.exe"
+if exist "$(DxcX64Dir)\dxcompiler.dll" copy /Y "$(DxcX64Dir)\dxcompiler.dll" "$(OutDir)dxc64\dxcompiler.dll"
+if exist "$(DxcX64Dir)\dxil.dll" copy /Y "$(DxcX64Dir)\dxil.dll" "$(OutDir)dxc64\dxil.dll"
 copy /Y "$(ProjectDir)..\freetype\objs\$(Platform)\$(Configuration)\freetype.dll" "$(OutDir)freetype.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <PropertyGroup>
+    <DxcX86Dir Condition="exists('$(ProjectDir)..\tools\dxc-x86\dxcompiler.dll')">$(ProjectDir)..\tools\dxc-x86</DxcX86Dir>
+    <DxcX86Dir Condition="'$(DxcX86Dir)'=='' And exists('$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x86\dxcompiler.dll')">$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x86</DxcX86Dir>
+    <DxcX64Dir Condition="exists('$(ProjectDir)..\tools\dxc-x64\dxc.exe')">$(ProjectDir)..\tools\dxc-x64</DxcX64Dir>
+    <DxcX64Dir Condition="'$(DxcX64Dir)'=='' And exists('$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxc.exe')">$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64</DxcX64Dir>
+  </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="bbruntime_dll.cpp" />
   </ItemGroup>
