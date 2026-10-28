@@ -2,7 +2,10 @@
   <img width="1920" height="600" alt="banner" src="https://github.com/user-attachments/assets/b02c6fe2-f50d-480f-92ef-936bd5d42227" />
 </p>
 
-BlitzX3D is a community-maintained fork of Blitz3D TSS, originally based on Blitz3D. It focuses on maintaining and extending the Blitz3D engine while preserving compatibility with existing projects and libraries.
+BlitzX3D is a community-maintained fork of Blitz3D TSS, originally based on Blitz3D. It focuses on maintaining and extending the Blitz3D engine while attempting to preserve compatibility with existing projects and libraries.
+
+> [!WARNING]
+> Old userlibs are not guaranteed to work and will not be supported.
 
 ### Support
 
@@ -33,10 +36,11 @@ Need help, have a question, or found a problem?
 ### Used in
 * [**SCP – Containment Breach Multiplayer v1.3R**](https://store.steampowered.com/app/1782380/SCP_Containment_Breach_Multiplayer/)
 * [**SCP – Containment Breach Ultimate Edition Reborn 1.6**](https://github.com/Jabka666/scpcb-ue-my/tree/1.5.x)
-* [**SCP – Containment Breach Faerov Mod**](https://www.moddb.com/mods/scp-containment-breach-faerov-mod)
 * [**SCP – Terror Hunt**](https://www.moddb.com/mods/scp-terror-hunt-mod)
+* [**SCP – Janitorial Work**](https://www.moddb.com/mods/scp-janitorial-work)
 * [**SCP – Containment Breach Amended**](https://www.moddb.com/mods/scp-amended1)
 * [**SCP – Treachery**](https://www.moddb.com/mods/treachery)
+* [**SCP – Chaos Containment**](https://www.moddb.com/mods/scp-chaos-containment)
 * [**YOU ARE NOT IMPORTANT**](https://www.moddb.com/mods/you-are-not-important)
 
 ### Verified & total support for
@@ -57,6 +61,20 @@ respective original licenses and are not relicensed by BlitzX3D.
 Original contributions to BlitzX3D by Chris A. (krimbopple) are licensed under
 the AGPL-3.0 License (see LICENSE).
 
+
+---
+
+---
+
+## Contributing & AI use
+
+Contributions are welcome, but please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+AI-generated PRs, issues, and descriptions are not accepted.
+
+> [!NOTE]
+> This repository uses an AI code review bot on some pull requests. Its
+> comments are advisory, and they do not handle the merging.
+> See [CONTRIBUTING.md](CONTRIBUTING.md#the-automated-review).
 
 ---
 

@@ -937,6 +937,12 @@ void sdlScene::render(sdlMesh* mesh, int first_vert, int vert_cnt, int first_tri
 			if (dev) {
 				sdlgpu::MeshDrawParams p;
 				fillGpuDrawParams(p, dev);
+				if (currentEffect) {
+					currentEffect->setAutoMatrices(currentWorld, currentView, currentProj);
+					currentEffect->bindStageTextureRaw(0, p.tex);
+					currentEffect->bindStageTextureRaw(1, p.tex1);
+					for (unsigned k = 0; k < p.stageCount; ++k) currentEffect->bindStageTextureRaw(k, p.stages[k].tex);
+				}
 				sdlgpu::RenderSceneMesh(gpuFrame, mesh->getGpuMirror(), uniforms, first_vert, vert_cnt, first_tri, tri_cnt, p);
 				drewGpu = true;
 			}

@@ -416,18 +416,15 @@ void App::frame() {
 	setupDockLayout();
 	ImGui::DockSpaceOverViewport(ImHashStr("BlitzX3DDockSpaceV5"));
 
-	ImGuiIO& kio = ImGui::GetIO();
-	bool ctrl = kio.KeyCtrl;
-	bool shift = kio.KeyShift;
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_F)) editFind();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_H)) editReplace();
-	if (ImGui::IsKeyPressed(ImGuiKey_F3)) editFindNext(shift);
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_S)) { if (currentIndex >= 0) fileSave(currentIndex); }
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_N)) fileNew();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_O)) fileOpen();
-	if (ctrl && ImGui::IsKeyPressed(ImGuiKey_F5, false)) programCompile();
-	if (!ctrl && ImGui::IsKeyPressed(ImGuiKey_F5, false)) programExecute();
-	(void)shift;
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F, ImGuiInputFlags_RouteGlobal)) editFind();
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_H, ImGuiInputFlags_RouteGlobal)) editReplace();
+	if (ImGui::Shortcut(ImGuiMod_Shift | ImGuiKey_F3, ImGuiInputFlags_RouteGlobal) || ImGui::Shortcut(ImGuiKey_F3, ImGuiInputFlags_RouteGlobal)) editFindNext(ImGui::IsKeyDown(ImGuiMod_Shift));
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_S, ImGuiInputFlags_RouteGlobal)) { if (currentIndex >= 0) fileSave(currentIndex); }
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_N, ImGuiInputFlags_RouteGlobal)) fileNew();
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal)) fileOpen();
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_W, ImGuiInputFlags_RouteGlobal)) { if (currentIndex >= 0) fileClose(currentIndex); }
+	if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_F5, ImGuiInputFlags_RouteGlobal)) programCompile();
+	if (ImGui::Shortcut(ImGuiKey_F5, ImGuiInputFlags_RouteGlobal)) programExecute();
 
 	if (keywordsLoaded) {
 		keywordsLoaded = false;
@@ -444,6 +441,8 @@ void App::frame() {
 	}
 
 	menuBar();
+
+	drawToolbar();
 
 	drawPaneBackground();
 
@@ -475,7 +474,7 @@ void App::frame() {
 		ImGui::Begin("About BlitzX3D", &aboutOpen);
 		ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 		ImGui::Text("BlitzX3D IDE");
-		ImGui::Text("Version V1.6.3");
+		ImGui::Text("Version V1.7.0");
 		ImGui::Separator();
 		ImGui::Text("blitzpath: %s", prefs.homeDir.c_str());
 		ImGui::End();
@@ -556,6 +555,7 @@ void App::menuBar() {
 		if (ImGui::MenuItem("Functions Panel", nullptr, &showFuncList)) {}
 		if (ImGui::MenuItem("Project Navigator", nullptr, &showProjectNavigator)) {}
 		if (ImGui::MenuItem("Output Panel", nullptr, &showOutput)) {}
+		if (ImGui::MenuItem("Toolbar", nullptr, &showToolbar)) {}
 		ImGui::Separator();
 		if (ImGui::MenuItem("Stylization...")) showStylize = true;
 		ImGui::EndMenu();
@@ -577,6 +577,7 @@ void App::menuBar() {
 		bool optsChanged = false;
 		if (ImGui::MenuItem("Debug", nullptr, &prefs.prg_debug)) {}
 		if (ImGui::MenuItem("No LAA", nullptr, &prefs.prg_nolaa)) {}
+		if (ImGui::MenuItem("LLVM Backend", nullptr, &prefs.prg_llvm)) {}
 		if (ImGui::MenuItem("No Auto Declaration ", nullptr, optNoAutoDecl)) optsChanged = true;
 		if (ImGui::MenuItem("Experimental Syntax", nullptr, optExperimental)) optsChanged = true;
 		ImGui::Separator();
@@ -601,6 +602,110 @@ void App::menuBar() {
 	}
 
 	ImGui::EndMainMenuBar();
+}
+
+void App::loadToolbarTexture() {
+	if (toolbarTexTried) return;
+	toolbarTexTried = true;
+	if (prefs.homeDir.empty()) return;
+
+	std::string path = prefs.homeDir + "/cfg/ide_toolbar.bmp";
+	SDL_Surface* loaded = SDL_LoadBMP(path.c_str());
+	if (!loaded) return;
+	SDL_Surface* surface = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32);
+	SDL_DestroySurface(loaded);
+	if (!surface) return;
+
+	int w = surface->w, h = surface->h;
+	if (w <= 0 || h <= 0) { SDL_DestroySurface(surface); return; }
+
+	const unsigned char* src = (const unsigned char*)surface->pixels;
+	int pitch = surface->pitch;
+	int bgR = src[0], bgG = src[1], bgB = src[2];
+
+	std::vector<unsigned char> pixels((size_t)w * h * 4);
+	for (int y = 0; y < h; ++y) {
+		const unsigned char* row = src + (size_t)y * pitch;
+		for (int x = 0; x < w; ++x) {
+			int r = row[x * 4 + 0], g = row[x * 4 + 1], b = row[x * 4 + 2];
+			int d = (std::max)({ std::abs(r - bgR), std::abs(g - bgG), std::abs(b - bgB) });
+			int a = d <= 10 ? 0 : d >= 48 ? 255 : (d - 10) * 255 / 38;
+			size_t o = ((size_t)y * w + x) * 4;
+			pixels[o + 0] = 255;
+			pixels[o + 1] = 255;
+			pixels[o + 2] = 255;
+			pixels[o + 3] = (unsigned char)a;
+		}
+	}
+	SDL_DestroySurface(surface);
+
+	GLuint tex = 0;
+	glGenTextures(1, &tex);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+	toolbarTex = (unsigned int)tex;
+	toolbarTexW = w;
+	toolbarTexH = h;
+}
+
+void App::drawToolbar() {
+	if (!showToolbar) return;
+	loadToolbarTexture();
+
+	const float iconSize = 16.0f;
+	float btnH = iconSize + ImGui::GetStyle().FramePadding.y * 2.0f;
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+	ImGuiWindowFlags flags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoBringToFrontOnFocus;
+	if (ImGui::BeginViewportSideBar("##Toolbar", viewport, ImGuiDir_Up, btnH + 6.0f, flags)) {
+		ImGui::SetCursorPosY(3.0f);
+		ImTextureID tex = (ImTextureID)toolbarTex;
+		float iconW = (toolbarTex && toolbarIconCount > 0) ? (float)toolbarTexW / (float)toolbarIconCount : 0.0f;
+		ImVec4 tint = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+
+		auto drawButton = [&](int index, const char* label, const char* tip) -> bool {
+			if (index != 0) ImGui::SameLine(0.0f, 3.0f);
+			ImGui::PushID(index);
+			bool clicked = false;
+			if (toolbarTex && iconW > 0.0f && index < toolbarIconCount) {
+				ImVec2 uv0(index * iconW / (float)toolbarTexW, 0.0f);
+				ImVec2 uv1((index + 1) * iconW / (float)toolbarTexW, 1.0f);
+				clicked = ImGui::ImageButton("##btn", tex, ImVec2(iconSize, iconSize), uv0, uv1, ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tint);
+			}
+			else {
+				clicked = ImGui::Button(label);
+			}
+			ImGui::PopID();
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tip);
+			return clicked;
+		};
+		auto drawSeparator = [&]() {
+			ImGui::SameLine(0.0f, 6.0f);
+			ImGui::TextDisabled("|");
+			ImGui::SameLine(0.0f, 6.0f);
+		};
+
+		if (drawButton(0, "New", "New")) fileNew();
+		if (drawButton(1, "Open", "Open")) fileOpen();
+		if (drawButton(2, "Save", "Save")) { if (currentIndex >= 0) fileSave(currentIndex); }
+		if (drawButton(3, "Close", "Close")) { if (currentIndex >= 0) fileClose(currentIndex); }
+		drawSeparator();
+		if (drawButton(4, "Cut", "Cut")) editCut();
+		if (drawButton(5, "Copy", "Copy")) editCopy();
+		if (drawButton(6, "Paste", "Paste")) editPaste();
+		drawSeparator();
+		if (drawButton(7, "Find", "Find / Replace")) editFind();
+		drawSeparator();
+		if (drawButton(8, "Run", "Run program")) programExecute();
+		drawSeparator();
+		if (drawButton(9, "Home", "Help home")) helpHome();
+	}
+	ImGui::End();
 }
 
 void App::drawTabs() {
@@ -832,6 +937,57 @@ void App::drawProjectNavigator() {
 			ImGui::EndTabItem();
 		}
 
+		if (ImGui::BeginTabItem("Find")) {
+			ImGui::SetNextItemWidth(-1);
+			ImGui::InputTextWithHint("##project_find_input", "Find in project...", projectFindBuf, sizeof(projectFindBuf));
+			if (projectFindQuery != projectFindBuf) {
+				projectFindQuery = projectFindBuf;
+				projectFindHits.clear();
+				std::string needle = toLower(projectFindQuery);
+				if (!needle.empty()) {
+					for (int docIndex : sourceDocs) {
+						if (docIndex < 0 || docIndex >= (int)docs.size()) continue;
+						Doc& d = docs[docIndex];
+						std::string text = stripBOM(d.editor.GetText());
+						std::stringstream ss(text);
+						std::string line;
+						int ln = 0;
+						while (std::getline(ss, line, '\n')) {
+							if (!line.empty() && line.back() == '\r') line.pop_back();
+							size_t pos = toLower(line).find(needle);
+							if (pos != std::string::npos)
+								projectFindHits.push_back({ d.path, d.name, ln, (int)pos, line });
+							++ln;
+						}
+					}
+				}
+			}
+			if (!projectFindQuery.empty())
+				ImGui::TextDisabled("%d match%s", (int)projectFindHits.size(), projectFindHits.size() == 1 ? "" : "es");
+			ImGui::BeginChild("##project_find_list", ImVec2(0, 0), false);
+			int hitId = 0;
+			ImGui::PushTextWrapPos(0.0f);
+			for (const auto& hit : projectFindHits) {
+				ImGui::PushID(hitId++);
+				std::string label = hit.name + ":" + std::to_string(hit.line + 1);
+				if (ImGui::Selectable(label.c_str())) {
+					std::lock_guard<std::mutex> lock(outputMutex);
+					pendingGotoPath = hit.path;
+					pendingGotoRow = hit.line + 1;
+					pendingGotoCol = hit.col + 1;
+					pendingGoto = true;
+				}
+				std::string trimmed = hit.text;
+				size_t t = trimmed.find_first_not_of(" \t");
+				if (t != std::string::npos && t > 0) trimmed.erase(0, t);
+				if (!trimmed.empty()) ImGui::TextDisabled("%s", trimmed.c_str());
+				ImGui::PopID();
+			}
+			ImGui::PopTextWrapPos();
+			ImGui::EndChild();
+			ImGui::EndTabItem();
+		}
+
 		if (ImGui::BeginTabItem("Project")) {
 			ImGui::TextUnformatted("Project");
 			ImGui::TextWrapped("%s", projectPath.c_str());
@@ -908,11 +1064,37 @@ void App::drawOutput() {
 	ImGui::End();
 }
 
+int App::InputTextFindCallback(ImGuiInputTextCallbackData* data) {
+	return static_cast<App*>(data->UserData)->onFindInputCallback(data);
+}
+
+int App::InputTextReplaceCallback(ImGuiInputTextCallbackData* data) {
+	return static_cast<App*>(data->UserData)->onReplaceInputCallback(data);
+}
+
+int App::onFindInputCallback(ImGuiInputTextCallbackData* data) {
+	if (data->EventFlag == ImGuiInputTextFlags_CallbackAlways && findSelectPending) {
+		data->SelectAll();
+		findSelectPending = false;
+	}
+	return 0;
+}
+
+int App::onReplaceInputCallback(ImGuiInputTextCallbackData* data) {
+	if (data->EventFlag == ImGuiInputTextFlags_CallbackAlways && replaceSelectPending) {
+		data->SelectAll();
+		replaceSelectPending = false;
+	}
+	return 0;
+}
+
 void App::drawFindReplace() {
 	if (!showFind && !showReplace) return;
 	int flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDocking;
 	ImGui::SetNextWindowPos(ImVec2(windowW / 2.0f - 200, 40), ImGuiCond_Appearing);
+	if (findFocusPending || findFocusRetry > 0) ImGui::SetNextWindowFocus();
 	if (ImGui::Begin("Find / Replace", &showFind, flags)) {
+		ImGui::SeparatorText("Find");
 		ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 		ImGuiIO& fio = ImGui::GetIO();
 		bool doFind = false, doFindPrev = false, doReplace = false, doReplaceAll = false;
@@ -923,29 +1105,48 @@ void App::drawFindReplace() {
 			strncpy(replaceBuf, replaceStr.c_str(), sizeof(replaceBuf) - 1);
 			replaceBuf[sizeof(replaceBuf) - 1] = '\0';
 			findFocusPending = false;
+			findFocusRetry = 4;
+		}
+		if (findFocusRetry > 0) {
 			focusFind = !findFocusReplace;
 			focusReplace = findFocusReplace;
-			findFocusReplace = false;
 			ImGui::SetWindowFocus();
 		}
-		ImGui::SetNextItemWidth(300);
+		ImGuiInputTextFlags findFlags = ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackAlways;
+		if (focusFind) findFlags |= ImGuiInputTextFlags_AutoSelectAll;
+		ImGui::SetNextItemWidth(400);
 		if (focusFind) ImGui::SetKeyboardFocusHere();
-		bool findEnter = ImGui::InputText("Find text", findBuf, sizeof(findBuf), ImGuiInputTextFlags_EnterReturnsTrue);
+		bool findEnter = ImGui::InputTextWithHint("##findinput", "Find text...", findBuf, sizeof(findBuf), findFlags, InputTextFindCallback, this);
+		bool findActive = ImGui::IsItemActive();
+		float rightAlignedButtonWidth = 110.0f; // im not responsible if scaling makes texts go out of bounds, blame snoe.
+		if (ImGui::Button("Find Previous", ImVec2(rightAlignedButtonWidth, 0))) doFindPrev = true;
 		ImGui::SameLine();
-		if (ImGui::Button("Find Next")) doFind = true;
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - rightAlignedButtonWidth);
+		if (ImGui::Button("Find Next", ImVec2(rightAlignedButtonWidth, 0))) doFind = true;
 		if (findEnter) {
 			if (fio.KeyShift) doFindPrev = true; else doFind = true;
 		}
 		ImGui::Checkbox("Match case", &matchCase);
 		ImGui::Checkbox("Search all open files", &findAllFiles);
-		ImGui::SameLine();
-		ImGui::SetNextItemWidth(300);
+		ImGui::SeparatorText("Replace");
+		ImGuiInputTextFlags replaceFlags = ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackAlways;
+		if (focusReplace) replaceFlags |= ImGuiInputTextFlags_AutoSelectAll;
+		ImGui::SetNextItemWidth(400);
 		if (focusReplace) ImGui::SetKeyboardFocusHere();
-		bool replaceEnter = ImGui::InputText("Replace text", replaceBuf, sizeof(replaceBuf), ImGuiInputTextFlags_EnterReturnsTrue);
-		ImGui::SameLine();
-		if (ImGui::Button("Replace")) doReplace = true;
+		bool replaceEnter = ImGui::InputTextWithHint("##replaceinput", "Replace with...", replaceBuf, sizeof(replaceBuf), replaceFlags, InputTextReplaceCallback, this);
+		bool replaceActive = ImGui::IsItemActive();
+		if (ImGui::Button("Replace", ImVec2(rightAlignedButtonWidth, 0))) doReplace = true;
 		if (replaceEnter) doReplace = true;
-		if (ImGui::Button("Replace All")) doReplaceAll = true;
+		ImGui::SameLine();
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - rightAlignedButtonWidth);
+		if (ImGui::Button("Replace All", ImVec2(rightAlignedButtonWidth, 0))) doReplaceAll = true;
+
+		if (findFocusRetry > 0) {
+			if ((focusFind && findActive) || (focusReplace && replaceActive))
+				findFocusRetry = 0;
+			else if (--findFocusRetry <= 0)
+				findSelectPending = replaceSelectPending = false;
+		}
 
 		if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
 			showFind = showReplace = false;
@@ -1594,6 +1795,8 @@ void App::editFind() {
 	showFind = true;
 	findFocusReplace = false;
 	findFocusPending = true;
+	findSelectPending = true;
+	replaceSelectPending = false;
 	findStatus.clear();
 }
 
@@ -1611,6 +1814,8 @@ void App::editReplace() {
 		findFocusReplace = false;
 	}
 	findFocusPending = true;
+	findSelectPending = !findFocusReplace;
+	replaceSelectPending = findFocusReplace;
 	findStatus.clear();
 }
 
@@ -2061,6 +2266,7 @@ void App::build(bool exec, bool publish) {
 	if (prefs.prg_debug) args.push_back("-d");
 	if (prefs.prg_dumpkeys) args.push_back("-k");
 	if (prefs.prg_nolaa) args.push_back("-nlaa");
+	if (prefs.prg_llvm) args.push_back("-llvm");
 	if (co.noautodecl) args.push_back("-noautodecl");
 	if (co.experimental) args.push_back("-experimental");
 

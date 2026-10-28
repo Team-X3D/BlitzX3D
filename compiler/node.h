@@ -32,6 +32,7 @@ struct Node {
 
 	static int enumVars(Environ* e);
 	static Type* tagType(const std::string& s, Environ* e);
+	static int typeSize(Type* t);
 
 	static TNode* createVars(Environ* e);
 	static TNode* deleteVars(Environ* e);

@@ -9,6 +9,7 @@ namespace sdlgpu { struct GpuShader; }
 class sdlGraphics;
 class sdlCanvas;
 struct SDL_GPUDevice;
+struct SDL_GPUTexture;
 
 class sdlEffect {
 public:
@@ -26,6 +27,9 @@ public:
     bool setTexture(const std::string& name, void* tex);
     bool setTextureCanvas(const std::string& name, sdlCanvas* canvas);
 
+    void bindStageTexture(unsigned stage, sdlCanvas* canvas);
+    void bindStageTextureRaw(unsigned stage, SDL_GPUTexture* tex);
+
     bool begin(unsigned* passes);
     bool beginPass(unsigned pass);
     bool endPass();
@@ -34,6 +38,8 @@ public:
     sdlgpu::GpuShader* getGpuShader() const { return shader; }
 
 private:
+    bool setTextureIndexByName(const std::string& name, SDL_GPUTexture* tex);
+
     sdlGraphics* graphics;
     SDL_GPUDevice* dev;
     sdlgpu::GpuShader* shader;

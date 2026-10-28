@@ -152,6 +152,7 @@ void Prefs::open() {
 
 	inipp::get_value(ini.sections["COMPILER"], "Debug", prg_debug);
 	inipp::get_value(ini.sections["COMPILER"], "NoLAA", prg_nolaa);
+	inipp::get_value(ini.sections["COMPILER"], "LLVM", prg_llvm);
 	inipp::get_value(ini.sections["COMPILER"], "NoAutoDecl", prg_noautodecl);
 	inipp::get_value(ini.sections["COMPILER"], "Experimental", prg_experimental);
 	inipp::get_value(ini.sections["COMPILER"], "DumpAsm", prg_dumpasm);
@@ -237,6 +238,7 @@ void Prefs::close() {
 	auto& compilerSection = ini.sections["COMPILER"];
 	compilerSection.insert(std::make_pair("Debug", boolToString(prg_debug)));
 	compilerSection.insert(std::make_pair("NoLAA", boolToString(prg_nolaa)));
+	compilerSection.insert(std::make_pair("LLVM", boolToString(prg_llvm)));
 	compilerSection.insert(std::make_pair("NoAutoDecl", boolToString(prg_noautodecl)));
 	compilerSection.insert(std::make_pair("Experimental", boolToString(prg_experimental)));
 	compilerSection.insert(std::make_pair("DumpAsm", boolToString(prg_dumpasm)));

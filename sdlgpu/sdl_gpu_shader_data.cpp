@@ -164,6 +164,7 @@ namespace sdlgpu {
 		args.push_back(wentry.c_str());
 		args.push_back(L"-T");
 		args.push_back(wtarget.c_str());
+		args.push_back(vertex ? L"-DB3D_STAGE_VS" : L"-DB3D_STAGE_PS");
 		if (!winclude.empty()) {
 			args.push_back(L"-I");
 			args.push_back(winclude.c_str());
@@ -234,6 +235,7 @@ namespace sdlgpu {
 		std::wstring outPath = TempDirPath() + L"b3d_shader_" + UniqueName() + L".spv";
 		std::wstring wtarget = vertex ? L"vs_6_0" : L"ps_6_0";
 		std::wstring cmd = L"\"" + exe + L"\" -spirv -E \"" + Widen(entry) + L"\" -T \"" + wtarget + L"\"";
+		cmd += vertex ? L" -DB3D_STAGE_VS" : L" -DB3D_STAGE_PS";
 		if (includeDir && includeDir[0]) cmd += L" -I \"" + Widen(includeDir) + L"\"";
 		cmd += L" -Fo \"" + outPath + L"\" \"" + srcPath + L"\"";
 		std::string errText;

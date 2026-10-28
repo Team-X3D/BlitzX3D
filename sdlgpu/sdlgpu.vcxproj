@@ -81,6 +81,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="sdl_gpu_context.cpp" />
+    <ClCompile Include="sdl_gpu_fx.cpp">
+      <CallingConvention>Cdecl</CallingConvention>
+    </ClCompile>
     <ClCompile Include="sdl_gpu_mesh.cpp" />
     <ClCompile Include="sdl_gpu_pipeline.cpp" />
     <ClCompile Include="sdl_gpu_shader.cpp">
@@ -96,6 +99,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="sdl_gpu_context.h" />
+    <ClInclude Include="sdl_gpu_fx.h" />
     <ClInclude Include="sdl_gpu_lock.h" />
     <ClInclude Include="sdl_gpu_mesh.h" />
     <ClInclude Include="sdl_gpu_pipeline.h" />

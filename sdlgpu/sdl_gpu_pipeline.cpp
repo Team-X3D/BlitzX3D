@@ -677,7 +677,7 @@ namespace sdlgpu {
 			InvalidateMeshState();
 			SDL_BindGPUGraphicsPipeline(pass, pipe);
 			ShaderBindTextures(p.shader, dev, pass);
-			SDL_PushGPUVertexUniformData(cmds, 0, uniforms, uniformBytes);
+			if (ShaderHasUniform(p.shader, 0, false)) SDL_PushGPUVertexUniformData(cmds, 0, uniforms, uniformBytes);
 			ShaderPushUniforms(p.shader, cmds);
 			if (skinned) SDL_BindGPUVertexStorageBuffers(pass, 0, &p.boneBuf, 1);
 			SDL_GPUBufferBinding vb{};

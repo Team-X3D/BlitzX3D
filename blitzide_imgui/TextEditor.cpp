@@ -1242,6 +1242,8 @@ void TextEditor::HandleMouseInputs()
 			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 		if (!shift && !alt)
 		{
+			if (ImGui::IsMouseClicked(0)) mDraggingSelection = true;
+
 			auto click = ImGui::IsMouseClicked(0);
 			auto doubleClick = ImGui::IsMouseDoubleClicked(0);
 			auto t = ImGui::GetTime();
@@ -1305,14 +1307,6 @@ void TextEditor::HandleMouseInputs()
 
 				mLastClick = (float)ImGui::GetTime();
 			}
-			// Mouse left button dragging (=> update selection)
-			else if (ImGui::IsMouseDragging(0) && ImGui::IsMouseDown(0))
-			{
-				io.WantCaptureMouse = true;
-				mState.mCursorPosition = mInteractiveEnd = ScreenPosToCoordinates(ImGui::GetMousePos());
-				SetSelection(mInteractiveStart, mInteractiveEnd, mSelectionMode);
-			}
-
 			if (ImGui::IsMouseClicked(1))
 			{
 				CloseAutocomplete();
@@ -1326,6 +1320,69 @@ void TextEditor::HandleMouseInputs()
 					SetSelection(rc, rc);
 				}
 			}
+		}
+	}
+
+	if (mDraggingSelection)
+	{
+		if (ImGui::IsMouseDown(0))
+		{
+			io.WantCaptureMouse = true;
+			ImVec2 mouse = ImGui::GetMousePos();
+			ImVec2 wpos = ImGui::GetWindowPos();
+			ImVec2 wsize = ImGui::GetWindowSize();
+			float pad = mCharAdvance.y;
+			float scroll = 0.0f;
+			if (mouse.y < wpos.y + pad)
+				scroll = -(wpos.y + pad - mouse.y) * 0.5f;
+			else if (mouse.y > wpos.y + wsize.y - pad)
+				scroll = (mouse.y - (wpos.y + wsize.y - pad)) * 0.5f;
+			if (scroll != 0.0f)
+				ImGui::SetScrollY(ImGui::GetScrollY() + scroll);
+			mState.mCursorPosition = mInteractiveEnd = ScreenPosToCoordinates(mouse);
+			SetSelection(mInteractiveStart, mInteractiveEnd, mSelectionMode);
+		}
+		else
+		{
+			mDraggingSelection = false;
+		}
+	}
+
+	if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(2))
+	{
+		mMiddleScroll = true;
+		mMiddleScrollOrigin = ImGui::GetMousePos();
+	}
+	if (mMiddleScroll)
+	{
+		if (ImGui::IsMouseDown(2))
+		{
+			io.WantCaptureMouse = true;
+			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+
+			ImVec2 mouse = ImGui::GetMousePos();
+			float dx = mouse.x - mMiddleScrollOrigin.x;
+			float dy = mouse.y - mMiddleScrollOrigin.y;
+			const float deadZone = mCharAdvance.y;
+			const float speed = 0.05f;
+			float scrollX = 0.0f, scrollY = 0.0f;
+			if (dx > deadZone)
+				scrollX = (dx - deadZone) * speed;
+			else if (dx < -deadZone)
+				scrollX = (dx + deadZone) * speed;
+			if (dy > deadZone)
+				scrollY = (dy - deadZone) * speed;
+			else if (dy < -deadZone)
+				scrollY = (dy + deadZone) * speed;
+
+			if (scrollX != 0.0f)
+				ImGui::SetScrollX(ImGui::GetScrollX() + scrollX);
+			if (scrollY != 0.0f)
+				ImGui::SetScrollY(ImGui::GetScrollY() + scrollY);
+		}
+		else
+		{
+			mMiddleScroll = false;
 		}
 	}
 }

@@ -24,6 +24,18 @@ bool SDLSHADER_API ShaderSetVector(GpuShader* s, const char* name, const float v
 bool SDLSHADER_API ShaderSetMatrix(GpuShader* s, const char* name, const float value[16]);
 bool SDLSHADER_API ShaderSetTexture(GpuShader* s, const char* name, SDL_GPUTexture* tex);
 
+struct FxSamplerInfo {
+	const char* name;
+	const char* texture;
+	unsigned stage;
+};
+
+unsigned SDLSHADER_API ShaderFxSamplerCount(GpuShader* s);
+bool SDLSHADER_API ShaderFxSampler(GpuShader* s, unsigned index, FxSamplerInfo* out);
+const char* SDLSHADER_API ShaderSemanticParam(GpuShader* s, const char* semantic);
+bool SDLSHADER_API ShaderSetTextureIndex(GpuShader* s, unsigned index, SDL_GPUTexture* tex);
+bool SDLSHADER_API ShaderHasUniform(GpuShader* s, unsigned binding, bool fragment);
+
 SDL_GPUGraphicsPipeline* SDLSHADER_API ShaderPipeline(GpuShader* s, SDL_GPUDevice* dev, int colorFormat, int depthFormat, int blend, int zMode, int cull, bool wireframe, int samples, bool skinned);
 void SDLSHADER_API ShaderPushUniforms(GpuShader* s, SDL_GPUCommandBuffer* cmds);
 void SDLSHADER_API ShaderBindTextures(GpuShader* s, SDL_GPUDevice* dev, SDL_GPURenderPass* pass);

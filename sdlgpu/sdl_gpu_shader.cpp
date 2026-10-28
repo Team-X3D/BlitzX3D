@@ -2,10 +2,13 @@
 #include "sdl_gpu_lock.h"
 #include "sdl_gpu_pipeline.h"
 #include "sdl_gpu_shader_data.h"
+#include "sdl_gpu_fx.h"
 
 #include <SDL3/SDL_gpu.h>
 #include <SDL3/SDL_log.h>
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -57,6 +60,8 @@ namespace sdlgpu {
 		std::unordered_map<std::string, unsigned> texIndex;
 		std::unordered_map<unsigned, SDL_GPUTexture*> texBind;
 		unsigned samplerCount = 0;
+		std::unordered_map<std::string, std::string> semanticParams;
+		std::vector<fx::SamplerInfo> fxSamplers;
 		std::map<ShaderPipeKey, SDL_GPUGraphicsPipeline*> pipes;
 	};
 
@@ -163,10 +168,67 @@ namespace sdlgpu {
 		return CompileFromSource(dev, source, nullptr, vsEntry, psEntry, includeDir);
 	}
 
+	static bool ReadShaderText(const char* path, std::string& out) {
+		std::ifstream f(path, std::ios::binary);
+		if (!f) return false;
+		std::ostringstream ss;
+		ss << f.rdbuf();
+		out = ss.str();
+		if (out.size() >= 3 && (unsigned char)out[0] == 0xEF && (unsigned char)out[1] == 0xBB && (unsigned char)out[2] == 0xBF)
+			out.erase(0, 3);
+		return true;
+	}
+
+	static std::string DumpConvertedFx(const char* path, const std::string& source) {
+		std::string stem = ShaderAssetStem(path ? path : "");
+		size_t slash = stem.find_last_of("/\\");
+		if (slash != std::string::npos) stem = stem.substr(slash + 1);
+		const char* tmp = std::getenv("TEMP");
+		if (!tmp || !tmp[0]) tmp = std::getenv("TMP");
+		if (!tmp || !tmp[0]) return std::string();
+		std::string out = std::string(tmp) + "\\b3d_fx_" + stem + ".hlsl";
+		std::ofstream f(out, std::ios::binary | std::ios::trunc);
+		if (!f) return std::string();
+		f.write(source.data(), (std::streamsize)source.size());
+		return f ? out : std::string();
+	}
+
 	GpuShader* SDLSHADER_API CreateShaderFromFile(SDL_GPUDevice* dev, const char* path, const char* vsEntry, const char* psEntry, const char* includeDir) {
 		if (!dev || !path) return nullptr;
 		g_shaderError.clear();
 		std::string stem = ShaderAssetStem(path);
+
+		std::string src;
+		bool haveSrc = ReadShaderText(path, src);
+
+		if (haveSrc && fx::LooksLikeFx(src)) {
+			fx::Program program;
+			std::string err;
+			if (!fx::Convert(src, path, program, err)) {
+				g_shaderError = err;
+				return nullptr;
+			}
+			const char* vs = program.vsEntry.empty() ? nullptr : program.vsEntry.c_str();
+			const char* ps = program.psEntry.empty() ? "PSMain" : program.psEntry.c_str();
+			GpuShader* s = CompileFromSource(dev, program.source.c_str(), path, vs, ps, includeDir);
+			if (!s) {
+				std::string dump = DumpConvertedFx(path, program.source);
+				if (!dump.empty()) g_shaderError += "\n(converted shader: " + dump + ")";
+				return nullptr;
+			}
+			s->fxSamplers = program.samplers;
+			for (const fx::MatrixBinding& mb : program.matrices) s->semanticParams[mb.semantic] = mb.param;
+			for (const fx::ParamDefault& pd : program.defaults) {
+				if (pd.count == 1) ShaderSetFloat(s, pd.name.c_str(), pd.value[0]);
+				else ShaderSetVector(s, pd.name.c_str(), pd.value);
+			}
+			return s;
+		}
+
+		if (!haveSrc && !ShaderAssetExists(stem)) {
+			g_shaderError = "Unable to open shader file";
+			return nullptr;
+		}
 		if (ShaderAssetExists(stem)) {
 			ShaderAsset asset;
 			std::string err;
@@ -176,16 +238,6 @@ namespace sdlgpu {
 			}
 			return CreateFromAsset(dev, asset, psEntry, vsEntry);
 		}
-		std::ifstream f(path, std::ios::binary);
-		if (!f) {
-			g_shaderError = "Unable to open shader file";
-			return nullptr;
-		}
-		std::ostringstream ss;
-		ss << f.rdbuf();
-		std::string src = ss.str();
-		if (src.size() >= 3 && (unsigned char)src[0] == 0xEF && (unsigned char)src[1] == 0xBB && (unsigned char)src[2] == 0xBF)
-			src.erase(0, 3);
 		return CompileFromSource(dev, src.c_str(), path, vsEntry, psEntry, includeDir);
 	}
 
@@ -322,7 +374,7 @@ namespace sdlgpu {
 		SDL_GPUGraphicsPipeline* pipe = SDL_CreateGPUGraphicsPipeline(dev, &info);
 		if (pipeProps) SDL_DestroyProperties(pipeProps);
 		if (!pipe) {
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateGPUGraphicsPipeline shader failed: %s", SDL_GetError());
+			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateGPUGraphicsPipeline shader failed (color=%d depth=%d blend=%d z=%d cull=%d wire=%d samples=%d skinned=%d): %s", colorFormat, depthFormat, blend, zMode, cull, wireframe ? 1 : 0, samples, skinned ? 1 : 0, SDL_GetError());
 			return nullptr;
 		}
 		s->pipes[key] = pipe;
@@ -401,6 +453,40 @@ namespace sdlgpu {
 		if (it == s->texIndex.end()) return false;
 		s->texBind[it->second] = tex;
 		return true;
+	}
+
+	unsigned SDLSHADER_API ShaderFxSamplerCount(GpuShader* s) {
+		return s ? (unsigned)s->fxSamplers.size() : 0;
+	}
+
+	bool SDLSHADER_API ShaderFxSampler(GpuShader* s, unsigned index, FxSamplerInfo* out) {
+		if (!s || !out || index >= s->fxSamplers.size()) return false;
+		const fx::SamplerInfo& si = s->fxSamplers[index];
+		out->name = si.name.c_str();
+		out->texture = si.texture.c_str();
+		out->stage = si.stage;
+		return true;
+	}
+
+	const char* SDLSHADER_API ShaderSemanticParam(GpuShader* s, const char* semantic) {
+		if (!s || !semantic) return nullptr;
+		auto it = s->semanticParams.find(semantic);
+		return it == s->semanticParams.end() ? nullptr : it->second.c_str();
+	}
+
+	bool SDLSHADER_API ShaderSetTextureIndex(GpuShader* s, unsigned index, SDL_GPUTexture* tex) {
+		if (!s) return false;
+		s->texBind[index] = tex;
+		return true;
+	}
+
+	bool SDLSHADER_API ShaderHasUniform(GpuShader* s, unsigned binding, bool fragment) {
+		if (!s) return false;
+		if (!fragment && !s->vs) return binding == 0;
+		for (const RuntimeParamBuffer& b : s->ubos) {
+			if (b.binding == binding && b.fragment == fragment && !b.data.empty()) return true;
+		}
+		return false;
 	}
 
 	const char* SDLSHADER_API ShaderError() {

@@ -1,5 +1,6 @@
 #include "std.h"
 #include "bbsys.h"
+#include "bbgraphics.h"
 #include "../sdlruntime/sdlutf8.h"
 
 sdlInput* sdl_input;
@@ -115,11 +116,17 @@ int bbMouseWait() {
 }
 
 int bbMouseX() {
-	return sdl_mouse ? sdl_mouse->getAxisState(0) : 0;
+	int x = sdl_mouse ? sdl_mouse->getAxisState(0) : 0;
+	int ox, oy;
+	if (bbInScrollRect(&ox, &oy)) x -= ox;
+	return x;
 }
 
 int bbMouseY() {
-	return sdl_mouse ? sdl_mouse->getAxisState(1) : 0;
+	int y = sdl_mouse ? sdl_mouse->getAxisState(1) : 0;
+	int ox, oy;
+	if (bbInScrollRect(&ox, &oy)) y -= oy;
+	return y;
 }
 
 int bbMouseZ() {
@@ -127,13 +134,15 @@ int bbMouseZ() {
 }
 
 int bbMouseXSpeed() {
-	int dx = bbMouseX() - mouse_x;
+	int raw = sdl_mouse ? sdl_mouse->getAxisState(0) : 0;
+	int dx = raw - mouse_x;
 	mouse_x += dx;
 	return dx;
 }
 
 int bbMouseYSpeed() {
-	int dy = bbMouseY() - mouse_y;
+	int raw = sdl_mouse ? sdl_mouse->getAxisState(1) : 0;
+	int dy = raw - mouse_y;
 	mouse_y += dy;
 	return dy;
 }

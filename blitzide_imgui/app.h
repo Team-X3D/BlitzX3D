@@ -110,11 +110,17 @@ private:
 	void drawFuncList();
 	void drawOutput();
 	void drawFindReplace();
+	static int InputTextFindCallback(ImGuiInputTextCallbackData* data);
+	static int InputTextReplaceCallback(ImGuiInputTextCallbackData* data);
+	int onFindInputCallback(ImGuiInputTextCallbackData* data);
+	int onReplaceInputCallback(ImGuiInputTextCallbackData* data);
 	void drawMenus();
 	void drawCommandLine();
 	void drawStylize();
 	void drawProjectWindow();
 	void drawProjectNavigator();
+	void drawToolbar();
+	void loadToolbarTexture();
 	void setupDockLayout();
 	void drawPaneBackground();
 
@@ -135,6 +141,9 @@ private:
 	char replaceBuf[512] = {};
 	bool findFocusPending = false;
 	bool findFocusReplace = false;
+	int findFocusRetry = 0;
+	bool findSelectPending = false;
+	bool replaceSelectPending = false;
 	bool findAllFiles = false;
 	std::string findStatus;
 	int requestedIndex = -1;
@@ -171,11 +180,21 @@ private:
 	bool showStylize = false;
 	bool showProjectWindow = false;
 	bool showProjectNavigator = true;
+	bool showToolbar = true;
+	unsigned int toolbarTex = 0;
+	bool toolbarTexTried = false;
+	int toolbarTexW = 0;
+	int toolbarTexH = 0;
+	int toolbarIconCount = 12;
 	std::string projectDraftMainPath;
 	std::string projectStatus;
 	char projectSavePathBuf[1024] = {};
 	char projectFilterBuf[256] = {};
 	char projectSymbolFilterBuf[256] = {};
+	char projectFindBuf[256] = {};
+	std::string projectFindQuery;
+	struct ProjectFindHit { std::string path; std::string name; int line; int col; std::string text; };
+	std::vector<ProjectFindHit> projectFindHits;
 
 	bool projectOpen = false;
 	std::string projectPath;

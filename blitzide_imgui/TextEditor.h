@@ -425,6 +425,10 @@ private:
 	int mRightClickLine = 0;
 	int mRightClickColumn = 0;
 
+	bool mDraggingSelection = false;
+	bool mMiddleScroll = false;
+	ImVec2 mMiddleScrollOrigin{ 0.0f, 0.0f };
+
 	static const int kAutocompleteMinPrefix = 1;
 	static const int kAutocompleteMaxMatches = 128;
 	static const int kAutocompleteMaxVisible = 12;

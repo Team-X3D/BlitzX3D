@@ -12,6 +12,7 @@ struct Prefs {
 
 	bool prg_debug = true;
 	bool prg_nolaa = false;
+	bool prg_llvm = false;
 	bool prg_noautodecl = false;
 	bool prg_experimental = false;
 	bool prg_dumpasm = false;

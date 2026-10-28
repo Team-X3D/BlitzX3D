@@ -21,9 +21,16 @@
 #include "../compiler/parser.h"
 #include "../compiler/assem_x86/assem_x86.h"
 #include "../compiler/codegen_x86/codegen_x86.h"
+#include "../compiler/codegen_llvm/codegen_llvm.h"
+#include "../compiler/codegen_llvm/llvm_jit.h"
+#include "../compiler/codegen_llvm/llvm_obj.h"
 #include "../bbruntime_dll/bbruntime_dll.h"
 
 #undef environ
+
+static bool _cdecl llvmResolveSymbol(const char* name, int* addr, void* ctx) {
+	return ((Module*)ctx)->findSymbol(name, addr);
+}
 
 static std::string verstr(int ver) {
 	return itoa((ver & 65535) / 1000) + "." + itoa((ver & 65535) % 1000);
@@ -38,7 +45,7 @@ static void showInfo() {
 }
 
 static void showUsage() {
-	std::cout << "Usage: blitzcc [-h|-q|+q|-c|-d|-k|+k|-nlaa|-noautodecl|-experimental|-v|-o exefile] [sourcefile.bb]" << std::endl;
+	std::cout << "Usage: blitzcc [-h|-q|+q|-c|-d|-k|+k|-nlaa|-noautodecl|-experimental|-v|-llvm|-x86|-o exefile] [sourcefile.bb]" << std::endl;
 }
 
 static void showHelp() {
@@ -54,6 +61,8 @@ static void showHelp() {
 	std::cout << "-nlaa      : disables large address awareness for the output executable" << std::endl;
 	std::cout << "-noautodecl: disables auto declaration of undeclared variables" << std::endl;
 	std::cout << "-experimental: enables experimental language syntax" << std::endl;
+	std::cout << "-llvm : use the experimental LLVM backend" << std::endl;
+	std::cout << "-x86       : use the x86 backend instead of the default LLVM backend" << std::endl;
 	std::cout << "-o exefile : generate executable" << std::endl;
 }
 
@@ -103,7 +112,7 @@ static void printErrors(const std::vector<Ex>& errors) {
 }
 
 static void deploySidecarDlls(const std::string& out_file, bool quiet, bool veryquiet) {
-	static const char* dlls[] = { "bass.dll", "FreeImage.dll" };
+	static const char* dlls[] = { "bass.dll", "FreeImage.dll", "freetype.dll" };
 
 	size_t n = out_file.find_last_of("/\\");
 	std::string dir = (n == std::string::npos) ? "" : out_file.substr(0, n);
@@ -205,6 +214,10 @@ int _cdecl main(int argc, char* argv[]) {
 	bool versinfo = false;
 	bool nolaa = false;
 
+	bool encrypt = false;
+	bool llvmbackend = false;
+
+
 	for (int k = 1; k < argc; ++k) {
 		std::string t = argv[k];
 
@@ -250,6 +263,17 @@ int _cdecl main(int argc, char* argv[]) {
 		else if (t == "-experimental") {
 			experimentalSyntaxEnabled = true;
 		}
+
+		else if (t == "-encrypt") {
+			encrypt = true;
+		}
+		else if (t == "-llvm") {
+			llvmbackend = true;
+		}
+		else if (t == "-x86") {
+			llvmbackend = false;
+		}
+
 		else {
 			if (in_file.size() || t[0] == '-' || t[0] == '+') usageErr();
 			in_file = argv[k];
@@ -315,6 +339,7 @@ int _cdecl main(int argc, char* argv[]) {
 	ProgNode* prog = 0;
 	Environ* environ = 0;
 	Module* module = 0;
+	void* llvmEntry = 0;
 
 	try {
 		//parse & semant
@@ -345,19 +370,53 @@ int _cdecl main(int argc, char* argv[]) {
 		if (!veryquiet) std::cout << "Translating..." << std::endl;
 		qstreambuf qbuf;
 		std::iostream asmcode(&qbuf);
-		Codegen_x86 codegen(asmcode, debug);
-
-		prog->translate(&codegen, userFuncs);
+		Codegen* codegen = llvmbackend ? (Codegen*)new Codegen_llvm(asmcode, debug) : (Codegen*)new Codegen_x86(asmcode, debug);
+		prog->translate(codegen, userFuncs);
+		delete codegen;
 
 		if (dumpasm) {
 			std::cout << std::endl << std::string(qbuf.data(), qbuf.size()) << std::endl;
 		}
 
-		//assemble
-		if (!veryquiet) std::cout << "Assembling..." << std::endl;
-		module = linkerLib->createModule();
-		Assem_x86 assem(asmcode, module);
-		assem.assemble();
+		if (llvmbackend) {
+			// the cooler assemble
+			std::string ir(qbuf.data(), qbuf.size());
+			std::string lerr;
+
+			if (out_file.size()) {
+				std::string obj;
+				if (!llvm_emit_object(ir, obj, lerr)) {
+					delete prog;
+					delete environ;
+					closeLibs();
+					err("LLVM backend error: " + lerr);
+				}
+
+				module = linkerLib->createModule();
+				if (!llvm_object_to_module(obj, module, lerr)) {
+					delete prog;
+					delete environ;
+					closeLibs();
+					err("LLVM backend error: " + lerr);
+				}
+			}
+			else {
+				llvmEntry = llvm_load_module(ir, llvmResolveSymbol, runtimeModule, lerr);
+				if (!llvmEntry) {
+					delete prog;
+					delete environ;
+					closeLibs();
+					err("LLVM backend error: " + lerr);
+				}
+			}
+		}
+		else {
+			//assemble
+			if (!veryquiet) std::cout << "Assembling..." << std::endl;
+			module = linkerLib->createModule();
+			Assem_x86 assem(asmcode, module);
+			assem.assemble();
+		}
 
 	}
 	catch (Ex& x) {
@@ -380,13 +439,13 @@ int _cdecl main(int argc, char* argv[]) {
 		if (!veryquiet) std::cout << "Executable created succesfully." << std::endl;
 	}
 	else if (!compileonly) {
-		void* entry = module->link(runtimeModule);
+		void* entry = llvmEntry ? llvmEntry : module->link(runtimeModule);
 		if (!entry) return 0;
 
 		HMODULE dbgHandle = 0;
 		Debugger* debugger = 0;
 
-		if (debug) {
+		if (debug && module) {
 			dbgHandle = LoadLibrary((home + "/bin/debugger_imgui.dll").c_str());
 			if (dbgHandle) {
 				typedef Debugger* (_cdecl* GetDebugger)(Module*, Environ*);

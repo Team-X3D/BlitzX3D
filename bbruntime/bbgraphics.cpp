@@ -1198,6 +1198,16 @@ void bbEndScrollRect()
     sdl_canvas->setOrigin(st.origin_x, st.origin_y);
 }
 
+bool bbInScrollRect(int* origin_x, int* origin_y)
+{
+    if (scroll_rect_stack.empty()) return false;
+    int ox, oy;
+    sdl_canvas->getOrigin(&ox, &oy);
+    if (origin_x) *origin_x = ox;
+    if (origin_y) *origin_y = oy;
+    return true;
+}
+
 void bbColor(int r, int g, int b, int a)
 {
     sdl_canvas->setColor(curr_color = (a << 24) | (r << 16) | (g << 8) | b);

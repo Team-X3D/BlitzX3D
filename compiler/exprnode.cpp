@@ -207,6 +207,7 @@ TNode* CallNode::translate(Codegen* g) {
 			t = call("__bbCStrToStr", t);
 		}
 	}
+	if(sem_type == Type::string_type || sem_type->structType() || sem_type->vectorType() || sem_type == Type::pointer_type) t->vkind = VK_PTR;
 	return t;
 }
 ///////////////////////
@@ -242,12 +243,18 @@ ExprNode* CallPtrNode::semant(Environ* env) {
 }
 
 TNode* CallPtrNode::translate(Codegen* g) {
-	if (sem_isType) return global("_t" + ident);
+	if (sem_isType) {
+		TNode* t = global("_t" + ident);
+		t->vkind = VK_PTR;
+		return t;
+	}
 	if (sem_decl && (sem_decl->kind & DECL_FUNC)) {
 		FuncType* f = sem_decl->type->funcType();
 		if (f && f->userlib) usedfuncs.insert(ident);
 	}
-	return global("_f" + ident);
+	TNode* t = global("_f" + ident);
+	t->vkind = VK_PTR;
+	return t;
 }
 
 ////////////////////////////////
@@ -275,10 +282,15 @@ TNode* CallIndirectNode::translate(Codegen* g) {
 	TNode* l = funcExpr->translate(g);
 	TNode* r = exprs->translate(g, false);
 
+	TNode* t;
 	if(sem_type == Type::float_type) {
-		return new TNode(IR_FCALL, l, r, exprs->size() * 4);
+		t = new TNode(IR_FCALL, l, r, exprs->size() * 4);
 	}
-	return new TNode(IR_CALL, l, r, exprs->size() * 4);
+	else {
+		t = new TNode(IR_CALL, l, r, exprs->size() * 4);
+	}
+	if(sem_type == Type::string_type || sem_type->structType() || sem_type->vectorType() || sem_type == Type::pointer_type) t->vkind = VK_PTR;
+	return t;
 }
 
 /////////////////////////
@@ -387,7 +399,9 @@ StringConstNode::StringConstNode(const std::string& s) :value(s) {
 TNode* StringConstNode::translate(Codegen* g) {
 	std::string lab = genLabel();
 	g->s_data(value, lab);
-	return call("__bbStrConst", global(lab));
+	TNode* t = call("__bbStrConst", global(lab));
+	t->vkind = VK_PTR;
+	return t;
 }
 
 int StringConstNode::intValue() {
@@ -732,7 +746,9 @@ ExprNode* NewNode::semant(Environ* e) {
 }
 
 TNode* NewNode::translate(Codegen* g) {
-	return call("__bbObjNew", global("_t" + ident));
+	TNode* t = call("__bbObjNew", global("_t" + ident));
+	t->vkind = VK_PTR;
+	return t;
 }
 
 ////////////////////
@@ -745,7 +761,9 @@ ExprNode* FirstNode::semant(Environ* e) {
 }
 
 TNode* FirstNode::translate(Codegen* g) {
-	return call("__bbObjFirst", global("_t" + ident));
+	TNode* t = call("__bbObjFirst", global("_t" + ident));
+	t->vkind = VK_PTR;
+	return t;
 }
 
 ///////////////////
@@ -758,7 +776,9 @@ ExprNode* LastNode::semant(Environ* e) {
 }
 
 TNode* LastNode::translate(Codegen* g) {
-	return call("__bbObjLast", global("_t" + ident));
+	TNode* t = call("__bbObjLast", global("_t" + ident));
+	t->vkind = VK_PTR;
+	return t;
 }
 
 ////////////////////
@@ -775,7 +795,9 @@ ExprNode* AfterNode::semant(Environ* e) {
 TNode* AfterNode::translate(Codegen* g) {
 	TNode* t = expr->translate(g);
 	//if(g->debug) t = jumpf(t, "__bbNullObjEx");
-	return call("__bbObjNext", t);
+	TNode* r = call("__bbObjNext", t);
+	r->vkind = VK_PTR;
+	return r;
 }
 
 ////////////////////
@@ -792,7 +814,9 @@ ExprNode* BeforeNode::semant(Environ* e) {
 TNode* BeforeNode::translate(Codegen* g) {
 	TNode* t = expr->translate(g);
 	//if(g->debug) t = jumpf(t, "__bbNullObjEx");
-	return call("__bbObjPrev", t);
+	TNode* r = call("__bbObjPrev", t);
+	r->vkind = VK_PTR;
+	return r;
 }
 
 /////////////////
@@ -810,6 +834,7 @@ ExprNode* ObjectCastNode::semant(Environ* e) {
 TNode* ObjectCastNode::translate(Codegen* g) {
 	TNode* t = expr->translate(g);
 	t = call("__bbObjFromHandle", t, global("_t" + sem_type->structType()->ident));
+	t->vkind = VK_PTR;
 	return t;
 }
 
@@ -848,8 +873,14 @@ ExprNode* AddrOfNode::semant(Environ* e) {
 }
 
 TNode* AddrOfNode::translate(Codegen* g) {
-	if (sem_array) return global("_a" + array_ident);
-	return var->translate(g);
+	if (sem_array) {
+		TNode* t = global("_a" + array_ident);
+		t->vkind = VK_PTR;
+		return t;
+	}
+	TNode* t = var->translate(g);
+	t->vkind = VK_PTR;
+	return t;
 }
 
 /////////////////
