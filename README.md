@@ -92,6 +92,7 @@ AI-generated PRs, issues, and descriptions are not accepted.
   git submodule update --init
   ```
   (Or clone with `git clone --recurse-submodules`.) SDL3 is linked statically, so no `SDL3.dll` needs to be shipped alongside the builds.
+- `LLVM-C.dll` isn't committed, but is needed. Get it here [LLVM 21.1.8 win32](https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/LLVM-21.1.8-win32.exe) and copy `bin\LLVM-C.dll` to `vendor/llvm32/bin/`.
 
 ### Encryption
 

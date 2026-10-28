@@ -95,6 +95,10 @@
       <LargeAddressAware>true</LargeAddressAware>
       <StackReserveSize>8388608</StackReserveSize>
     </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(ProjectDir)..\vendor\llvm32\bin\LLVM-C.dll" copy /Y "$(ProjectDir)..\vendor\llvm32\bin\LLVM-C.dll" "$(OutDir)LLVM-C.dll" >nul
+if not exist "$(ProjectDir)..\vendor\llvm32\bin\LLVM-C.dll" echo Warning: vendor\llvm32\bin\LLVM-C.dll is missing see README</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -155,6 +159,10 @@
       <LargeAddressAware>true</LargeAddressAware>
       <StackReserveSize>8388608</StackReserveSize>
     </Link>
+    <PostBuildEvent>
+      <Command>if exist "$(ProjectDir)..\vendor\llvm32\bin\LLVM-C.dll" copy /Y "$(ProjectDir)..\vendor\llvm32\bin\LLVM-C.dll" "$(OutDir)LLVM-C.dll" >nul
+if not exist "$(ProjectDir)..\vendor\llvm32\bin\LLVM-C.dll" echo Warning: vendor\llvm32\bin\LLVM-C.dll is missing see README</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="libs.cpp" />
