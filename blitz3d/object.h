@@ -41,6 +41,9 @@ public:
 	void setMask(int n) { mask = n; }
 	void setAnimation(const Animation& t) { anim = t; }
 	void setAnimator(Animator* t);
+	Animator* takeAnimator();
+
+	void adopt(Object& o);
 
 	sdlChannel* emitSound(sdlSound* sound);
 

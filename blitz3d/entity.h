@@ -75,6 +75,8 @@ public:
 
 	static Entity* orphans() { return _orphans; }
 
+	static void setDeferredLinking(bool enable);
+
 	static unsigned enumRevision() { return _enum_rev; }
 	unsigned worldRevision() const { return _world_rev; }
 
@@ -86,9 +88,11 @@ private:
 	Entity* _succ, * _pred, * _parent, * _children, * _last_child;
 
 	static Entity* _orphans, * _last_orphan;
+	static thread_local bool _defer_link;
 
 	static unsigned _enum_rev;
 	unsigned _world_rev;
+	bool _linked;
 	
 	int sceneId = 0;
 	bool _visible, _enabled, _pinned = false;

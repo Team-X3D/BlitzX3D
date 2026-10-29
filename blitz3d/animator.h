@@ -21,6 +21,8 @@ public:
 
 	void addSeq(int frames);
 
+	void retarget(Object* from, Object* to);
+
 	void addSeqs(Animator* t);
 
 	void extractSeq(int first, int last, int seq);

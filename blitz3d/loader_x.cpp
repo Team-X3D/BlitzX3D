@@ -9,12 +9,12 @@
 #include "minidx9/include/rmxftmpl.h"
 
 extern sdlRuntime* sdl_runtime;
-static std::map<std::string, MeshModel*> frames_map;
-static int anim_len;
+static thread_local std::map<std::string, MeshModel*> frames_map;
+static thread_local int anim_len;
 
-static bool conv, flip_tris;
-static Transform conv_tform;
-static bool collapse, animonly;
+static thread_local bool conv, flip_tris;
+static thread_local Transform conv_tform;
+static thread_local bool collapse, animonly;
 
 static void parseAnimKey(IDirectXFileData* fileData, MeshModel* e) {
 

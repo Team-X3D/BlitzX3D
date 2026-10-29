@@ -11,25 +11,25 @@ extern sdlRuntime* sdl_runtime;
 #define _log( X )
 #endif
 
-static std::filebuf in;
-static int chunk_end;
-static std::vector<int> parent_end;
-static unsigned short anim_len;
+static thread_local std::filebuf in;
+static thread_local int chunk_end;
+static thread_local std::vector<int> parent_end;
+static thread_local unsigned short anim_len;
 
-static bool conv, flip_tris;
-static Transform conv_tform;
-static bool collapse, animonly;
+static thread_local bool conv, flip_tris;
+static thread_local Transform conv_tform;
+static thread_local bool collapse, animonly;
 
 struct Face3DS {
 	int verts[3];
 	Brush brush;
 };
 
-static std::vector<Face3DS> faces;
+static thread_local std::vector<Face3DS> faces;
 
-static std::map<std::string, Brush> materials_map;
-static std::map<std::string, MeshModel*> name_map;
-static std::map<int, MeshModel*> id_map;
+static thread_local std::map<std::string, Brush> materials_map;
+static thread_local std::map<std::string, MeshModel*> name_map;
+static thread_local std::map<int, MeshModel*> id_map;
 
 static int nextChunk() {
 	in.pubseekoff(chunk_end, std::ios_base::beg);

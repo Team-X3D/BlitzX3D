@@ -1,5 +1,14 @@
 #include "std.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <deque>
+#include <memory>
+#include <mutex>
+#include <thread>
+
+#include <objbase.h>
+
 #include "bbblitz3d.h"
 #include "bbgraphics.h"
 #include "../blitz3d/blitz3d.h"
@@ -60,6 +69,7 @@ static Loader_3DS loader_3ds;
 static Loader_B3D loader_b3d;
 
 static std::map<std::string, Transform> loader_mat_map;
+static std::mutex loader_mat_mutex;
 
 #define VALIDATE_ENTITY_VOID(e, func) \
 if (!debugEntity(e, func)) return;
@@ -85,7 +95,13 @@ static inline void debugBrush(Brush* b, const char* function) {
 	}
 }
 
+static void resolvePendingEntity(Entity* e);
+static void resolveAllPending();
+static void cancelPendingEntity(Entity* e);
+static void cancelAllPending();
+
 static inline bool debugEntity(Entity* e, const char* function) {
+	resolvePendingEntity(e);
 	auto it = entity_map.find(e);
 	if (it != entity_map.end() && it->second.alive) {
 		return true;
@@ -102,6 +118,7 @@ static inline bool debugEntity(Entity* e, const char* function) {
 static inline void debugParent(Entity* e, const char* function) {
 	debug3d(function);
 	if (e) {
+		resolvePendingEntity(e);
 		auto it = entity_map.find(e);
 		if (it == entity_map.end() || !it->second.alive) {
 			ErrorLog(function, MultiLang::parent_entity_not_exist);
@@ -187,13 +204,161 @@ static Entity* loadEntity(std::string t, int hint) {
 	else if (ext == "b3d") l = &loader_b3d;
 	else return 0;
 
-	const Transform& conv = loader_mat_map[ext];
+	Transform conv;
+	{
+		std::lock_guard<std::mutex> lock(loader_mat_mutex);
+		auto it = loader_mat_map.find(ext);
+		if (it != loader_mat_map.end()) conv = it->second;
+	}
 
 	CachedTexture::setPath(filenamepath(t));
 	Entity* e = l->load(t, conv, hint);
 	CachedTexture::setPath("");
 	return e;
 }
+
+static bool isModelFile(const std::string& file) {
+	std::string t = tolower(file);
+	int n = t.rfind(".");
+	if (n == std::string::npos) return false;
+	std::string ext = t.substr(n + 1);
+	return ext == "x" || ext == "3ds" || ext == "b3d";
+}
+
+struct AsyncModelJob {
+	enum { STATE_QUEUED, STATE_LOADING, STATE_DONE, STATE_FAILED, STATE_CANCELLED };
+
+	std::string file;
+	int hint;
+	std::atomic<int> state;
+	std::mutex mutex;
+	std::condition_variable cv;
+	Entity* result = nullptr;
+
+	AsyncModelJob(const std::string& f, int h) : file(f), hint(h), state(STATE_QUEUED) {}
+
+	void wait() {
+		std::unique_lock<std::mutex> lock(mutex);
+		cv.wait(lock, [this]() {
+			int s = state.load();
+			return s == STATE_DONE || s == STATE_FAILED || s == STATE_CANCELLED;
+		});
+	}
+
+	Entity* takeResult() {
+		std::lock_guard<std::mutex> lock(mutex);
+		Entity* e = result;
+		result = nullptr;
+		return e;
+	}
+
+	// called on main thread, worker deletes its result if it's still parsing
+	void cancel() {
+		Entity* e = nullptr;
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			if (state.load() == STATE_DONE) {
+				e = result;
+				result = nullptr;
+			}
+			state.store(STATE_CANCELLED);
+		}
+		cv.notify_all();
+		delete e;
+	}
+};
+
+class AsyncModelLoader {
+public:
+	static AsyncModelLoader& instance() {
+		static AsyncModelLoader loader;
+		return loader;
+	}
+
+	std::shared_ptr<AsyncModelJob> load(const std::string& file, int hint) {
+		auto job = std::make_shared<AsyncModelJob>(file, hint);
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			queue.push_back(job);
+		}
+		cv.notify_one();
+		return job;
+	}
+
+	void stop() {
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			shutdown = true;
+		}
+		cv.notify_all();
+		for (auto& t : threads) t.join();
+		threads.clear();
+	}
+
+private:
+	AsyncModelLoader() {
+		unsigned count = std::thread::hardware_concurrency() / 2;
+		if (count < 1) count = 1;
+		if (count > 2) count = 2;
+		for (unsigned n = 0; n < count; ++n) threads.emplace_back(&AsyncModelLoader::worker, this);
+	}
+
+	~AsyncModelLoader() {
+		stop();
+	}
+
+	void worker() {
+		HRESULT co = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+		for (;;) {
+			std::shared_ptr<AsyncModelJob> job;
+			{
+				std::unique_lock<std::mutex> lock(mutex);
+				cv.wait(lock, [this]() { return shutdown || !queue.empty(); });
+				if (queue.empty()) break;
+				job = queue.front();
+				queue.pop_front();
+			}
+
+			{
+				std::lock_guard<std::mutex> lock(job->mutex);
+				if (job->state.load() == AsyncModelJob::STATE_CANCELLED) continue;
+				job->state.store(AsyncModelJob::STATE_LOADING);
+			}
+
+			Entity::setDeferredLinking(true);
+			Entity* e = nullptr;
+			try {
+				e = loadEntity(job->file, job->hint);
+			}
+			catch (...) {
+				e = nullptr;
+			}
+			Entity::setDeferredLinking(false);
+
+			{
+				std::lock_guard<std::mutex> lock(job->mutex);
+				if (job->state.load() == AsyncModelJob::STATE_CANCELLED) {
+					delete e;
+					e = nullptr;
+				}
+				else {
+					job->result = e;
+					job->state.store(e ? AsyncModelJob::STATE_DONE : AsyncModelJob::STATE_FAILED);
+				}
+			}
+			job->cv.notify_all();
+		}
+
+		if (SUCCEEDED(co)) CoUninitialize();
+	}
+
+	std::deque<std::shared_ptr<AsyncModelJob>> queue;
+	std::vector<std::thread> threads;
+	std::mutex mutex;
+	std::condition_variable cv;
+	bool shutdown = false;
+};
 
 static void collapseMesh(MeshModel* mesh, Entity* e) {
 	while (e->children()) {
@@ -236,6 +401,90 @@ static void nameEntityFromFile(Entity* e, const std::string& file) {
 	}
 }
 
+struct PendingModel {
+	std::shared_ptr<AsyncModelJob> job;
+	Entity* entity;
+	bool collapse;
+	bool animate;
+};
+
+static std::unordered_map<Entity*, PendingModel> pending_models;
+
+static void resolvePendingEntity(Entity* e) {
+	auto it = pending_models.find(e);
+	if (it == pending_models.end()) return;
+
+	PendingModel pending = std::move(it->second);
+	pending_models.erase(it);
+
+	pending.job->wait();
+	if (pending.job->state.load() == AsyncModelJob::STATE_DONE) {
+		if (Entity* parsed = pending.job->takeResult()) {
+			MeshModel* dst = static_cast<MeshModel*>(pending.entity);
+			if (pending.collapse) {
+				collapseMesh(dst, parsed);
+			}
+			else {
+				MeshModel* src = static_cast<MeshModel*>(parsed);
+				Transform local = src->getLocalTform();
+				Animator* animator = src->getObject()->takeAnimator();
+
+				dst->adopt(*src);
+				dst->getObject()->adopt(*src->getObject());
+				if (animator) {
+					animator->retarget(src, dst);
+					dst->setAnimator(animator);
+				}
+
+				while (Entity* child = src->children()) child->setParent(dst);
+				dst->setLocalTform(local);
+				for (Entity* child = dst->children(); child; child = child->successor()) {
+					insert(child);
+				}
+				delete src;
+			}
+
+			if (pending.animate) {
+				if (Animator* anim = dst->getObject()->getAnimator()) {
+					anim->animate(1, 0, 0, 0);
+				}
+			}
+		}
+	}
+
+	CachedTexture::flushAll();
+}
+
+static void resolveAllPending() {
+	std::vector<Entity*> pending;
+	pending.reserve(pending_models.size());
+	for (auto& entry : pending_models) pending.push_back(entry.first);
+	for (Entity* e : pending) resolvePendingEntity(e);
+}
+
+static void cancelPendingTree(Entity* e) {
+	auto it = pending_models.find(e);
+	if (it != pending_models.end()) {
+		it->second.job->cancel();
+		pending_models.erase(it);
+	}
+	for (Entity* child = e->children(); child; child = child->successor()) {
+		cancelPendingTree(child);
+	}
+}
+
+static void cancelPendingEntity(Entity* e) {
+	cancelPendingTree(e);
+}
+
+static void cancelAllPending() {
+	std::vector<PendingModel> pending;
+	pending.reserve(pending_models.size());
+	for (auto& entry : pending_models) pending.push_back(std::move(entry.second));
+	pending_models.clear();
+	for (auto& p : pending) p.job->cancel();
+}
+
 static void erase(Entity* e) {
 	for (Entity* p = e->children(); p; p = p->successor()) {
 		erase(p);
@@ -256,8 +505,11 @@ static Entity* findChild(Entity* e, const std::string& t) {
 // GLOBAL WORLD COMMANDS //
 ///////////////////////////
 void bbLoaderMatrix(BBStr* ext, float xx, float xy, float xz, float yx, float yy, float yz, float zx, float zy, float zz) {
-	loader_mat_map.erase(*ext);
-	loader_mat_map[*ext] = Transform(Matrix(Vector(xx, xy, xz), Vector(yx, yy, yz), Vector(zx, zy, zz)));
+	{
+		std::lock_guard<std::mutex> lock(loader_mat_mutex);
+		loader_mat_map.erase(*ext);
+		loader_mat_map[*ext] = Transform(Matrix(Vector(xx, xy, xz), Vector(yx, yy, yz), Vector(zx, zy, zz)));
+	}
 	delete ext;
 }
 
@@ -325,6 +577,7 @@ static int update_ms;
 
 void bbUpdateWorld(float elapsed) {
 	debug3d("UpdateWorld");
+	resolveAllPending();
 #ifdef BETA
 	update_ms = sdl_runtime->getMilliSecs();
 	world->update(elapsed);
@@ -337,12 +590,14 @@ void bbUpdateWorld(float elapsed) {
 
 void bbCaptureWorld() {
 	debug3d("CaptureWorld");
+	resolveAllPending();
 	world->capture();
 }
 
 void bbRenderWorld(float tween) {
 	debug3d("RenderWorld");
 
+	resolveAllPending();
 	CachedTexture::flushAll();
 	sdlSound::flushAll();
 
@@ -408,6 +663,7 @@ void bbRenderEntity(Entity* e, Camera* cam, float tween) {
 		return;
 	}
 
+	resolvePendingEntity(e);
 	extern World* world;
 	if (world) {
 		world->renderEntity(cam, e, tween);
@@ -735,17 +991,23 @@ Entity* bbCreateMesh(Entity* p) {
 	return insertEntity(m, p);
 }
 
+static bool modelFileExists(const std::string& file) {
+	if (!isModelFile(file)) return false;
+	DWORD attrs = GetFileAttributesA(file.c_str());
+	return attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY);
+}
+
 Entity* bbLoadMesh(BBStr* f, Entity* p) {
 	debugParent(p, "LoadMesh");
 	std::string file = *f;
-	Entity* e = loadEntity(file.c_str(), MeshLoader::HINT_COLLAPSE);
 	delete f;
 
-	if (!e) return 0;
+	if (!modelFileExists(file)) return 0;
+
 	MeshModel* m = new MeshModel();
-	collapseMesh(m, e);
 	Entity* r = insertEntity(m, p);
 	nameEntityFromFile(r, file);
+	pending_models[r] = { AsyncModelLoader::instance().load(file, MeshLoader::HINT_COLLAPSE), r, true, false };
 	CachedTexture::flushAll();
 	return r;
 }
@@ -753,15 +1015,14 @@ Entity* bbLoadMesh(BBStr* f, Entity* p) {
 Entity* bbLoadAnimMesh(BBStr* f, Entity* p) {
 	debugParent(p, "LoadAnimMesh");
 	std::string file = *f;
-	Entity* e = loadEntity(file.c_str(), 0);
 	delete f;
 
-	if (!e) return 0;
-	if (Animator* anim = e->getObject()->getAnimator()) {
-		anim->animate(1, 0, 0, 0);
-	}
-	Entity* r = insertEntity(e, p);
+	if (!modelFileExists(file)) return 0;
+
+	MeshModel* m = new MeshModel();
+	Entity* r = insertEntity(m, p);
 	nameEntityFromFile(r, file);
+	pending_models[r] = { AsyncModelLoader::instance().load(file, 0), r, false, true };
 	CachedTexture::flushAll();
 	return r;
 }
@@ -1803,6 +2064,7 @@ Entity* bbCopyEntity(Entity* e, Entity* p) {
 
 void  bbFreeEntity(Entity* e) {
 	if (!e) return;
+	cancelPendingEntity(e);
 	debugEntity(e, "FreeEntity");
 	erase(e);
 	delete e;
@@ -2505,6 +2767,7 @@ BBStr* bbEntityClass(Entity* e) {
 
 void  bbClearWorld(int e, int b, int t, int fx) {
 	if (e) {
+		cancelAllPending();
 		Entity* next;
 		int current = g_sceneManager.currentSceneId;
 		for (Entity* ent = Entity::orphans(); ent; ent = next) {
@@ -2565,10 +2828,10 @@ void bbUnpinBrush(Brush* b) {
 	b->setPinned(false);
 }
 
-extern int active_texs;
+extern std::atomic<int> active_texs;
 
 int  bbActiveTextures() {
-	return active_texs;
+	return active_texs.load();
 }
 
 // ----- SCENES -----
@@ -2615,9 +2878,12 @@ void blitz3d_open() {
 	picked.with = 0; picked.coords = Vector();
 	Texture::clearFilters();
 	Texture::addFilter("", sdlCanvas::CANVAS_TEX_RGB | sdlCanvas::CANVAS_TEX_MIPMAP);
-	loader_mat_map.clear();
-	loader_mat_map["x"] = Transform();
-	loader_mat_map["3ds"] = Transform(Matrix(Vector(1, 0, 0), Vector(0, 0, 1), Vector(0, 1, 0)));
+	{
+		std::lock_guard<std::mutex> lock(loader_mat_mutex);
+		loader_mat_map.clear();
+		loader_mat_map["x"] = Transform();
+		loader_mat_map["3ds"] = Transform(Matrix(Vector(1, 0, 0), Vector(0, 0, 1), Vector(0, 1, 0)));
+	}
 	listener = 0;
 	stats_mode = false;
 }
@@ -2627,7 +2893,10 @@ void blitz3d_close() {
 	sdlScene* scene = sdl_scene;
 	bbClearWorld(1, 1, 1, 1);
 	Texture::clearFilters();
-	loader_mat_map.clear();
+	{
+		std::lock_guard<std::mutex> lock(loader_mat_mutex);
+		loader_mat_map.clear();
+	}
 	delete world;
 	sdl_scene = 0;
 	if (sdl_graphics) sdl_graphics->freeScene(scene);
@@ -2642,6 +2911,7 @@ bool blitz3d_create() {
 
 bool blitz3d_destroy() {
 	blitz3d_close();
+	AsyncModelLoader::instance().stop();
 	return true;
 }
 

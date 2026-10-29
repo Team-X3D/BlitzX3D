@@ -2,19 +2,24 @@
 #include "cachedtexture.h"
 #include "../sdlruntime/sdlgraphics.h"
 
-int active_texs;
+std::atomic<int> active_texs;
 
 extern sdlRuntime* sdl_runtime;
 extern sdlGraphics* sdl_graphics;
 
 std::set<CachedTexture::Rep*> CachedTexture::rep_set;
 
-static std::string path;
+static thread_local std::string path;
 
 std::vector<CachedTexture::Rep*> CachedTexture::pending_reps;
 
+static std::mutex rep_mutex;
+static std::recursive_mutex pending_mutex;
+
 CachedTexture::PathMutator CachedTexture::pathMutator = nullptr;
+static std::mutex path_mutex;
 void CachedTexture::setPathMutator(PathMutator m) {
+	std::lock_guard<std::mutex> lock(path_mutex);
 	pathMutator = m;
 }
 
@@ -55,6 +60,7 @@ struct CachedTexture::Rep {
 			return;
 		}
 		job = AsyncImageLoader::instance().load(f);
+		std::lock_guard<std::recursive_mutex> lock(pending_mutex);
 		pending_reps.push_back(this);
 	}
 
@@ -65,10 +71,13 @@ struct CachedTexture::Rep {
 	}
 
 	void cancelJob() {
-		for (auto it = pending_reps.begin(); it != pending_reps.end(); ++it) {
-			if (*it == this) {
-				pending_reps.erase(it);
-				break;
+		{
+			std::lock_guard<std::recursive_mutex> lock(pending_mutex);
+			for (auto it = pending_reps.begin(); it != pending_reps.end(); ++it) {
+				if (*it == this) {
+					pending_reps.erase(it);
+					break;
+				}
 			}
 		}
 		if (job) {
@@ -221,26 +230,24 @@ CachedTexture::CachedTexture(int w, int h, int flags, int cnt) :
 CachedTexture::CachedTexture(const std::string& f_, int flags, int w, int h, int first, int cnt) {
 	std::string f = f_;
 	if (f.substr(0, 2) == ".\\") f = f.substr(2);
+
+	PathMutator mutator;
+	{
+		std::lock_guard<std::mutex> lock(path_mutex);
+		mutator = pathMutator;
+	}
+
+	std::string t;
 	if (path.size()) {
-		std::string t = path + tolower(filenamefile(f));
-		if (rep = findRep(t, flags, w, h, first, cnt)) return;
-		rep = new Rep(t, flags, w, h, first, cnt);
-		rep_set.insert(rep);
-		return;
+		t = path + tolower(filenamefile(f));
 	}
-
-	if (pathMutator) {
-		std::string mutated = pathMutator(f);
-		if (!mutated.empty()) {
-			std::string t = tolower(fullfilename(mutated));
-			if (rep = findRep(t, flags, w, h, first, cnt)) return;
-			rep = new Rep(t, flags, w, h, first, cnt);
-			rep_set.insert(rep);
-			return;
-		}
+	else if (mutator) {
+		std::string mutated = mutator(f);
+		if (!mutated.empty()) t = tolower(fullfilename(mutated));
 	}
+	if (t.empty()) t = tolower(fullfilename(f));
 
-	std::string t = tolower(fullfilename(f));
+	std::lock_guard<std::mutex> lock(rep_mutex);
 	if (rep = findRep(t, flags, w, h, first, cnt)) return;
 	rep = new Rep(t, flags, w, h, first, cnt);
 	rep_set.insert(rep);
@@ -253,7 +260,10 @@ CachedTexture::CachedTexture(const CachedTexture& t) :
 
 CachedTexture::~CachedTexture() {
 	if (!--rep->ref_cnt) {
-		rep_set.erase(rep);
+		{
+			std::lock_guard<std::mutex> lock(rep_mutex);
+			rep_set.erase(rep);
+		}
 		delete rep;
 	}
 }
@@ -261,7 +271,10 @@ CachedTexture::~CachedTexture() {
 CachedTexture& CachedTexture::operator=(const CachedTexture& t) {
 	++t.rep->ref_cnt;
 	if (!--rep->ref_cnt) {
-		rep_set.erase(rep);
+		{
+			std::lock_guard<std::mutex> lock(rep_mutex);
+			rep_set.erase(rep);
+		}
 		delete rep;
 	}
 	rep = t.rep;
@@ -283,14 +296,11 @@ bool CachedTexture::valid()const {
 }
 
 void CachedTexture::flushAll() {
+	std::lock_guard<std::recursive_mutex> lock(pending_mutex);
 	for (size_t idx = 0; idx < pending_reps.size(); ) {
 		Rep* r = pending_reps[idx];
 		r->materialize(false);
-		if (r->materialized) {
-		}
-		else {
-			++idx;
-		}
+		if (!r->materialized) ++idx;
 	}
 }
 

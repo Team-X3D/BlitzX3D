@@ -25,8 +25,8 @@ struct MLMesh {
 	}
 };
 
-static MLMesh* ml_mesh;
-static std::vector<MLMesh*> mesh_stack;
+static thread_local MLMesh* ml_mesh;
+static thread_local std::vector<MLMesh*> mesh_stack;
 
 void MeshLoader::beginMesh() {
 	mesh_stack.push_back(ml_mesh);

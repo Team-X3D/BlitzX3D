@@ -39,6 +39,8 @@ public:
 	void paint(const Brush& b);
 	void add(const MeshModel& t);
 
+	void adopt(MeshModel& other);
+
 	//accessors
 	const SurfaceList& getSurfaces()const;
 	Surface* findSurface(const Brush& b)const;

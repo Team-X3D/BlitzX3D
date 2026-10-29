@@ -68,6 +68,12 @@ void Animator::addSeq(int frames) {
 	}
 }
 
+void Animator::retarget(Object* from, Object* to) {
+	for (int k = 0; k < _objs.size(); ++k) {
+		if (_objs[k] == from) _objs[k] = to;
+	}
+}
+
 void Animator::addSeqs(Animator* t) {
 	for (int n = 0; n < t->_seqs.size(); ++n) {
 		_seqs.push_back(t->_seqs[n]);

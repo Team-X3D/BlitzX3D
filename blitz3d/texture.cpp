@@ -16,10 +16,12 @@ struct Filter {
 };
 
 static std::vector<Filter> filters;
+static std::mutex filters_mutex;
 
 static int filterFile(const std::string& t, int flags) {
 	//check filters...
 	std::string l = tolower(t);
+	std::lock_guard<std::mutex> lock(filters_mutex);
 	for(int k = 0; k < filters.size(); ++k) {
 		if(l.find(filters[k].t) != std::string::npos) {
 			flags |= filters[k].flags;
@@ -234,9 +236,11 @@ bool Texture::pinned()const {
 }
 
 void Texture::clearFilters() {
+	std::lock_guard<std::mutex> lock(filters_mutex);
 	filters.clear();
 }
 
 void Texture::addFilter(const std::string& t, int flags) {
+	std::lock_guard<std::mutex> lock(filters_mutex);
 	filters.push_back(Filter(tolower(t), flags));
 }

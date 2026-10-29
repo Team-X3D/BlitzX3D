@@ -3,6 +3,7 @@
 #include "scene.h"
 
 Entity* Entity::_orphans, * Entity::_last_orphan;
+thread_local bool Entity::_defer_link = false;
 unsigned Entity::_enum_rev = 0;
 
 enum {
@@ -11,6 +12,9 @@ enum {
 };
 
 void Entity::remove() {
+	if (!_linked) return;
+	_linked = false;
+
 	if (sceneId != 0) {
 		if (Scene* s = g_sceneManager.get(sceneId)) {
 			s->remove(this);
@@ -37,11 +41,17 @@ void Entity::insert() {
 		else _parent->_children = this;
 		_parent->_last_child = this;
 	}
+	else if (_defer_link) {
+		return;
+	}
 	else {
 		if (_pred = _last_orphan) _pred->_succ = this;
 		else _orphans = this;
 		_last_orphan = this;
 	}
+	_linked = true;
+
+	if (_defer_link) return;
 
 	if (_parent) {
 		sceneId = _parent->sceneId;
@@ -59,9 +69,13 @@ void Entity::insert() {
 	bumpEnum();
 }
 
+void Entity::setDeferredLinking(bool enable) {
+	_defer_link = enable;
+}
+
 Entity::Entity() :
 	_succ(0), _pred(0), _parent(0), _children(0), _last_child(0),
-	_visible(true), _enabled(true), _world_rev(0),
+	_visible(true), _enabled(true), _world_rev(0), _linked(false),
 	local_scl(1, 1, 1),
 	invalid(0) {
 	insert();
@@ -69,7 +83,7 @@ Entity::Entity() :
 
 Entity::Entity(const Entity& e) :
 	_succ(0), _pred(0), _parent(0), _children(0), _last_child(0),
-	_name(e._name), _visible(e._visible), _enabled(e._enabled), _world_rev(0),
+	_name(e._name), _visible(e._visible), _enabled(e._enabled), _world_rev(0), _linked(false),
 	local_pos(e.local_pos),
 	local_scl(e.local_scl),
 	local_rot(e.local_rot),

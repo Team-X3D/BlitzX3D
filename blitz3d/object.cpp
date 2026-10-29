@@ -57,6 +57,23 @@ void Object::setAnimator(Animator* t) {
 	animator = t;
 }
 
+Animator* Object::takeAnimator() {
+	Animator* t = animator;
+	animator = 0;
+	return t;
+}
+
+void Object::adopt(Object& o) {
+	anim = o.anim;
+	coll_type = o.coll_type;
+	coll_radii = o.coll_radii;
+	coll_box = o.coll_box;
+	order = o.order;
+	pick_geom = o.pick_geom;
+	obscurer = o.obscurer;
+	mask = o.mask;
+}
+
 void Object::beginUpdate(float e) {
 	elapsed = e;
 	colls.clear();

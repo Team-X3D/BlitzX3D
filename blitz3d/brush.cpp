@@ -14,7 +14,7 @@ struct Brush::Rep {
 	float roughness = 0.0f, metallic = 0.0f;
 	bool pinned = false;
 
-	static Rep* pool;
+	static thread_local Rep* pool;
 
 	Rep() :
 		ref_cnt(1), blend(0), max_tex(0), blend_valid(true), effect(nullptr) {
@@ -50,7 +50,7 @@ struct Brush::Rep {
 	}
 };
 
-Brush::Rep* Brush::Rep::pool;
+thread_local Brush::Rep* Brush::Rep::pool;
 
 Brush::Brush() :
 	rep(new Rep()) {

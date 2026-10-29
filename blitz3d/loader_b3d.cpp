@@ -5,14 +5,14 @@
 #include "meshutil.h"
 
 
-static FILE* in;
-static std::vector<int> chunk_stack;
-static std::vector<Texture> textures;
-static std::vector<Brush> brushes;
-static std::vector<Object*> bones;
+static thread_local FILE* in;
+static thread_local std::vector<int> chunk_stack;
+static thread_local std::vector<Texture> textures;
+static thread_local std::vector<Brush> brushes;
+static thread_local std::vector<Object*> bones;
 
-static bool collapse;
-static bool animonly;
+static thread_local bool collapse;
+static thread_local bool animonly;
 
 static int swap_endian(int n) {
 	return ((n & 0xff) << 24) | ((n & 0xff00) << 8) | ((n & 0xff0000) >> 8) | ((n & 0xff000000) >> 24);
