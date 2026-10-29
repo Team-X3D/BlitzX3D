@@ -143,6 +143,18 @@ jobs:
         run: nuget restore blitz3d.sln
         continue-on-error: true
 
+      - name: Patch sln
+        shell: pwsh
+        run: |
+          $sln = Get-Content blitz3d.sln -Raw
+          $g = '{78B079BD-9FC7-4B9E-B4A6-96DA0F00248B}'
+          foreach ($c in 'Debug','Release') {
+            $sln = $sln.Replace("$g.$c|x86.ActiveCfg = $c Static|Win32", "$g.$c|x86.ActiveCfg = $c|Win32")
+            $sln = $sln.Replace("$g.$c|x86.Build.0 = $c Static|Win32", "$g.$c|x86.Build.0 = $c|Win32")
+          }
+          Set-Content blitz3d.sln $sln -NoNewline -Encoding utf8BOM
+          Select-String -Path blitz3d.sln -Pattern "78B079BD.*x86"
+
       - name: Build
         run: msbuild blitz3d.sln /p:Configuration=Release /p:Platform=x86 /m /v:minimal
 
