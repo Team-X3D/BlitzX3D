@@ -410,6 +410,15 @@ struct PendingModel {
 
 static std::unordered_map<Entity*, PendingModel> pending_models;
 
+static void retargetAnimators(Entity* e, Object* from, Object* to) {
+	if (Object* o = e->getObject()) {
+		if (Animator* anim = o->getAnimator()) anim->retarget(from, to);
+	}
+	for (Entity* child = e->children(); child; child = child->successor()) {
+		retargetAnimators(child, from, to);
+	}
+}
+
 static void resolvePendingEntity(Entity* e) {
 	auto it = pending_models.find(e);
 	if (it == pending_models.end()) return;
@@ -441,6 +450,7 @@ static void resolvePendingEntity(Entity* e) {
 				for (Entity* child = dst->children(); child; child = child->successor()) {
 					insert(child);
 				}
+				retargetAnimators(dst, src, dst);
 				delete src;
 			}
 
