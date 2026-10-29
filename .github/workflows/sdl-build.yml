@@ -50,7 +50,29 @@ jobs:
           Copy-Item "$src\include\*" "vendor\llvm32\include" -Recurse -Force
           Copy-Item "$src\bin\LLVM-C.dll" "vendor\llvm32\bin\LLVM-C.dll" -Force
           if (Test-Path "$src\lib\LLVM-C.lib") { Copy-Item "$src\lib\LLVM-C.lib" "vendor\llvm32\lib\LLVM-C.lib" -Force }
-          Get-ChildItem -Path "vendor\llvm32" -Recurse -Filter "llvm-config.h" | Select-Object FullName
+          Write-Host "--- extracted top level ---"
+          Get-ChildItem $src | Select-Object -ExpandProperty Name
+          Write-Host "--- include dirs ---"
+          Get-ChildItem "$src\include" -Directory | Select-Object -ExpandProperty Name
+          $found = Get-ChildItem -Path $src -Recurse -Filter "llvm-config.h" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            New-Item -ItemType Directory -Force "vendor\llvm32\include\llvm\Config" | Out-Null
+            Copy-Item $found.FullName "vendor\llvm32\include\llvm\Config\llvm-config.h" -Force
+            Write-Host "Copied llvm-config.h from $($found.FullName)"
+          } else {
+            Write-Host "llvm-config.h not in installer, generating minimal one (C API headers only need this to exist)"
+            New-Item -ItemType Directory -Force "vendor\llvm32\include\llvm\Config" | Out-Null
+            @"
+          #ifndef LLVM_CONFIG_H
+          #define LLVM_CONFIG_H
+          #define LLVM_VERSION_MAJOR 21
+          #define LLVM_VERSION_MINOR 1
+          #define LLVM_VERSION_PATCH 8
+          #define LLVM_VERSION_STRING "21.1.8"
+          #define LLVM_ON_WIN32 1
+          #endif
+          "@ | Set-Content "vendor\llvm32\include\llvm\Config\llvm-config.h"
+          }
 
       - name: SPIRV-Cross
         shell: pwsh
@@ -154,3 +176,4 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: ${{ steps.sdl_tag.outputs.name }}.zip
+          
