@@ -193,6 +193,20 @@ void Model::setEffect(sdlEffect* e) {
 	entityEffect = e;
 }
 
+void Model::adopt(Model& m) {
+	space = m.space;
+	brush = m.brush;
+	render_brush = m.render_brush;
+	w_brush = true;
+	captured_alpha = m.captured_alpha;
+	tweened_alpha = m.tweened_alpha;
+	auto_fade = m.auto_fade;
+	auto_fade_nr = m.auto_fade_nr;
+	auto_fade_fr = m.auto_fade_fr;
+	entityEffect = m.entityEffect;
+	renderEffect = m.renderEffect;
+}
+
 sdlEffect* Model::getEffect() const {
 	return entityEffect;
 }

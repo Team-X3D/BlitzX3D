@@ -60,6 +60,8 @@ public:
 
 	void setEffect(sdlEffect* effect);
 
+	void adopt(Model& m);
+
 	const Brush& getBrush()const { return brush; }
 	sdlEffect* getEffect() const;
 

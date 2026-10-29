@@ -334,8 +334,11 @@ void MeshModel::add(const MeshModel& t) {
 }
 
 void MeshModel::adopt(MeshModel& other) {
+	Model::adopt(other);
 	std::swap(rep, other.rep);
 	surf_bones.swap(other.surf_bones);
+	brushes.clear();
+	brush_changes = -1;
 }
 
 const MeshModel::SurfaceList& MeshModel::getSurfaces()const {
