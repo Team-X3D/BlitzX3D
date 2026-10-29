@@ -33,6 +33,11 @@ namespace sdlgpu {
 		std::unordered_map<std::string, ShaderParam> params;
 	};
 
+	struct RuntimeParamRef {
+		unsigned buffer = 0;
+		ShaderParam param;
+	};
+
 	struct ShaderPipeKey {
 		SDL_GPUTextureFormat color = SDL_GPU_TEXTUREFORMAT_INVALID;
 		SDL_GPUTextureFormat depth = SDL_GPU_TEXTUREFORMAT_INVALID;
@@ -55,8 +60,9 @@ namespace sdlgpu {
 		SDL_GPUShader* builtinVS = nullptr;
 		SDL_GPUShader* builtinVSSkinned = nullptr;
 		bool builtin = true;
+		bool fx = false;
 		std::vector<RuntimeParamBuffer> ubos;
-		std::unordered_map<std::string, std::pair<unsigned, ShaderParam>> paramIndex;
+		std::unordered_map<std::string, std::vector<RuntimeParamRef>> params;
 		std::unordered_map<std::string, unsigned> texIndex;
 		std::unordered_map<unsigned, SDL_GPUTexture*> texBind;
 		unsigned samplerCount = 0;
@@ -138,14 +144,14 @@ namespace sdlgpu {
 		if (asset.hasVS) addStage(asset.vs);
 		for (unsigned i = 0; i < s->ubos.size(); ++i)
 			for (auto& kv : s->ubos[i].params)
-				s->paramIndex.emplace(kv.first, std::make_pair(i, kv.second));
+				s->params[kv.first].push_back({ i, kv.second });
 
 		for (auto& kv : asset.ps.textures) s->texIndex[kv.first] = kv.second;
 		s->samplerCount = asset.ps.samplerCount;
 		return s;
 	}
 
-	static GpuShader* CompileFromSource(SDL_GPUDevice* dev, const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir) {
+	static GpuShader* CompileFromSource(SDL_GPUDevice* dev, const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool reflectVertexUniform0) {
 		SDL_GPUShaderFormat sup = SDL_GetGPUShaderFormats(dev);
 		bool dxil = (sup & SDL_GPU_SHADERFORMAT_DXIL) != 0;
 		bool spirv = (sup & SDL_GPU_SHADERFORMAT_SPIRV) != 0;
@@ -155,7 +161,7 @@ namespace sdlgpu {
 		}
 		ShaderAsset asset;
 		std::string err;
-		if (!CompileShader(source, sourcePath, vsEntry, psEntry, includeDir, dxil, spirv, asset, err)) {
+		if (!CompileShader(source, sourcePath, vsEntry, psEntry, includeDir, dxil, spirv, asset, err, reflectVertexUniform0)) {
 			g_shaderError = err;
 			return nullptr;
 		}
@@ -165,7 +171,7 @@ namespace sdlgpu {
 	GpuShader* SDLSHADER_API CreateShaderFromSource(SDL_GPUDevice* dev, const char* source, const char* vsEntry, const char* psEntry, const char* includeDir) {
 		if (!dev || !source) return nullptr;
 		g_shaderError.clear();
-		return CompileFromSource(dev, source, nullptr, vsEntry, psEntry, includeDir);
+		return CompileFromSource(dev, source, nullptr, vsEntry, psEntry, includeDir, false);
 	}
 
 	static bool ReadShaderText(const char* path, std::string& out) {
@@ -210,13 +216,14 @@ namespace sdlgpu {
 			}
 			const char* vs = program.vsEntry.empty() ? nullptr : program.vsEntry.c_str();
 			const char* ps = program.psEntry.empty() ? "PSMain" : program.psEntry.c_str();
-			GpuShader* s = CompileFromSource(dev, program.source.c_str(), path, vs, ps, includeDir);
+			GpuShader* s = CompileFromSource(dev, program.source.c_str(), nullptr, vs, ps, includeDir, true);
 			if (!s) {
 				std::string dump = DumpConvertedFx(path, program.source);
 				if (!dump.empty()) g_shaderError += "\n(converted shader: " + dump + ")";
 				return nullptr;
 			}
 			s->fxSamplers = program.samplers;
+			s->fx = true;
 			for (const fx::MatrixBinding& mb : program.matrices) s->semanticParams[mb.semantic] = mb.param;
 			for (const fx::ParamDefault& pd : program.defaults) {
 				if (pd.count == 1) ShaderSetFloat(s, pd.name.c_str(), pd.value[0]);
@@ -238,7 +245,7 @@ namespace sdlgpu {
 			}
 			return CreateFromAsset(dev, asset, psEntry, vsEntry);
 		}
-		return CompileFromSource(dev, src.c_str(), path, vsEntry, psEntry, includeDir);
+		return CompileFromSource(dev, src.c_str(), path, vsEntry, psEntry, includeDir, false);
 	}
 
 	static SDL_GPUShader* MakeBuiltinVS(SDL_GPUDevice* dev, bool skinned) {
@@ -405,46 +412,36 @@ namespace sdlgpu {
 		SDL_BindGPUFragmentSamplers(pass, 0, binds, n);
 	}
 
-	static ShaderParam* FindParam(GpuShader* s, const char* name, unsigned& bufIndex) {
-		auto it = s->paramIndex.find(name);
-		if (it == s->paramIndex.end()) return nullptr;
-		bufIndex = it->second.first;
-		return &it->second.second;
+	static std::vector<RuntimeParamRef>* FindParams(GpuShader* s, const char* name) {
+		auto it = s->params.find(name);
+		return it == s->params.end() ? nullptr : &it->second;
+	}
+
+	static bool WriteParam(GpuShader* s, const char* name, const void* value, unsigned bytes) {
+		if (!s || !name || !value) return false;
+		std::vector<RuntimeParamRef>* refs = FindParams(s, name);
+		if (!refs) return false;
+		bool written = false;
+		for (const RuntimeParamRef& ref : *refs) {
+			std::vector<unsigned char>& d = s->ubos[ref.buffer].data;
+			unsigned n = ref.param.size < bytes ? ref.param.size : bytes;
+			if (ref.param.offset + n > d.size()) continue;
+			memcpy(d.data() + ref.param.offset, value, n);
+			written = true;
+		}
+		return written;
 	}
 
 	bool SDLSHADER_API ShaderSetFloat(GpuShader* s, const char* name, float value) {
-		if (!s || !name) return false;
-		unsigned bi = 0;
-		ShaderParam* p = FindParam(s, name, bi);
-		if (!p) return false;
-		std::vector<unsigned char>& d = s->ubos[bi].data;
-		if (p->offset + sizeof(float) > d.size()) return false;
-		memcpy(d.data() + p->offset, &value, sizeof(float));
-		return true;
+		return WriteParam(s, name, &value, sizeof(float));
 	}
 
 	bool SDLSHADER_API ShaderSetVector(GpuShader* s, const char* name, const float value[4]) {
-		if (!s || !name || !value) return false;
-		unsigned bi = 0;
-		ShaderParam* p = FindParam(s, name, bi);
-		if (!p) return false;
-		std::vector<unsigned char>& d = s->ubos[bi].data;
-		unsigned bytes = p->size < 16 ? p->size : 16;
-		if (p->offset + bytes > d.size()) return false;
-		memcpy(d.data() + p->offset, value, bytes);
-		return true;
+		return WriteParam(s, name, value, 16);
 	}
 
 	bool SDLSHADER_API ShaderSetMatrix(GpuShader* s, const char* name, const float value[16]) {
-		if (!s || !name || !value) return false;
-		unsigned bi = 0;
-		ShaderParam* p = FindParam(s, name, bi);
-		if (!p) return false;
-		std::vector<unsigned char>& d = s->ubos[bi].data;
-		unsigned bytes = p->size < 64 ? p->size : 64;
-		if (p->offset + bytes > d.size()) return false;
-		memcpy(d.data() + p->offset, value, bytes);
-		return true;
+		return WriteParam(s, name, value, 64);
 	}
 
 	bool SDLSHADER_API ShaderSetTexture(GpuShader* s, const char* name, SDL_GPUTexture* tex) {
@@ -487,6 +484,12 @@ namespace sdlgpu {
 			if (b.binding == binding && b.fragment == fragment && !b.data.empty()) return true;
 		}
 		return false;
+	}
+
+	bool SDLSHADER_API ShaderUsesEngineVertexUniforms(GpuShader* s) {
+		if (!s) return false;
+		if (s->fx && s->vs) return false;
+		return ShaderHasUniform(s, 0, false);
 	}
 
 	const char* SDLSHADER_API ShaderError() {

@@ -250,7 +250,7 @@ namespace sdlgpu {
 		return true;
 	}
 
-	static void ReflectDxilBytes(const std::vector<unsigned char>& dxil, bool vertex, ShaderStageAsset& stage) {
+	static void ReflectDxilBytes(const std::vector<unsigned char>& dxil, bool vertex, bool reflectVertexUniform0, ShaderStageAsset& stage) {
 		std::string ensureErr;
 		if (!EnsureDxc(ensureErr)) return;
 		IDxcUtils* utils = nullptr;
@@ -280,7 +280,7 @@ namespace sdlgpu {
 					}
 				}
 				if (!found) continue;
-				if (vertex && binding == 0) continue;
+				if (vertex && binding == 0 && !reflectVertexUniform0) continue;
 				ShaderParamBuffer pb;
 				pb.binding = binding;
 				pb.fragment = !vertex;
@@ -325,7 +325,7 @@ namespace sdlgpu {
 		utils->Release();
 	}
 
-	static bool ReflectSpirvBytes(const std::vector<unsigned char>& spv, bool vertex, ShaderStageAsset& stage) {
+	static bool ReflectSpirvBytes(const std::vector<unsigned char>& spv, bool vertex, bool reflectVertexUniform0, ShaderStageAsset& stage) {
 		spvc_context ctx = nullptr;
 		if (spvc_context_create(&ctx) < 0) return false;
 		spvc_parsed_ir ir = nullptr;
@@ -349,7 +349,7 @@ namespace sdlgpu {
 			stage.uniformCount = (unsigned)n;
 			for (size_t i = 0; i < n; ++i) {
 				unsigned binding = spvc_compiler_get_decoration(comp, list[i].id, SpvDecorationBinding);
-				if (vertex && binding == 0) continue;
+				if (vertex && binding == 0 && !reflectVertexUniform0) continue;
 				ShaderParamBuffer pb;
 				pb.binding = binding;
 				pb.fragment = !vertex;
@@ -408,7 +408,7 @@ namespace sdlgpu {
 		return true;
 	}
 
-	static bool CompileStage(const char* source, const char* sourcePath, const char* entry, bool vertex, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderStageAsset& stage, std::string& err) {
+	static bool CompileStage(const char* source, const char* sourcePath, const char* entry, bool vertex, const char* includeDir, bool wantDxil, bool wantSpirv, bool reflectVertexUniform0, ShaderStageAsset& stage, std::string& err) {
 		bool any = false;
 		std::string dxilErr, spirvErr;
 		if (wantDxil) {
@@ -422,24 +422,24 @@ namespace sdlgpu {
 			return false;
 		}
 		if (!stage.spirv.empty()) {
-			if (ReflectSpirvBytes(stage.spirv, vertex, stage)) return true;
+			if (ReflectSpirvBytes(stage.spirv, vertex, reflectVertexUniform0, stage)) return true;
 		}
 		if (!stage.dxil.empty()) {
-			ReflectDxilBytes(stage.dxil, vertex, stage);
+			ReflectDxilBytes(stage.dxil, vertex, reflectVertexUniform0, stage);
 			return true;
 		}
 		return false;
 	}
 
-	bool SDLSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err) {
+	bool SDLSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err, bool reflectVertexUniform0) {
 		if (!source || !psEntry || !psEntry[0]) {
 			err = "No pixel entry point";
 			return false;
 		}
-		if (!CompileStage(source, sourcePath, psEntry, false, includeDir, wantDxil, wantSpirv, out.ps, err)) return false;
+		if (!CompileStage(source, sourcePath, psEntry, false, includeDir, wantDxil, wantSpirv, reflectVertexUniform0, out.ps, err)) return false;
 		if (vsEntry && vsEntry[0] && strstr(source, vsEntry)) {
 			out.hasVS = true;
-			if (!CompileStage(source, sourcePath, vsEntry, true, includeDir, wantDxil, wantSpirv, out.vs, err)) return false;
+			if (!CompileStage(source, sourcePath, vsEntry, true, includeDir, wantDxil, wantSpirv, reflectVertexUniform0, out.vs, err)) return false;
 		}
 		return true;
 	}

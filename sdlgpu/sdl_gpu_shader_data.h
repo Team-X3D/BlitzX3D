@@ -45,7 +45,7 @@ struct ShaderAsset {
 };
 
 std::string SDLSHADERDATA_API ShaderAssetStem(const std::string& sourcePath);
-bool SDLSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err);
+bool SDLSHADERDATA_API CompileShader(const char* source, const char* sourcePath, const char* vsEntry, const char* psEntry, const char* includeDir, bool wantDxil, bool wantSpirv, ShaderAsset& out, std::string& err, bool reflectVertexUniform0 = false);
 bool SDLSHADERDATA_API SaveShaderAsset(const std::string& stem, const ShaderAsset& asset, std::string& err);
 bool SDLSHADERDATA_API LoadShaderAsset(const std::string& stem, ShaderAsset& out, std::string& err);
 bool SDLSHADERDATA_API ShaderAssetExists(const std::string& stem);

@@ -93,6 +93,7 @@ AI-generated PRs, issues, and descriptions are not accepted.
   ```
   (Or clone with `git clone --recurse-submodules`.) SDL3 is linked statically, so no `SDL3.dll` needs to be shipped alongside the builds.
 - `LLVM-C.dll` isn't committed, but is needed. Get it here [LLVM 21.1.8 win32](https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/LLVM-21.1.8-win32.exe) and copy `bin\LLVM-C.dll` to `vendor/llvm32/bin/`.
+- The DirectX Shader Compiler is required too. Get it here [DXC](https://github.com/microsoft/DirectXShaderCompiler/releases/latest), copy `bin\x64\dxc.exe`, `dxcompiler.dll` and `dxil.dll` to `tools\dxc-x64`, and the x86 `dxcompiler.dll` + `dxil.dll` from the Windows SDK to `tools\dxc-x86`.
 
 ### Encryption
 

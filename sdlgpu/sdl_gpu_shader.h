@@ -35,6 +35,7 @@ bool SDLSHADER_API ShaderFxSampler(GpuShader* s, unsigned index, FxSamplerInfo* 
 const char* SDLSHADER_API ShaderSemanticParam(GpuShader* s, const char* semantic);
 bool SDLSHADER_API ShaderSetTextureIndex(GpuShader* s, unsigned index, SDL_GPUTexture* tex);
 bool SDLSHADER_API ShaderHasUniform(GpuShader* s, unsigned binding, bool fragment);
+bool SDLSHADER_API ShaderUsesEngineVertexUniforms(GpuShader* s);
 
 SDL_GPUGraphicsPipeline* SDLSHADER_API ShaderPipeline(GpuShader* s, SDL_GPUDevice* dev, int colorFormat, int depthFormat, int blend, int zMode, int cull, bool wireframe, int samples, bool skinned);
 void SDLSHADER_API ShaderPushUniforms(GpuShader* s, SDL_GPUCommandBuffer* cmds);
