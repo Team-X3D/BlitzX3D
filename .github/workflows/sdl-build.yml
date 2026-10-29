@@ -33,19 +33,71 @@ jobs:
             "--quiet", "--norestart", "--wait" `
             -Wait -PassThru | Select-Object -ExpandProperty ExitCode
 
+      - name: LLVM
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $cfg = Get-ChildItem -Path "vendor\llvm32" -Recurse -Filter "llvm-config.h" -ErrorAction SilentlyContinue
+          if ($cfg -and (Test-Path "vendor\llvm32\bin\LLVM-C.dll")) {
+            Write-Host "LLVM already provisioned, skipping."
+            exit 0
+          }
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/LLVM-21.1.8-win32.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\llvm.exe"
+          7z x "$env:RUNNER_TEMP\llvm.exe" "-o$env:RUNNER_TEMP\llvm32" -y | Out-Null
+          $src = "$env:RUNNER_TEMP\llvm32"
+          New-Item -ItemType Directory -Force "vendor\llvm32\include","vendor\llvm32\bin","vendor\llvm32\lib" | Out-Null
+          Copy-Item "$src\include\*" "vendor\llvm32\include" -Recurse -Force
+          Copy-Item "$src\bin\LLVM-C.dll" "vendor\llvm32\bin\LLVM-C.dll" -Force
+          if (Test-Path "$src\lib\LLVM-C.lib") { Copy-Item "$src\lib\LLVM-C.lib" "vendor\llvm32\lib\LLVM-C.lib" -Force }
+          Get-ChildItem -Path "vendor\llvm32" -Recurse -Filter "llvm-config.h" | Select-Object FullName
+
+      - name: SPIRV-Cross
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dst = "tools\spirv-cross\bin\spirv-cross-c-shared.dll"
+          if (Test-Path $dst) { Write-Host "spirv-cross DLL present, skipping."; exit 0 }
+          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Cross "$env:RUNNER_TEMP\spirv-cross"
+          cmake -S "$env:RUNNER_TEMP\spirv-cross" -B "$env:RUNNER_TEMP\spirv-cross-build" -G "Visual Studio 17 2022" -A Win32 `
+            -DSPIRV_CROSS_SHARED=ON -DSPIRV_CROSS_STATIC=OFF -DSPIRV_CROSS_CLI=OFF -DSPIRV_CROSS_ENABLE_TESTS=OFF
+          cmake --build "$env:RUNNER_TEMP\spirv-cross-build" --config Release
+          New-Item -ItemType Directory -Force "tools\spirv-cross\bin" | Out-Null
+          $dll = Get-ChildItem "$env:RUNNER_TEMP\spirv-cross-build" -Recurse -Filter "spirv-cross-c-shared.dll" | Select-Object -First 1
+          if (-not $dll) { throw "spirv-cross-c-shared.dll was not produced" }
+          Copy-Item $dll.FullName $dst -Force
+
+      - name: Check deps
+        shell: pwsh
+        run: |
+          $missing = @()
+          $required = @(
+            "bass\bin\bass.dll",
+            "tools\spirv-cross\bin\spirv-cross-c-shared.dll"
+          )
+          foreach ($f in $required) {
+            if (-not (Test-Path $f)) { $missing += $f }
+          }
+          $llvmCfg = Get-ChildItem -Path "vendor\llvm32" -Recurse -Filter "llvm-config.h" -ErrorAction SilentlyContinue
+          if (-not $llvmCfg) { $missing += "vendor\llvm32\include\llvm\Config\llvm-config.h" }
+          if ($missing.Count -gt 0) {
+            Write-Host "::error::Missing files:"
+            $missing | ForEach-Object { Write-Host "  - $_" }
+            exit 1
+          }
+          Write-Host "All prebuilt dependencies present."
+
       - name: Build SDL3 / SDL_image / SDL_ttf (static)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $prefix = Join-Path $env:GITHUB_WORKSPACE "sdl-prefix"
           $bld = Join-Path $env:GITHUB_WORKSPACE "sdl-cmake"
-
           Write-Host "=== SDL3 ==="
           cmake -S vendor\SDL3 -B "$bld\SDL3" -G "Visual Studio 17 2022" -A Win32 `
             "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" `
             -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TESTS=OFF -DSDL_TEST_LIBRARY=OFF
           cmake --build "$bld\SDL3" --config Release --target install
-
           Write-Host "=== SDL_image ==="
           cmake -S vendor\SDL_image -B "$bld\SDL_image" -G "Visual Studio 17 2022" -A Win32 `
             "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" `
@@ -53,7 +105,6 @@ jobs:
             -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF `
             -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_JXL=OFF
           cmake --build "$bld\SDL_image" --config Release --target install
-
           Write-Host "=== SDL_ttf ==="
           cmake -S vendor\SDL_ttf -B "$bld\SDL_ttf" -G "Visual Studio 17 2022" -A Win32 `
             "-DCMAKE_INSTALL_PREFIX=$prefix" "-DCMAKE_PREFIX_PATH=$prefix" "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded" `
@@ -61,7 +112,6 @@ jobs:
             -DSDLTTF_HARFBUZZ=OFF `
             -DSDLTTF_SAMPLES=OFF
           cmake --build "$bld\SDL_ttf" --config Release --target install
-
           New-Item -ItemType Directory -Force -Path "Win32\Release" | Out-Null
           Copy-Item "$prefix\lib\SDL3_image-static.lib" "Win32\Release\SDL_image-static.lib" -Force
           Copy-Item "$prefix\lib\SDL3_ttf-static.lib"   "Win32\Release\SDL3_ttf-static.lib"  -Force
@@ -71,8 +121,8 @@ jobs:
         run: nuget restore blitz3d.sln
         continue-on-error: true
 
-      - name: Build solution (Release)
-        run: msbuild blitz3d.sln /p:Configuration=Release /m /v:minimal
+      - name: Build
+        run: msbuild blitz3d.sln /p:Configuration=Release /p:Platform=x86 /m /v:minimal
 
       - name: Compute next tag
         id: sdl_tag
