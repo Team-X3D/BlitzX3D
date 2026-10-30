@@ -13,22 +13,15 @@ TNode* VarNode::load(Codegen* g) {
 		r->vkind = VK_PTR;
 		return r;
 	}
-	if(sem_type->structType() || sem_type->vectorType() || sem_type == Type::pointer_type) {
-		TNode* r = mem(t);
-	 	r->vkind = VK_PTR;
-		return r;
-	}
-	if (sem_type == Type::byte_type) return mem8(t);
-	else if (sem_type == Type::short_type) return mem16(t);
-	else return mem(t);
+	TNode* r = mem(t);
+	if(sem_type->structType() || sem_type->vectorType() || sem_type == Type::pointer_type) r->vkind = VK_PTR;
+	return r;
 }
 
 TNode* VarNode::store(Codegen* g, TNode* n) {
 	TNode* t = translate(g);
 	if(sem_type->structType()) return call("__bbObjStore", t, n);
 	if(sem_type == Type::string_type) return call("__bbStrStore", t, n);
-	if (sem_type == Type::byte_type) return move(n, mem8(t));
-	if (sem_type == Type::short_type) return move(n, mem16(t));
 	return move(n, mem(t));
 }
 

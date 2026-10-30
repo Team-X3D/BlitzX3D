@@ -121,9 +121,8 @@ void VarDeclNode::semant(Environ* e) {
 
 void VarDeclNode::translate(Codegen* g) {
     if (kind & DECL_GLOBAL) {
-        if (sem_var->sem_type == Type::byte_type) { g->align_data(1); g->b_data(0, "_v" + ident); }
-        else if(sem_var->sem_type == Type::short_type) { g->align_data(2);  g->w_data(0, "_v" + ident); }
-        else { g->align_data(4);  g->i_data(0, "_v" + ident); }
+        g->align_data(4);
+        g->i_data(0, "_v" + ident);
     }
     if (expr) g->code(sem_var->store(g, expr->translate(g)));
 }
@@ -210,15 +209,14 @@ void StructDeclNode::proto(DeclSeq* d, Environ* e) {
 
 void StructDeclNode::semant(Environ* e) {
     fields->proto(sem_type->fields, e);
-
+    int off = 0;
     for (int k = 0; k < sem_type->fields->size(); ++k) {
-        Decl* field = sem_type->fields->decls[k];
-        int sz = Node::typeSize(field->type);
+        Decl* f = sem_type->fields->decls[k];
+        int sz = Node::typeSize(f->type);
         int al = sz < targetPtrSize ? sz : targetPtrSize;
-
-        offset = (offset + al - 1) / al * al;
-        field->offset = offset;
-        offset += sz;
+        off = (off + al - 1) / al * al;
+        f->offset = off;
+        off += sz;
     }
 }
 
@@ -244,7 +242,6 @@ void StructDeclNode::translate(Codegen* g) {
 
     //number of fields
     g->i_data(sem_type->fields->size());
-    g->i_data(offset);
 
     //type of each field
     for (k = 0; k < sem_type->fields->size(); ++k) {
@@ -254,24 +251,11 @@ void StructDeclNode::translate(Codegen* g) {
         if (type == Type::int_type) t = "__bbIntType";
         else if (type == Type::float_type) t = "__bbFltType";
         else if (type == Type::string_type) t = "__bbStrType";
-        else if (type == Type::byte_type) t = "__bbByteType";
-        else if (type == Type::short_type) t = "__bbShoType";
         else if (StructType* s = type->structType()) t = "_t" + s->ident;
         else if (VectorType* v = type->vectorType()) t = v->label;
         g->p_data(t);
     }
 
-    int _offset;
-
-    for (int k = 0; k < sem_type->fields->size(); ++k) {
-        Decl* field = sem_type->fields->decls[k];
-
-        g->i_data(_offset);
-
-        if (field->type == Type::byte_type) _offset += 1;
-        else if (field->type == Type::short_type) _offset += 2;
-        else _offset += 4;
-    }
 }
 
 //////////////////////
@@ -344,8 +328,6 @@ void VectorDeclNode::translate(Codegen* g) {
     if (type == Type::int_type) t = "__bbIntType";
     else if (type == Type::float_type) t = "__bbFltType";
     else if (type == Type::string_type) t = "__bbStrType";
-    else if (type == Type::byte_type) t = "__bbByteType";
-    else if (type == Type::short_type) t = "__bbShoType";
     else if (StructType* s = type->structType()) t = "_t" + s->ident;
     else if (VectorType* v = type->vectorType()) t = v->label;
     g->p_data(t);

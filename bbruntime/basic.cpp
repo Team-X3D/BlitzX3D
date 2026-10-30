@@ -44,8 +44,6 @@ static BBType _bbIntType(BBTYPE_INT);
 static BBType _bbFltType(BBTYPE_FLT);
 static BBType _bbStrType(BBTYPE_STR);
 static BBType _bbCStrType(BBTYPE_CSTR);
-static BBType _bbShoType(BBTYPE_SHORT);
-static BBType _bbByteType(BBTYPE_BYTE);
 
 static void* bbMalloc(int size) {
 	return malloc(size);
@@ -126,12 +124,7 @@ BBStr* _bbStrConst(const char* s) {
 }
 
 void* _bbVecAlloc(BBVecType* type) {
-	int size = 4;
-
-	if (type->elementType->type == BBTYPE_BYTE) size = 1;
-	else if (type->elementType->type == BBTYPE_SHORT) size = 2;
-
-	void* vec = bbCalloc(type->size, size);
+	void* vec = bbCalloc(type->size, 4);
 	return vec;
 }
 
@@ -183,12 +176,7 @@ void _bbDimArray(BBArray* array) {
 		array->scales[k] *= array->scales[k - 1];
 	}
 	int size = array->scales[array->dims - 1];
-
-	int sizebyte = 4;
-	if (array->elementType == BBTYPE_BYTE) sizebyte = 1;
-	if (array->elementType == BBTYPE_SHORT) sizebyte = 2;
-
-	array->data = bbCalloc(size, sizebyte);
+	array->data = bbCalloc(size, 4);
 }
 
 void _bbArrayBoundsEx(const char* function) {
@@ -209,8 +197,7 @@ static void insertObj(BBObj* obj, BBObj* next) {
 
 BBObj* _bbObjNew(BBObjType* type) {
 	if (type->free.next == &type->free) {
-		int obj_size = sizeof(BBObj) + type->fieldSize;
-		obj_size = (obj_size + 3) & ~3;
+		int obj_size = sizeof(BBObj) + type->fieldCnt * 4;
 		BBObj* o = (BBObj*)bbMalloc(obj_size * OBJ_NEW_INC);
 		if (!o) {
 			ErrorLog("New", "Out of memory");
@@ -226,12 +213,13 @@ BBObj* _bbObjNew(BBObjType* type) {
 	o->type = type;
 	o->ref_cnt = 1;
 	o->fields = (BBField*)(o + 1);
-
-	memset(o->fields, 0, type->fieldSize);
-
 	for (int k = 0; k < type->fieldCnt; ++k) {
-		if (type->fieldTypes[k]->type == BBTYPE_VEC) {
-			type->setField<void*>(o, k, _bbVecAlloc((BBVecType*)type->fieldTypes[k]));
+		switch (type->fieldTypes[k]->type) {
+		case BBTYPE_VEC:
+			o->fields[k].VEC = _bbVecAlloc((BBVecType*)type->fieldTypes[k]);
+			break;
+		default:
+			o->fields[k].INT = 0;
 		}
 	}
 	insertObj(o, &type->used);
@@ -248,13 +236,13 @@ void _bbObjDelete(BBObj* obj) {
 	for (int k = 0; k < type->fieldCnt; ++k) {
 		switch (type->fieldTypes[k]->type) {
 		case BBTYPE_STR:
-			_bbStrRelease(type->getField<BBStr*>(obj, k));
+			_bbStrRelease(fields[k].STR);
 			break;
 		case BBTYPE_OBJ:
-			_bbObjRelease(type->getField<BBObj*>(obj, k));
+			_bbObjRelease(fields[k].OBJ);
 			break;
 		case BBTYPE_VEC:
-			_bbVecFree(type->getField<void*>(obj, k),(BBVecType*)type->fieldTypes[k]);
+			_bbVecFree(fields[k].VEC, (BBVecType*)type->fieldTypes[k]);
 			break;
 		}
 	}
@@ -403,52 +391,35 @@ BBStr* _bbObjToStr(BBObj* obj) {
 	if (!obj || !obj->fields) return new BBStr("[NULL]");
 
 	static BBObj* root;
-	static int recurs_cnt;
+	static int    recurs_cnt;
 
-	if (obj == root) return new BBStr("[ROOT]");
-	if (recurs_cnt == 8) return new BBStr("....");
+	if (obj == root)        return new BBStr("[ROOT]");
+	if (recurs_cnt == 8)    return new BBStr("....");
 
 	++recurs_cnt;
 	BBObj* oldRoot = root;
 	if (!root) root = obj;
 
 	BBObjType* type = obj->type;
+	BBField* fields = obj->fields;
 	BBStr* s = new BBStr("[");
 
 	for (int k = 0; k < type->fieldCnt; ++k) {
 		if (k) *s += ',';
-
 		switch (type->fieldTypes[k]->type) {
-		case BBTYPE_BYTE:
-			*s += std::to_string((unsigned int)type->getField<unsigned char>(obj, k));
+		case BBTYPE_INT: *s += std::to_string(fields[k].INT);  break;
+		case BBTYPE_FLT: *s += ftoa_s(fields[k].FLT);          break;
+		case BBTYPE_STR:
+			if (fields[k].STR) *s += '"' + *fields[k].STR + '"';
+			else               *s += "\"\"";
 			break;
-		case BBTYPE_SHORT:
-			*s += std::to_string((unsigned int)type->getField<unsigned short>(obj, k));
-			break;
-		case BBTYPE_INT:
-			*s += std::to_string(type->getField<int>(obj, k));
-			break;
-		case BBTYPE_FLT:
-			*s += ftoa_s(type->getField<float>(obj, k));
-			break;
-		case BBTYPE_STR: {
-			BBStr* str = type->getField<BBStr*>(obj, k);
-			if (str) *s += '"' + *str + '"';
-			else *s += "\"\"";
-			break;
-		}
 		case BBTYPE_OBJ: {
-			BBStr* t = _bbObjToStr(type->getField<BBObj*>(obj, k));
-			*s += *t;
-			delete t;
-			break;
+			BBStr* t = _bbObjToStr(fields[k].OBJ);
+			*s += *t; delete t; break;
 		}
-		default:
-			*s += "???";
-			break;
+		default: *s += "???";
 		}
 	}
-
 	*s += ']';
 	root = oldRoot;
 	--recurs_cnt;
@@ -571,8 +542,6 @@ void basic_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("_bbIntType", &_bbIntType);
 	rtSym("_bbFltType", &_bbFltType);
 	rtSym("_bbStrType", &_bbStrType);
-	rtSym("_bbShoType", &_bbShoType);
-	rtSym("_bbByteType", &_bbByteType);
 	rtSym("_bbCStrType", &_bbCStrType);
 
 	rtSym("_bbStrLoad", _bbStrLoad);
