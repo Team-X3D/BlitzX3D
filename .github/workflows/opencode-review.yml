@@ -16,7 +16,7 @@ concurrency:
 jobs:
   review:
     if: >-
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association) &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association) &&
       !github.event.pull_request.draft &&
       !contains(github.event.pull_request.body, '/no-bot-review')
     runs-on: ubuntu-latest
