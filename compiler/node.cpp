@@ -44,7 +44,7 @@ ConstNode* Node::constValue(Type* ty) {
 	ConstType* c = ty->constType();
 	if(!c) return 0;
 	ty = c->valueType;
-	if(ty == Type::int_type) return new IntConstNode(c->intValue);
+	if(ty == Type::int_type || ty == Type::byte_type || ty == Type::short_type) return new IntConstNode(c->intValue, ty);
 	if(ty == Type::float_type) return new FloatConstNode(c->floatValue);
 	if(ty == Type::null_type) return new NullConstNode();
 	return new StringConstNode(c->stringValue);
@@ -83,7 +83,11 @@ TNode* Node::createVars(Environ* e) {
 		if(d->type->vectorType()) continue;
 		if(!t) t = new TNode(IR_CONST, 0, 0, 0);
 		TNode* p = new TNode(IR_LOCAL, 0, 0, d->offset);
-		p = new TNode(IR_MEM, p, 0);
+
+		if (d->type == Type::byte_type) p = new TNode(IR_MEM8, p, 0);
+		else if (d->type == Type::short_type) p = new TNode(IR_MEM16, p, 0);
+		else p = new TNode(IR_MEM, p, 0);
+
 		t = new TNode(IR_MOVE, t, p);
 	}
 	//initialize vectors
@@ -184,6 +188,8 @@ Type* Node::tagType(const std::string& tag, Environ* e) {
 
 int Node::typeSize(Type* t) {
 	if(!t) return 4;
+	if(t == Type::byte_type) return 1;
+	if(t == Type::short_type) return 2;
 	if(t == Type::int_type || t == Type::float_type) return 4;
 	return targetPtrSize;
 }
@@ -258,6 +264,14 @@ TNode* Node::local(int offset) {
 
 TNode* Node::arg(int offset) {
 	return new TNode(IR_ARG, 0, 0, offset);
+}
+
+TNode* Node::mem8(TNode* ref) {
+	return new TNode(IR_MEM8, ref, 0);
+}
+
+TNode* Node::mem16(TNode* ref) {
+	return new TNode(IR_MEM16, ref, 0);
 }
 
 TNode* Node::mem(TNode* ref) {

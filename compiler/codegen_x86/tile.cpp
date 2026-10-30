@@ -1,12 +1,19 @@
 #include "../std.h"
 #include "codegen_x86.h"
 #include "tile.h"
+#include "../ex.h"
 
 //reduce to 3 for stress test
 static const int NUM_REGS = 6;
 
 static const std::string regs[] =
 { "???","eax","ecx","edx","edi","esi","ebx" };
+
+static const std::string regs8[] = 
+{ "???", "al", "cl", "dl", "", "", "bl" };
+
+static const std::string regs16[] = 
+{ "???", "ax", "cx", "dx", "di", "si", "bx" };
 
 //array of 'used' flags
 static bool regUsed[NUM_REGS + 1];
@@ -31,6 +38,19 @@ static int allocReg(int n) {
 	}
 	regUsed[n] = true;
 	return n;
+}
+
+static int chooseMaskedReg(int preferred, int mask, int avoid) {
+	if (preferred && preferred != avoid && (mask & (1 << preferred)) && !regUsed[preferred]) return preferred;
+
+	for (int n = NUM_REGS; n >= 1; --n) {
+		if (n != avoid && (mask & (1 << n)) && !regUsed[n]) return n;
+	}
+	if (preferred && preferred != avoid && (mask & (1 << preferred))) return preferred;
+	for (int n = NUM_REGS; n >= 1; --n) {
+		if (n != avoid && (mask & (1 << n))) return n;
+	}
+	return 0;
 }
 
 static void freeReg(int n) {
@@ -63,11 +83,11 @@ static void swapRegs(int d, int s) {
 }
 
 Tile::Tile(const std::string& a, Tile* l, Tile* r)
-	:assem(a), l(l), r(r), want_l(0), want_r(0), hits(0), need(0), argFrame(0), forceOrder(false) {
+	:assem(a), l(l), r(r), want_l(0), want_r(0), hits(0), need(0), argFrame(0), forceOrder(false), allowed_l(REG_MASK_ALL), allowed_r(REG_MASK_ALL) {
 }
 
 Tile::Tile(const std::string& a, const std::string& a2, Tile* l, Tile* r)
-	: assem(a), assem2(a2), l(l), r(r), want_l(0), want_r(0), hits(0), need(0), argFrame(0), forceOrder(false) {
+	: assem(a), assem2(a2), l(l), r(r), want_l(0), want_r(0), hits(0), need(0), argFrame(0), forceOrder(false), allowed_l(REG_MASK_ALL), allowed_r(REG_MASK_ALL) {
 }
 
 Tile::~Tile() {
@@ -91,6 +111,9 @@ void Tile::label() {
 }
 
 int Tile::eval(int want) {
+	if(allowed_l != REG_MASK_ALL) want_l = chooseMaskedReg(want_l ? want_l : want, allowed_l, want_r);
+	if(allowed_r != REG_MASK_ALL) want_r = chooseMaskedReg(want_r, allowed_r, want_l);
+
 	//save any hit registers
 	int spill = hits;
 	if(want_l) spill |= 1 << want_l;
@@ -153,9 +176,16 @@ int Tile::eval(int want) {
 	else if(want_r != got_r) moveReg(want_r, got_r);
 
 	int i;
+
+	if (as->find("%b") != std::string::npos && !regs8[want_l].size()) throw Ex("Invalid 8 bit left register");
+	if (as->find("%B") != std::string::npos && !regs8[want_r].size()) throw Ex("Invalid 8 bit right register");
+
 	while((i = as->find("%l")) != std::string::npos) as->replace(i, 2, regs[want_l]);
 	while((i = as->find("%r")) != std::string::npos) as->replace(i, 2, regs[want_r]);
-
+	while ((i = as->find("%b")) != std::string::npos) as->replace(i, 2, regs8[want_l]);
+	while ((i = as->find("%B")) != std::string::npos) as->replace(i, 2, regs8[want_r]);
+	while ((i = as->find("%w")) != std::string::npos) as->replace(i, 2, regs16[want_l]);
+	while ((i = as->find("%W")) != std::string::npos) as->replace(i, 2, regs16[want_r]);
 	codeFrags.push_back(*as);
 
 	freeReg(got_r);
@@ -265,6 +295,18 @@ void Codegen_x86::i_data(int i, const std::string& l) {
 	if(l.size()) dataFrags.push_back(l);
 	char buff[32]; itoa(i, buff, 10);
 	dataFrags.push_back(std::string("\t.dd\t") + buff + '\n');
+}
+
+void Codegen_x86::b_data(char i, const std::string& l) {
+	if (l.size()) dataFrags.push_back(l);
+	char buff[32]; itoa(i, buff, 10);
+	dataFrags.push_back(std::string("\t.db\t") + buff + '\n');
+}
+
+void Codegen_x86::w_data(short i, const std::string& l) {
+	if (l.size()) dataFrags.push_back(l);
+	char buff[32]; itoa(i, buff, 10);
+	dataFrags.push_back(std::string("\t.dw\t") + buff + '\n');
 }
 
 void Codegen_x86::s_data(const std::string& s, const std::string& l) {

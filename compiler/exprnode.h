@@ -9,7 +9,8 @@ struct ExprNode : public Node {
 	DECLARE_ARENA_ALLOCATION()
 
 	Type* sem_type;
-	ExprNode() :sem_type(0) {}
+	char size;
+	ExprNode() :sem_type(0) { if (sem_type == Type::byte_type) { size = 1; } else if (sem_type == Type::short_type) { size = 2; } else { size = 4; } }
 	ExprNode(Type* t) :sem_type(t) {}
 
 	ExprNode* castTo(Type* ty, Environ* e);
@@ -23,9 +24,11 @@ struct ExprSeqNode : public Node {
 	DECLARE_ARENA_ALLOCATION()
 
 	std::vector<ExprNode*> exprs;
+	int o;
 	~ExprSeqNode() { for(; exprs.size(); exprs.pop_back()) delete exprs.back(); }
-	void push_back(ExprNode* e) { exprs.push_back(e); }
+	void push_back(ExprNode* e) { o += e->size ; exprs.push_back(e); }
 	int  size() { return exprs.size(); }
+	int	 offset() { return o; }
 	void semant(Environ* e);
 	TNode* translate(Codegen* g, bool userlib);
 	void castTo(DeclSeq* ds, Environ* e, bool userlib);
@@ -91,6 +94,7 @@ struct ConstNode : public ExprNode {
 struct IntConstNode : public ConstNode {
 	int value;
 	IntConstNode(int n);
+	IntConstNode(int n, Type* ty);
 	TNode* translate(Codegen* g);
 	int intValue();
 	float floatValue();

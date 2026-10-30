@@ -42,6 +42,8 @@ struct Node {
 	static TNode* global(const std::string& s);
 	static TNode* local(int offset);
 	static TNode* arg(int offset);
+	static TNode* mem8(TNode* ref);
+	static TNode* mem16(TNode* ref);
 	static TNode* mem(TNode* ref);
 	static TNode* add(TNode* l, TNode* r);
 	static TNode* mul(TNode* l, TNode* r);

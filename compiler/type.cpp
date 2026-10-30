@@ -12,7 +12,7 @@ static struct i_type : public Type {
 		return true;
 	}
 	bool canCastTo(Type* t) {
-		if(t == Type::int_type || t == Type::float_type || t == Type::string_type) return true;
+		if(t == Type::int_type || t == Type::float_type || t == Type::string_type || t == Type::byte_type || t == Type::short_type) return true;
 		if(t->funcPtrType()) return true;
 		return false;
 	}
@@ -24,7 +24,7 @@ static struct f_type : public Type {
 		return true;
 	}
 	bool canCastTo(Type* t) {
-		return t == Type::int_type || t == Type::float_type || t == Type::string_type;
+		return t == Type::int_type || t == Type::float_type || t == Type::string_type || t == Type::byte_type || t == Type::short_type;
 	}
 	std::string name() { return "Float"; }
 }f;
@@ -34,7 +34,7 @@ static struct s_type : public Type {
 		return true;
 	}
 	bool canCastTo(Type* t) {
-		return t == Type::int_type || t == Type::float_type || t == Type::string_type;
+		return t == Type::int_type || t == Type::float_type || t == Type::string_type || t == Type::byte_type || t == Type::short_type;
 	}
 	std::string name() { return "String"; }
 }s;
@@ -42,12 +42,30 @@ static struct ptr_type : public Type {
 	bool pointerType() { return true; }
 
 	bool canCastTo(Type* t) {
-		if(t == Type::int_type || t == Type::float_type || t == Type::string_type || t == Type::pointer_type) return true;
+		if(t == Type::int_type || t == Type::float_type || t == Type::string_type || t == Type::pointer_type || t == Type::byte_type || t == Type::short_type) return true;
 		if(t->funcPtrType()) return true;
 		return false;
 	}
 	std::string name() { return "Pointer"; }
 }p;
+static struct byte_type : public Type {
+	bool byteType() { return true; }
+
+	bool canCastTo(Type* t) {
+		if (t == Type::int_type || t == Type::float_type || t == Type::string_type || t == Type::pointer_type || t == Type::byte_type || t == Type::short_type) return true;
+		return false;
+	}
+	std::string name() { return "Byte"; }
+}b;
+static struct short_type : public Type {
+	bool shortType() { return true; }
+
+	bool canCastTo(Type* t) {
+		if (t == Type::int_type || t == Type::float_type || t == Type::string_type || t == Type::pointer_type || t == Type::byte_type || t == Type::short_type) return true;
+		return false;
+	}
+	std::string name() { return "Short"; }
+}w;
 bool StructType::canCastTo(Type* t) {
 	return t == this || t == Type::null_type || (this == Type::null_type && t->structType());
 }
@@ -73,3 +91,5 @@ Type* Type::float_type = &f;
 Type* Type::string_type = &s;
 Type* Type::null_type = &n;
 Type* Type::pointer_type = &p;
+Type* Type::byte_type = &b;
+Type* Type::short_type = &w;

@@ -9,7 +9,8 @@ enum {
 	BBTYPE_END = 0,
 	BBTYPE_INT = 1, BBTYPE_FLT = 2,
 	BBTYPE_STR = 3, BBTYPE_CSTR = 4,
-	BBTYPE_OBJ = 5, BBTYPE_VEC = 6
+	BBTYPE_OBJ = 5, BBTYPE_VEC = 6,
+	BBTYPE_BYTE = 7, BBTYPE_SHORT = 8
 };
 
 #pragma pack( push,1 )
@@ -35,8 +36,19 @@ struct BBType {
 
 struct BBObjType : public BBType {
 	BBObj used, free;
-	int fieldCnt;
+	int fieldCnt, fieldSize;
 	BBType* fieldTypes[1];
+	
+	int* getFieldOffsets() { return (int*)(fieldTypes + fieldCnt); }
+
+	template<class T>
+	T getField(BBObj* obj, int index) {
+		T value;
+		memcpy(&value, (char*)obj->fields + getFieldOffsets()[index], sizeof(T));
+		return value;
+	}
+	template<class T>
+	void setField(BBObj* obj, int index, T value) { memcpy((char*)obj->fields + getFieldOffsets()[index], &value, sizeof(T)); }
 };
 
 struct BBVecType : public BBType {
@@ -47,6 +59,8 @@ struct BBVecType : public BBType {
 union BBField {
 	int INT;
 	float FLT;
+	unsigned char BYTE;
+	unsigned short SHRT;
 	BBStr* STR;
 	char* CSTR;
 	BBObj* OBJ;

@@ -68,7 +68,8 @@ struct StructDeclNode : public DeclNode {
 	std::string ident;
 	DeclSeqNode* fields;
 	StructType* sem_type;
-	StructDeclNode(const std::string& i, DeclSeqNode* f) :ident(i), fields(f) {}
+	int offset;
+	StructDeclNode(const std::string& i, DeclSeqNode* f) :ident(i), fields(f), offset(0) {}
 	~StructDeclNode() { delete fields; }
 	void proto(DeclSeq* d, Environ* e);
 	void semant(Environ* e);

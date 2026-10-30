@@ -39,7 +39,7 @@ ExprNode* CastNode::semant(Environ* e) {
 
 	if(ConstNode* c = expr->constNode()) {
 		ExprNode* e;
-		if(type == Type::int_type) e = new IntConstNode(c->intValue());
+		if(type == Type::int_type || type == Type::byte_type || type == Type::short_type) e = new IntConstNode(c->intValue(), type);
 		else if(type == Type::float_type) e = new FloatConstNode(c->floatValue());
 		else if(type->structType()) e = new NullConstNode();
 		else e = new StringConstNode(c->stringValue());
@@ -64,11 +64,11 @@ TNode* CastNode::translate(Codegen* g) {
 		//int->float
 		return new TNode(IR_FCAST, t, 0);
 	}
-	if(expr->sem_type == Type::string_type && sem_type == Type::int_type) {
+	if(expr->sem_type == Type::string_type && (sem_type == Type::int_type || sem_type == Type::byte_type || sem_type == Type::short_type)) {
 		//str->int
 		return call("__bbStrToInt", t);
 	}
-	if(expr->sem_type == Type::int_type && sem_type == Type::string_type) {
+	if((expr->sem_type == Type::int_type || expr->sem_type == Type::byte_type || expr->sem_type == Type::short_type) && sem_type == Type::string_type) {
 		//int->str
 		return call("__bbStrFromInt", t);
 	}
@@ -196,10 +196,10 @@ TNode* CallNode::translate(Codegen* g) {
 	}
 
 	if(sem_type == Type::float_type) {
-		t = new TNode(IR_FCALL, l, r, exprs->size() * 4);
+		t = new TNode(IR_FCALL, l, r, exprs->size() + exprs->offset());
 	}
 	else {
-		t = new TNode(IR_CALL, l, r, exprs->size() * 4);
+		t = new TNode(IR_CALL, l, r, exprs->size() + exprs->offset());
 	}
 
 	if(f->returnType->stringType()) {
@@ -315,6 +315,8 @@ TNode* VarExprNode::translate(Codegen* g) {
 IntConstNode::IntConstNode(int n) :value(n) {
 	sem_type = Type::int_type;
 }
+
+IntConstNode::IntConstNode(int n, Type* ty) :value(n) { sem_type = ty; }
 
 TNode* IntConstNode::translate(Codegen* g) {
 	return new TNode(IR_CONST, 0, 0, value);
@@ -911,7 +913,15 @@ ExprNode* TypeFieldNode::semant(Environ* e) {
 	Decl* field = st->fields->findDecl(fieldIdent);
 	if (!field) ex(MultiLang::type_field_not_found);
 
-	sem_index = field->offset / 4;
+	sem_index = 0;
+
+	for (int i = 0; i < st->fields->size(); ++i) {
+		if (st->fields->decls[i] == field) {
+			sem_index = i;
+			break;
+		}
+	}
+	// if sem_index is still somehow 0 then gl with the crashes
 	sem_type = Type::int_type;
 	return this;
 }

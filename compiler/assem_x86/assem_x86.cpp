@@ -156,7 +156,7 @@ void Assem_x86::assemInst(const std::string& name, const std::string& lhs, const
 	}
 
 	//16/32 bit modifier - NOP for now
-	if(inst->flags & (O16 | O32)) {}
+	if (inst->flags & O16) emit(0x66);
 
 	int k, n = inst->bytes[0];
 	for(k = 1; k < n; ++k) emit(inst->bytes[k]);

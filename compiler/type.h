@@ -31,7 +31,7 @@ struct Type {
 	virtual bool canCastTo(Type* t) { return this == t; }
 
 	//built in types
-	static Type* void_type, * int_type, * float_type, * string_type, * null_type, * pointer_type;
+	static Type* void_type, * int_type, * float_type, * string_type, * null_type, * pointer_type, * byte_type, * short_type;
 };
 
 struct FuncType : public Type {

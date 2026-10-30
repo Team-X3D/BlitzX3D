@@ -54,10 +54,13 @@ Decl* Environ::findFunc(const std::string& s, const int params) {
 }
 
 Type* Environ::findType(const std::string& s) {
-    if (s == "%") return Type::int_type;		//INTEGER
-    if (s == "#") return Type::float_type;	//FLOATING POINT
-    if (s == "$") return Type::string_type;	//STRING
-    if (s == "@") return Type::pointer_type;
+    const std::string& sl = tolower(s);
+    if (s == "%" || sl == "int") return Type::int_type;		//INTEGER
+    if (s == "#" || sl == "float") return Type::float_type;	//FLOATING POINT
+    if (s == "$" || sl == "string") return Type::string_type;	//STRING
+    if (s == "@" || sl == "pointer") return Type::pointer_type;
+    if (sl == "byte") return Type::byte_type;
+    if (sl == "short") return Type::short_type;
 
     for (Environ* e = this; e; e = e->globals) {
         if (Decl* d = e->typeDecls->findDecl(s)) return d->type;
