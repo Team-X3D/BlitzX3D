@@ -1,0 +1,99 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "BlitzX3D: Build (Release)",
+      "type": "shell",
+      "command": "${workspaceFolder}/linux/build.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "BlitzX3D: Build (Release, toolbox)",
+      "type": "shell",
+      "command": "toolbox",
+      "args": [
+        "run",
+        "-c",
+        "blitzx3d",
+        "bash",
+        "-lc",
+        "cd '${workspaceFolder}' && ./linux/build.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "BlitzX3D: Build (Debug)",
+      "type": "shell",
+      "command": "${workspaceFolder}/linux/build.sh",
+      "args": [
+        "Debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "BlitzX3D: Clean",
+      "type": "shell",
+      "command": "${workspaceFolder}/linux/build.sh",
+      "args": [
+        "clean"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "BlitzX3D: Setup Linux toolchain",
+      "type": "shell",
+      "command": "${workspaceFolder}/linux/setup-toolchain.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    }
+  ]
+}

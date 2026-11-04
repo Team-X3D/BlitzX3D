@@ -24,3 +24,6 @@ _release/*.ttf
 temp
 llvm
 blitzide_imgui/bin
+vendor/llvm32/bin/
+vendor/llvm32/lib/
+vendor/llvm32/include/llvm/
