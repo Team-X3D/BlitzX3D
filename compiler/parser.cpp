@@ -1,5 +1,6 @@
 #include "std.h"
 #include <cstdlib>
+#include <filesystem>
 #include "parser.h"
 #include "environ.h"
 #include "../MultiLang/MultiLang.h"
@@ -225,9 +226,9 @@ void Parser::parseStmtSeq(StmtSeqNode* stmts, int scope, bool debug) {
 			std::string inc = toker->text(); toker->next();
 			inc = inc.substr(1, inc.size() - 2);
 
-			//WIN32 KLUDGE//
-			char buff[MAX_PATH], * p;
-			if (GetFullPathName(inc.c_str(), MAX_PATH, buff, &p)) inc = buff;
+			std::error_code ec;
+			std::filesystem::path abs = std::filesystem::absolute(inc, ec);
+			if (!ec) inc = abs.lexically_normal().string();
 			inc = tolower(inc);
 
 			if (included.find(inc) != included.end()) break;

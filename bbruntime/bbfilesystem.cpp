@@ -121,13 +121,11 @@ void bbDeleteDir(BBStr* d) {
 
 inline bool IsDirectory(const char* pDir)
 {
-	char szCurPath[500];
-	ZeroMemory(szCurPath, 500);
-	sprintf_s(szCurPath, 500, "%s//*", pDir);
+	std::string szCurPath = std::string(pDir) + "//*";
 	WIN32_FIND_DATAA FindFileData;
 	ZeroMemory(&FindFileData, sizeof(WIN32_FIND_DATAA));
 
-	HANDLE hFile = FindFirstFileA(szCurPath, &FindFileData);
+	HANDLE hFile = FindFirstFileA(szCurPath.c_str(), &FindFileData);
 
 	if (hFile == INVALID_HANDLE_VALUE)
 	{
@@ -142,11 +140,10 @@ inline bool IsDirectory(const char* pDir)
 }
 
 void bbDeleteFolder(BBStr* d) {
-	char szCurPath[MAX_PATH];
-	_snprintf(szCurPath, MAX_PATH, "%s//*.*", d->c_str());
+	std::string szCurPath = std::string(d->c_str()) + "//*.*";
 	WIN32_FIND_DATAA FindFileData;
 	ZeroMemory(&FindFileData, sizeof(WIN32_FIND_DATAA));
-	HANDLE hFile = FindFirstFileA(szCurPath, &FindFileData);
+	HANDLE hFile = FindFirstFileA(szCurPath.c_str(), &FindFileData);
 	bool IsFinded = true;
 	while (IsFinded)
 	{

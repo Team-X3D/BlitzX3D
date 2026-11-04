@@ -260,8 +260,16 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	DWORD valueNameSize, valueDataSize, valueType;
 	std::wstring wsFontFile;
 
-	WCHAR winDir[MAX_PATH];
-	GetWindowsDirectoryW(winDir, MAX_PATH);
+	std::wstring winDir;
+	{
+		UINT size = GetWindowsDirectoryW(0, 0);
+		if(size) {
+			winDir.resize(size);
+			UINT n = GetWindowsDirectoryW(winDir.data(), size);
+			if(n && n < size) winDir.resize(n);
+			else winDir.clear();
+		}
+	}
 
 	// Look for a matching font name
 	do {

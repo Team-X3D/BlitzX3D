@@ -1394,8 +1394,40 @@ static std::string toDir(std::string t) {
 	return t;
 }
 
+static std::string queryModuleFileName(HMODULE mod) {
+	std::string buf(MAX_PATH, '\0');
+	for(;;) {
+		DWORD n = GetModuleFileNameA(mod, buf.data(), (DWORD)buf.size());
+		if(!n) return std::string();
+		if(n < buf.size()) {
+			buf.resize(n);
+			return buf;
+		}
+		if(buf.size() >= 32768) {
+			buf.resize(32767);
+			return buf;
+		}
+		buf.resize(buf.size() * 2);
+	}
+}
+
+static std::string queryDirectoryPath(UINT(WINAPI* fn)(LPSTR, UINT)) {
+	std::string buf(32768, '\0');
+	UINT n = fn(buf.data(), (UINT)buf.size());
+	if(!n || n >= buf.size()) return std::string();
+	buf.resize(n);
+	return buf;
+}
+
+static std::string queryTempPath() {
+	std::string buf(32768, '\0');
+	DWORD n = GetTempPathA((DWORD)buf.size(), buf.data());
+	if(!n || n >= buf.size()) return std::string();
+	buf.resize(n);
+	return buf;
+}
+
 std::string gxRuntime::systemProperty(const std::string& p) {
-	char buff[MAX_PATH + 1];
 	std::string t = tolower(p);
 	if(t == "os") {
 		switch(osinfo.dwMajorVersion) {
@@ -1472,15 +1504,15 @@ std::string gxRuntime::systemProperty(const std::string& p) {
 		return itoa((int)osinfo.dwBuildNumber);
 	}
 	else if(t == "appdir") {
-		if(GetModuleFileName(0, buff, MAX_PATH)) {
-			std::string t = buff;
-			int n = t.find_last_of('\\');
-			if(n != std::string::npos) t = t.substr(0, n);
-			return toDir(t);
+		std::string file = queryModuleFileName(0);
+		if(!file.empty()) {
+			size_t n = file.find_last_of("\\/");
+			if(n != std::string::npos) file.resize(n);
+			return toDir(file);
 		}
 	}
 	else if(t == "appfile") {
-		if(GetModuleFileName(0, buff, MAX_PATH)) return buff;
+		return queryModuleFileName(0);
 	}
 	else if(t == "apphwnd") {
 		return itoa((int)hwnd);
@@ -1489,13 +1521,16 @@ std::string gxRuntime::systemProperty(const std::string& p) {
 		return itoa((int)hinst);
 	}
 	else if(t == "windowsdir") {
-		if(GetWindowsDirectory(buff, MAX_PATH)) return toDir(buff);
+		std::string dir = queryDirectoryPath(GetWindowsDirectoryA);
+		if(!dir.empty()) return toDir(dir);
 	}
 	else if(t == "systemdir") {
-		if(GetSystemDirectory(buff, MAX_PATH)) return toDir(buff);
+		std::string dir = queryDirectoryPath(GetSystemDirectoryA);
+		if(!dir.empty()) return toDir(dir);
 	}
 	else if(t == "tempdir") {
-		if(GetTempPath(MAX_PATH, buff)) return toDir(buff);
+		std::string dir = queryTempPath();
+		if(!dir.empty()) return toDir(dir);
 	}
 	else if(t == "direct3d7" || t == "direct3d8" || t == "direct3d9" || t == "direct3d") {
 		if(graphics) return itoa((int)graphics->dir3d);

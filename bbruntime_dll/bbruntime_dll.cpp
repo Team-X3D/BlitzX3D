@@ -17,6 +17,7 @@
 
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <DbgHelp.h>
 #pragma comment(lib, "Dbghelp.lib")
@@ -24,15 +25,85 @@
 #include <shellapi.h>
 #include <commctrl.h>
 
-static void writeMiniDump(EXCEPTION_POINTERS* pExp) {
-	char path[MAX_PATH];
-	GetModuleFileNameA(NULL, path, MAX_PATH);
-	char* slash = strrchr(path, '\\');
-	if (slash) *slash = '\0';
-	else path[0] = '\0';
-	strcat_s(path, MAX_PATH, "\\blitz_crash.dmp");
+static std::string queryModuleFileName(HMODULE mod) {
+	std::string buf(MAX_PATH, '\0');
+	for (;;) {
+		DWORD n = GetModuleFileNameA(mod, buf.data(), (DWORD)buf.size());
+		if (!n) return std::string();
+		if (n < buf.size()) {
+			buf.resize(n);
+			return buf;
+		}
+		if (buf.size() >= 32768) {
+			buf.resize(32767);
+			return buf;
+		}
+		buf.resize(buf.size() * 2);
+	}
+}
 
-	HANDLE hFile = CreateFileA(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+static std::string moduleDirName() {
+	std::string path = queryModuleFileName(NULL);
+	size_t n = path.find_last_of("\\/");
+	if (n != std::string::npos) path.resize(n);
+	return path;
+}
+
+static bool getWineVersion(std::string& version) {
+	HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+	if (!ntdll) return false;
+	typedef const char* (__cdecl* WineGetVersionFn)();
+	WineGetVersionFn fn = (WineGetVersionFn)GetProcAddress(ntdll, "wine_get_version");
+	if (!fn) return false;
+	const char* v = fn();
+	if (!v) return false;
+	version = v;
+	return true;
+}
+
+static void logWineEnvironment() {
+	std::string wine;
+	if (!getWineVersion(wine)) return;
+
+	std::string exe = queryModuleFileName(NULL);
+	std::string gameDir = exe;
+	size_t slash = gameDir.find_last_of("\\/");
+	if (slash != std::string::npos) gameDir.resize(slash);
+
+	fprintf(stderr, "[BlitzX3D] Wine %s\n", wine.c_str());
+	fprintf(stderr, "[BlitzX3D] exe: %s\n", exe.c_str());
+	fprintf(stderr, "[BlitzX3D] game dir: %s\n", gameDir.c_str());
+
+	DWORD size = GetCurrentDirectoryA(0, 0);
+	if (size) {
+		std::string cwd(size, '\0');
+		DWORD n = GetCurrentDirectoryA(size, cwd.data());
+		if (n && n < size) {
+			cwd.resize(n);
+			fprintf(stderr, "[BlitzX3D] cwd: %s\n", cwd.c_str());
+		}
+	}
+
+	const char* vars[] = {
+		"WINEPREFIX",
+		"STEAM_COMPAT_DATA_PATH",
+		"STEAM_COMPAT_CLIENT_INSTALL_PATH",
+		"STEAM_COMPAT_TOOL_PATHS",
+		"STEAM_COMPAT_MOUNTS",
+		"HOME",
+		"PWD"
+	};
+	for (const char* v : vars) {
+		const char* val = getenv(v);
+		if (val && *val) fprintf(stderr, "[BlitzX3D] %s: %s\n", v, val);
+	}
+	fflush(stderr);
+}
+
+static void writeMiniDump(EXCEPTION_POINTERS* pExp) {
+	std::string path = moduleDirName() + "\\blitz_crash.dmp";
+
+	HANDLE hFile = CreateFileA(path.c_str(), GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) return;
 
 	MINIDUMP_EXCEPTION_INFORMATION mdei;
@@ -47,14 +118,9 @@ static void writeMiniDump(EXCEPTION_POINTERS* pExp) {
 }
 
 static void writeCrashLog(const char* fmt, ...) {
-	char path[MAX_PATH];
-	GetModuleFileNameA(NULL, path, MAX_PATH);
-	char* slash = strrchr(path, '\\');
-	if (slash) *slash = '\0';
-	else path[0] = '\0';
-	strcat_s(path, MAX_PATH, "\\blitz_crash.log");
+	std::string path = moduleDirName() + "\\blitz_crash.log";
 
-	HANDLE hFile = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hFile = CreateFileA(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) return;
 
 	SetFilePointer(hFile, 0, NULL, FILE_END); // append
@@ -228,15 +294,10 @@ static void _cdecl seTranslator(unsigned int u, EXCEPTION_POINTERS* pExp) {
 		}
 		writeCrashLog("---");
 
-		char logPath[MAX_PATH];
-		GetModuleFileNameA(NULL, logPath, MAX_PATH);
-		char* slash = strrchr(logPath, '\\');
-		if (slash) *slash = '\0';
-		else logPath[0] = '\0';
-		strcat_s(logPath, MAX_PATH, "\\blitz_crash.log");
+		std::string logPath = moduleDirName() + "\\blitz_crash.log";
 
 		char msg[512];
-		sprintf_s(msg, sizeof(msg), "A crash has occurred.\n\nThe log and dump files have been saved to:\n%s\n\n" "Please send these files to the developers.", logPath);
+		sprintf_s(msg, sizeof(msg), "A crash has occurred.\n\nThe log and dump files have been saved to:\n%s\n\n" "Please send these files to the developers.", logPath.c_str());
 		MessageBoxA(NULL, msg, "Blitz Runtime Error", MB_OK | MB_ICONERROR);
 	}
 
@@ -551,6 +612,8 @@ int __stdcall bbWinMain() {
 
 	runtime = runtimeGetRuntime();
 	runtime->startup(inst);
+
+	logWineEnvironment();
 
 	link();
 

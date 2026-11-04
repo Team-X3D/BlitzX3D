@@ -72,14 +72,14 @@ static std::string zenityFilterArgs(const char* filter) {
 bool fileOpenDialog(std::string& path, const char* filter) {
 #if defined(_WIN32)
 	OPENFILENAMEA ofn = { sizeof(ofn) };
-	char buf[MAX_PATH] = { 0 };
+	std::vector<char> buf(32768, 0);
 	std::string f = winFilterString(filter);
 	ofn.lpstrFilter = f.c_str();
-	ofn.lpstrFile = buf;
-	ofn.nMaxFile = MAX_PATH;
+	ofn.lpstrFile = buf.data();
+	ofn.nMaxFile = (DWORD)buf.size();
 	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 	if (!GetOpenFileNameA(&ofn)) return false;
-	path = buf;
+	path = buf.data();
 	return true;
 #else
 	std::string cmd = "zenity --file-selection" + zenityFilterArgs(filter) + " 2>/dev/null";
@@ -102,17 +102,17 @@ bool fileOpenDialog(std::string& path, const char* filter) {
 bool fileSaveDialog(std::string& path, const char* defaultName, const char* filter) {
 #if defined(_WIN32)
 	OPENFILENAMEA ofn = { sizeof(ofn) };
-	char buf[MAX_PATH] = { 0 };
-	if (defaultName) strncpy(buf, defaultName, MAX_PATH - 1);
+	std::vector<char> buf(32768, 0);
+	if (defaultName) strncpy_s(buf.data(), buf.size(), defaultName, _TRUNCATE);
 	std::string f = winFilterString(filter);
 	std::string defExt = defExtFromFilter(filter);
 	ofn.lpstrFilter = f.c_str();
 	ofn.lpstrDefExt = defExt.empty() ? NULL : defExt.c_str();
-	ofn.lpstrFile = buf;
-	ofn.nMaxFile = MAX_PATH;
+	ofn.lpstrFile = buf.data();
+	ofn.nMaxFile = (DWORD)buf.size();
 	ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
 	if (!GetSaveFileNameA(&ofn)) return false;
-	path = buf;
+	path = buf.data();
 	return true;
 #else
 	std::string cmd = "zenity --file-selection --save --confirm-overwrite" + zenityFilterArgs(filter) + " 2>/dev/null";

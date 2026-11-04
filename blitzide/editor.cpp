@@ -342,11 +342,8 @@ void Editor::print() {
     fr.rc.right = fr.rcPage.right - MARG;
     fr.rc.bottom = fr.rcPage.bottom - MARG;
 
-    char buff[MAX_PATH];
-    strcpy(buff, name.c_str());
-
     DOCINFO di = { sizeof(di) };
-    di.lpszDocName = buff;
+    di.lpszDocName = name.c_str();
 
     getSel();
     int start = selStart, end = selEnd;
