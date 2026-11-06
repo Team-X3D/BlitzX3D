@@ -39,6 +39,7 @@ Need help, have a question, or found a problem?
 * [**SCP – Terror Hunt**](https://www.moddb.com/mods/scp-terror-hunt-mod)
 * [**SCP – Janitorial Work**](https://www.moddb.com/mods/scp-janitorial-work)
 * [**SCP – Containment Breach Amended**](https://www.moddb.com/mods/scp-amended1)
+* [**SCP – Containment Breach Inclemency**](https://www.moddb.com/mods/cb-inclemency)
 * [**SCP – Treachery**](https://www.moddb.com/mods/treachery)
 * [**SCP – Chaos Containment**](https://www.moddb.com/mods/scp-chaos-containment)
 * [**YOU ARE NOT IMPORTANT**](https://www.moddb.com/mods/you-are-not-important)
