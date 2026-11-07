@@ -24,6 +24,10 @@ struct Decl {
 	Type* type;			//type
 	int kind, offset;
 	ConstType* defType;	//default value
+	int pos = -1;
+	std::string file;
+	bool userDeclared = false;
+	int useCount = 0;
 	Decl(std::string s, Type* t, int k, ConstType* d = 0) :name(std::move(s)), type(t), kind(k), defType(d) {}
 	~Decl();
 

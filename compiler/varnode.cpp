@@ -72,6 +72,7 @@ void IdentVarNode::semant(Environ* e) {
 		sem_decl = e->decls->insertDecl(ident, t, DECL_LOCAL);
 	}
 	sem_type = sem_decl->type;
+	if (sem_decl) ++sem_decl->useCount;
 }
 
 /////////////////

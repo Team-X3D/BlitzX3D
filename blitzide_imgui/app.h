@@ -52,9 +52,12 @@ private:
 	bool fileSaveAs(int idx);
 	bool fileSaveAll();
 	void fileClose(int idx);
+	void fileCloseAll();
+	void closeDocNow(int idx);
 	void fileExit();
 	void requestQuit();
 	void drawExitPrompt();
+	void drawClosePrompt();
 	void checkDiskChanges(bool force = false);
 	void drawDiskPrompt();
 	void fileRecent(const std::string& path);
@@ -109,6 +112,7 @@ private:
 	void drawEditorPane();
 	void drawFuncList();
 	void drawOutput();
+	void drawProblems();
 	void drawFindReplace();
 	static int InputTextFindCallback(ImGuiInputTextCallbackData* data);
 	static int InputTextReplaceCallback(ImGuiInputTextCallbackData* data);
@@ -203,9 +207,21 @@ private:
 	std::vector<int> projectIncludedDocs;
 	std::vector<int> projectNavigatorDocs;
 
+	struct Problem {
+		std::string file;
+		int row = 0, col = 0, endRow = 0, endCol = 0;
+		std::string message;
+		bool warning = false;
+	};
+	std::vector<Problem> problems;
+	bool compileFirstError = true;
+
 	bool aboutOpen = false;
 	bool quitting = false;
 	bool showExitPrompt = false;
+	bool showClosePrompt = false;
+	int closePromptIndex = -1;
+	bool closeAllPending = false;
 	std::string diskPromptPath;
 	unsigned long long lastDiskCheck = 0;
 	bool focused = false;

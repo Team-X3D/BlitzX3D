@@ -8,6 +8,13 @@ std::unordered_map<std::string, std::vector<OverrideFunction>> OverrideFunctionM
 
 thread_local bool Ex_collecting = false;
 thread_local std::vector<Ex>* Ex_errors = nullptr;
+thread_local std::vector<Ex>* Ex_warnings = nullptr;
+thread_local std::string Ex_currentFile;
+
+void Ex_warn(const std::string& msg, int pos, const std::string& file) {
+	if (!Ex_warnings) return;
+	Ex_warnings->push_back(Ex(msg, pos, file));
+}
 
 ///////////////////////////////
 // generic exception thrower //
@@ -26,6 +33,34 @@ void Node::ex(const std::string& e, int pos) {
 
 void Node::ex(const std::string& e, int pos, const std::string& f) {
 	throw Ex(e, pos, f);
+}
+
+void Node::warnImplicitConversion(Type* from, Type* to, int pos) {
+	if (!from || !to || from == to) return;
+	if (from->constType() || to->constType()) return;
+
+	if (to == Type::int_type && from->floatType()) {
+		Ex_warn("Implicit conversion from Float to Int may lose precision", pos);
+	}
+	else if (to == Type::float_type && from->stringType()) {
+		Ex_warn("Implicit conversion from String to Float may fail at runtime", pos);
+	}
+	else if (to == Type::int_type && from->stringType()) {
+		Ex_warn("Implicit conversion from String to Int may fail at runtime", pos);
+	}
+	else if (to == Type::string_type && (from->intType() || from->floatType())) {
+		Ex_warn("Implicit conversion from " + from->name() + " to String", pos);
+	}
+}
+
+void Node::warnUnusedLocals(DeclSeq* decls) {
+	if (!decls) return;
+	for (int k = 0; k < decls->size(); ++k) {
+		Decl* d = decls->decls[k];
+		if (d->userDeclared && d->useCount == 0) {
+			Ex_warn("Local variable \"" + d->name + "\" is never used", d->pos, d->file);
+		}
+	}
 }
 
 ///////////////////////////////

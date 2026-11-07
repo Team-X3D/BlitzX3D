@@ -5,6 +5,7 @@
 #include "gxshadercompat.h"
 #include "../gxruntime/gxutf8.h"
 #include <cstring>
+#include <cstdio>
 #pragma comment (lib, "Dwmapi")
 #include <dwmapi.h>
 
@@ -187,11 +188,97 @@ void gxGraphics::resolveAntialias() {
 	dir3dDev->StretchRect(antialias_canvas->surf, nullptr, back_canvas->surf, nullptr, D3DTEXF_NONE);
 }
 
+static std::string canonicalEffectFileName(const std::string& path) {
+	HANDLE file = CreateFileA(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (file != INVALID_HANDLE_VALUE) {
+		typedef DWORD(WINAPI* FinalPathFn)(HANDLE, LPSTR, DWORD, DWORD);
+		static FinalPathFn finalPath = (FinalPathFn)GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetFinalPathNameByHandleA");
+		if (finalPath) {
+			std::string resolved(32768, '\0');
+			DWORD n = finalPath(file, resolved.data(), (DWORD)resolved.size(), 0);
+			if (n && n < resolved.size()) {
+				resolved.resize(n);
+				if (resolved.rfind("\\\\?\\", 0) == 0) resolved.erase(0, 4);
+				CloseHandle(file);
+				return resolved;
+			}
+		}
+		CloseHandle(file);
+	}
+
+	WIN32_FIND_DATAA fd;
+	HANDLE h = FindFirstFileA(path.c_str(), &fd);
+	if (h == INVALID_HANDLE_VALUE) return path;
+	FindClose(h);
+	size_t slash = path.find_last_of("\\/");
+	if (slash == std::string::npos) return fd.cFileName;
+	return path.substr(0, slash + 1) + fd.cFileName;
+}
+
+static void logEffectFailure(const std::string& text) {
+	fprintf(stderr, "[BlitzX3D] %s\n", text.c_str());
+	fflush(stderr);
+	OutputDebugStringA(("[BlitzX3D] " + text + "\n").c_str());
+
+	std::string buf(MAX_PATH, '\0');
+	for (;;) {
+		DWORD n = GetModuleFileNameA(NULL, buf.data(), (DWORD)buf.size());
+		if (!n) return;
+		if (n < buf.size()) { buf.resize(n); break; }
+		if (buf.size() >= 32768) { buf.resize(32767); break; }
+		buf.resize(buf.size() * 2);
+	}
+	size_t slash = buf.find_last_of("\\/");
+	if (slash == std::string::npos) return;
+	buf.resize(slash + 1);
+	std::string path = buf + "blitz_effect.log";
+
+	HANDLE file = CreateFileA(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (file == INVALID_HANDLE_VALUE) return;
+	SetFilePointer(file, 0, NULL, FILE_END);
+	std::string line = text + "\r\n";
+	DWORD written = 0;
+	WriteFile(file, line.data(), (DWORD)line.size(), &written, NULL);
+	CloseHandle(file);
+}
+
+static std::string resolveEffectPath(const std::string& filename) {
+	if (filename.empty()) return filename;
+	if (GetFileAttributesA(filename.c_str()) != INVALID_FILE_ATTRIBUTES)
+		return canonicalEffectFileName(filename);
+	if (filename.size() > 1 && filename[1] == ':') return filename;
+	if (filename[0] == '\\' || filename[0] == '/') return filename;
+
+	std::string buf(MAX_PATH, '\0');
+	for (;;) {
+		DWORD n = GetModuleFileNameA(NULL, buf.data(), (DWORD)buf.size());
+		if (!n) return filename;
+		if (n < buf.size()) { buf.resize(n); break; }
+		if (buf.size() >= 32768) { buf.resize(32767); break; }
+		buf.resize(buf.size() * 2);
+	}
+	size_t slash = buf.find_last_of("\\/");
+	if (slash == std::string::npos) return filename;
+	buf.resize(slash + 1);
+	std::string candidate = buf + filename;
+	if (GetFileAttributesA(candidate.c_str()) != INVALID_FILE_ATTRIBUTES)
+		return canonicalEffectFileName(candidate);
+
+	WIN32_FIND_DATAA fd;
+	HANDLE h = FindFirstFileA(candidate.c_str(), &fd);
+	if (h != INVALID_HANDLE_VALUE) {
+		FindClose(h);
+		return buf + fd.cFileName;
+	}
+	return filename;
+}
+
 gxEffect* gxGraphics::createEffect(const std::string& filename) {
 	ID3DXEffect* effect = nullptr;
 	ID3DXBuffer* errors = nullptr;
+	std::string path = resolveEffectPath(filename);
 
-	// BlitzPro shader support
+	// BlizPro shader support
 	/*
 	std::string converted;
 	HRESULT hr = E_FAIL;
@@ -205,8 +292,30 @@ gxEffect* gxGraphics::createEffect(const std::string& filename) {
 	}
 	*/
 
-	HRESULT hr = D3DXCreateEffectFromFile(dir3dDev, filename.c_str(), nullptr, nullptr, 0, nullptr, &effect, &errors);
+	HRESULT hr = D3DXCreateEffectFromFile(dir3dDev, path.c_str(), nullptr, nullptr, 0, nullptr, &effect, &errors);
+	if (FAILED(hr) && !errors) {
+		std::ifstream in(path.c_str(), std::ios::binary);
+		if (in.good()) {
+			in.seekg(0, std::ios::end);
+			std::streamoff len = in.tellg();
+			if (len > 0 && len <= 64 * 1024 * 1024) {
+				in.seekg(0, std::ios::beg);
+				std::string src((size_t)len, '\0');
+				in.read(src.data(), (std::streamsize)len);
+				if (in.good() || in.eof()) {
+					hr = D3DXCreateEffect(dir3dDev, src.data(), (UINT)src.size(),
+						nullptr, nullptr, 0, nullptr, &effect, &errors);
+				}
+			}
+		}
+	}
 	if (FAILED(hr)) {
+		DWORD attrs = GetFileAttributesA(path.c_str());
+		DWORD attrErr = attrs == INVALID_FILE_ATTRIBUTES ? GetLastError() : 0;
+		std::string cwd(32768, '\0');
+		DWORD cwdLen = GetCurrentDirectoryA((DWORD)cwd.size(), cwd.data());
+		if (cwdLen && cwdLen < cwd.size()) cwd.resize(cwdLen); else cwd.clear();
+
 		if (errors) {
 			lastEffectError = (const char*)errors->GetBufferPointer();
 			errors->Release();
@@ -214,6 +323,18 @@ gxEffect* gxGraphics::createEffect(const std::string& filename) {
 		else {
 			lastEffectError = "Unknown error creating effect";
 		}
+
+		char info[2048];
+		snprintf(info, sizeof(info), "LoadEffect failed: \"%s\" -> \"%s\" attrs=0x%08X geterr=%lu hr=0x%08X cwd=\"%s\"", filename.c_str(), path.c_str(), (unsigned)attrs, (unsigned long)attrErr, (unsigned)hr, cwd.c_str());
+		std::string report = info;
+		report += "\n";
+		report += lastEffectError;
+		if (hr == E_NOTIMPL || lastEffectError.find("E5017") != std::string::npos) {
+			report += "\nWine's built-in d3dx9/vkd3d cannot compile this effect. "
+				"Install native d3dx9_43.dll and d3dcompiler_43.dll "
+				"(winetricks, or protontricks) and retry.";
+		}
+		logEffectFailure(report);
 		return nullptr;
 	}
 	lastEffectError.clear();

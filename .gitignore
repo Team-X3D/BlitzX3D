@@ -27,3 +27,5 @@ blitzide_imgui/bin
 vendor/llvm32/bin/
 vendor/llvm32/lib/
 vendor/llvm32/include/llvm/
+vendor/d3dx9/
+_release_package/

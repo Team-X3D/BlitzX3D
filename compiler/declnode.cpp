@@ -84,6 +84,11 @@ void VarDeclNode::proto(DeclSeq* d, Environ* e) {
 
         Decl* decl = d->insertDecl(ident, ty, kind, 0);
         if (!decl) ex(MultiLang::duplicate_variable_name);
+        if (kind == DECL_LOCAL) {
+            decl->pos = pos;
+            decl->file = file;
+            decl->userDeclared = true;
+        }
         if (expr) sem_var = new DeclVarNode(decl);
         return;
     }
@@ -113,6 +118,11 @@ void VarDeclNode::proto(DeclSeq* d, Environ* e) {
 
     Decl* decl = d->insertDecl(ident, ty, kind, defType);
     if (!decl) ex(MultiLang::duplicate_variable_name);
+    if (kind == DECL_LOCAL) {
+        decl->pos = pos;
+        decl->file = file;
+        decl->userDeclared = true;
+    }
     if (expr) sem_var = new DeclVarNode(decl);
 }
 
@@ -157,6 +167,7 @@ void FuncDeclNode::semant(Environ* e) {
     }
 
     stmts->semant(sem_env);
+    warnUnusedLocals(decls);
 }
 
 void FuncDeclNode::translate(Codegen* g) {

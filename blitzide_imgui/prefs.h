@@ -19,6 +19,7 @@ struct Prefs {
 	bool prg_quiet = true;
 	bool prg_veryquiet = false;
 	bool prg_dumpkeys = false;
+	bool prg_warnings = true;
 	std::string prg_lastbuild;
 	std::string cmd_line;
 

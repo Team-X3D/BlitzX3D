@@ -76,4 +76,14 @@ done
     "${PARALLEL[@]+"${PARALLEL[@]}"}" \
     "${EXTRA[@]+"${EXTRA[@]}"}"
 
+D3DX_DIR="$B3D_ROOT/vendor/d3dx9/x86"
+if [ -d "$D3DX_DIR" ]; then
+    mkdir -p "$B3D_ROOT/_release/bin"
+    for dll in d3dx9_43.dll d3dcompiler_43.dll; do
+        if [ -f "$D3DX_DIR/$dll" ]; then
+            cp -f "$D3DX_DIR/$dll" "$B3D_ROOT/_release/bin/$dll"
+        fi
+    done
+fi
+
 b3d_info "done. output in $B3D_ROOT/_release"

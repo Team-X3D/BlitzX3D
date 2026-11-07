@@ -16,6 +16,12 @@ inline constexpr int Ex_MAX_ERRORS = 32;
 extern thread_local bool Ex_collecting;
 extern thread_local std::vector<Ex>* Ex_errors;
 
+extern thread_local std::vector<Ex>* Ex_warnings;
+extern thread_local std::string Ex_currentFile;
+
+void Ex_warn(const std::string& msg, int pos, const std::string& file);
+inline void Ex_warn(const std::string& msg, int pos) { Ex_warn(msg, pos, Ex_currentFile); }
+
 struct Ex_collect_scope {
 	std::vector<Ex>& out;
 	Ex_collect_scope(std::vector<Ex>& o) :out(o) { Ex_collecting = true; Ex_errors = &out; }

@@ -159,6 +159,7 @@ void Prefs::open() {
 	inipp::get_value(ini.sections["COMPILER"], "Quiet", prg_quiet);
 	inipp::get_value(ini.sections["COMPILER"], "VeryQuiet", prg_veryquiet);
 	inipp::get_value(ini.sections["COMPILER"], "DumpKeys", prg_dumpkeys);
+	inipp::get_value(ini.sections["COMPILER"], "Warnings", prg_warnings);
 	inipp::get_value(ini.sections["COMPILER"], "LastBuild", prg_lastbuild);
 	inipp::get_value(ini.sections["COMPILER"], "CommandLine", cmd_line);
 
@@ -245,6 +246,7 @@ void Prefs::close() {
 	compilerSection.insert(std::make_pair("Quiet", boolToString(prg_quiet)));
 	compilerSection.insert(std::make_pair("VeryQuiet", boolToString(prg_veryquiet)));
 	compilerSection.insert(std::make_pair("DumpKeys", boolToString(prg_dumpkeys)));
+	compilerSection.insert(std::make_pair("Warnings", boolToString(prg_warnings)));
 	compilerSection.insert(std::make_pair("LastBuild", prg_lastbuild));
 	compilerSection.insert(std::make_pair("CommandLine", cmd_line));
 

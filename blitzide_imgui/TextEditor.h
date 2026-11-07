@@ -38,6 +38,8 @@ public:
 		CurrentLineFill,
 		CurrentLineFillInactive,
 		CurrentLineEdge,
+		ExecutionLineFill,
+		ExecutionLineEdge,
 		Max
 	};
 
@@ -200,6 +202,9 @@ public:
 
 	void SetErrorMarkers(const ErrorMarkers& aMarkers) { mErrorMarkers = aMarkers; }
 	void SetBreakpoints(const Breakpoints& aMarkers) { mBreakpoints = aMarkers; }
+
+	void SetExecutionLine(int aLine) { mExecutionLine = aLine; }
+	int GetExecutionLine() const { return mExecutionLine; }
 
 	void Render(const char* aTitle, const ImVec2& aSize = ImVec2(), bool aBorder = false);
 	void SetText(const std::string& aText);
@@ -409,6 +414,7 @@ private:
 	bool mCheckComments;
 	Breakpoints mBreakpoints;
 	ErrorMarkers mErrorMarkers;
+	int mExecutionLine = -1;
 	ImVec2 mCharAdvance;
 	Coordinates mInteractiveStart, mInteractiveEnd;
 	std::string mLineBuffer;

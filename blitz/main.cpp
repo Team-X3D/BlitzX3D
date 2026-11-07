@@ -45,7 +45,7 @@ static void showInfo() {
 }
 
 static void showUsage() {
-	std::cout << "Usage: blitzcc [-h|-q|+q|-c|-d|-k|+k|-nlaa|-noautodecl|-experimental|-v|-llvm|-x86|-o exefile] [sourcefile.bb]" << std::endl;
+	std::cout << "Usage: blitzcc [-h|-q|+q|-c|-d|-k|+k|-nlaa|-noautodecl|-experimental|-nowarn|-v|-llvm|-x86|-o exefile] [sourcefile.bb]" << std::endl;
 }
 
 static void showHelp() {
@@ -61,6 +61,7 @@ static void showHelp() {
 	std::cout << "-nlaa      : disables large address awareness for the output executable" << std::endl;
 	std::cout << "-noautodecl: disables auto declaration of undeclared variables" << std::endl;
 	std::cout << "-experimental: enables experimental language syntax" << std::endl;
+	std::cout << "-nowarn    : disable compiler warnings" << std::endl;
 	std::cout << "-llvm : use the experimental LLVM backend" << std::endl;
 	std::cout << "-x86       : use the x86 backend instead of the default LLVM backend" << std::endl;
 	std::cout << "-o exefile : generate executable" << std::endl;
@@ -111,8 +112,19 @@ static void printErrors(const std::vector<Ex>& errors) {
 	if (errors.size() > 1) std::cout << errors.size() << " errors." << std::endl;
 }
 
+static void printWarnings(const std::vector<Ex>& warnings) {
+	for (const Ex& x : warnings) {
+		int p = x.pos < 0 ? 0 : x.pos;
+		int row = ((p >> 16) & 65535) + 1, col = (p & 65535) + 1;
+		std::cout << '\"' << x.file << '\"' << ":" << row << ":" << col << ":" << row << ":" << col << ":Warning: " << x.ex << std::endl;
+	}
+	if (!warnings.empty()) std::cout << warnings.size() << " warning" << (warnings.size() == 1 ? "" : "s") << "." << std::endl;
+}
+
 static void deploySidecarDlls(const std::string& out_file, bool quiet, bool veryquiet) {
-	static const char* dlls[] = { "bass.dll", "FreeImage.dll", "freetype.dll" };
+	static const char* dlls[] = {
+		"bass.dll", "FreeImage.dll", "freetype.dll", "d3dx9_43.dll", "d3dcompiler_43.dll"
+	};
 
 	size_t n = out_file.find_last_of("/\\");
 	std::string dir = (n == std::string::npos) ? "" : out_file.substr(0, n);
@@ -129,6 +141,8 @@ static void deploySidecarDlls(const std::string& out_file, bool quiet, bool very
 			DWORD e = GetLastError();
 			if (e == ERROR_FILE_EXISTS) {
 				if (!quiet && !veryquiet) std::cout << "\"" << name << "\" already present, skipping." << std::endl;
+			}
+			else if (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND) {
 			}
 			else {
 				std::cout << "Warning: could not copy \"" << src << "\" to \"" << dest << "\" (error " << e << ")." << std::endl;
@@ -216,6 +230,7 @@ int _cdecl main(int argc, char* argv[]) {
 
 	bool encrypt = false;
 	bool llvmbackend = false;
+	bool warningsEnabled = true;
 
 
 	for (int k = 1; k < argc; ++k) {
@@ -259,6 +274,9 @@ int _cdecl main(int argc, char* argv[]) {
 		}
 		else if (t == "-noautodecl") {
 			autoDeclEnabled = false;
+		}
+		else if (t == "-nowarn") {
+			warningsEnabled = false;
 		}
 		else if (t == "-experimental") {
 			experimentalSyntaxEnabled = true;
@@ -341,6 +359,15 @@ int _cdecl main(int argc, char* argv[]) {
 	Module* module = 0;
 	void* llvmEntry = 0;
 
+	std::vector<Ex> warnings;
+	Ex_warnings = warningsEnabled ? &warnings : nullptr;
+	bool warningsPrinted = false;
+	auto emitWarnings = [&]() {
+		if (warningsPrinted) return;
+		warningsPrinted = true;
+		printWarnings(warnings);
+	};
+
 	try {
 		//parse & semant
 		//so editors can reuse the output for "true" error reporting
@@ -351,6 +378,7 @@ int _cdecl main(int argc, char* argv[]) {
 		errors.clear();
 		prog = parser.parseAll(in_file, debug, errors);
 		if (!errors.empty()) {
+			emitWarnings();
 			printErrors(errors);
 			delete prog;
 			exit(-1);
@@ -361,10 +389,12 @@ int _cdecl main(int argc, char* argv[]) {
 		errors.clear();
 		environ = prog->semantAll(runtimeEnviron, errors);
 		if (!errors.empty()) {
+			emitWarnings();
 			printErrors(errors);
 			delete prog;
 			exit(-1);
 		}
+		emitWarnings();
 
 		//translate
 		if (!veryquiet) std::cout << "Translating..." << std::endl;
@@ -421,6 +451,7 @@ int _cdecl main(int argc, char* argv[]) {
 	}
 	catch (Ex& x) {
 
+		emitWarnings();
 		printError(x);
 		exit(-1);
 	}
