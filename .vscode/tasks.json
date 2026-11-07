@@ -94,6 +94,34 @@
         "panel": "shared",
         "clear": true
       }
+    },
+    {
+      "label": "BlitzX3D: Fetch d3dx9",
+      "type": "shell",
+      "command": "${workspaceFolder}/linux/fetch-d3dx9.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "BlitzX3D: Package release",
+      "type": "shell",
+      "command": "${workspaceFolder}/linux/package-release.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ]
 }
