@@ -5,6 +5,8 @@
 #include "asmcoder.h"
 #include "gxutf8.h"
 
+#include <cmath>
+
 static int canvas_cnt;
 
 extern gxRuntime* gx_runtime;
@@ -495,24 +497,35 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
 
     int cx0 = viewport.left, cx1 = viewport.right - 1;
     int cy0 = viewport.top, cy1 = viewport.bottom - 1;
+    if (cx1 < cx0 || cy1 < cy0) return;
 
-    while (true) {
-        int clip0 = 0, clip1 = 0;
-        if (y0 > cy1) clip0 |= 1; else if (y0 < cy0) clip0 |= 2;
-        if (x0 > cx1) clip0 |= 4; else if (x0 < cx0) clip0 |= 8;
-        if (y1 > cy1) clip1 |= 1; else if (y1 < cy0) clip1 |= 2;
-        if (x1 > cx1) clip1 |= 4; else if (x1 < cx0) clip1 |= 8;
-        if ((clip0 | clip1) == 0) break;
-        if ((clip0 & clip1) != 0) return;
-        if ((clip0 & 1) == 1) { x0 = x0 + ((x1 - x0) * (cy1 - y0)) / (y1 - y0); y0 = cy1; continue; }
-        if ((clip0 & 2) == 2) { x0 = x0 + ((x1 - x0) * (cy0 - y0)) / (y1 - y0); y0 = cy0; continue; }
-        if ((clip0 & 4) == 4) { y0 = y0 + ((y1 - y0) * (cx1 - x0)) / (x1 - x0); x0 = cx1; continue; }
-        if ((clip0 & 8) == 8) { y0 = y0 + ((y1 - y0) * (cx0 - x0)) / (x1 - x0); x0 = cx0; continue; }
-        if ((clip1 & 1) == 1) { x1 = x0 + ((x1 - x0) * (cy1 - y0)) / (y1 - y0); y1 = cy1; continue; }
-        if ((clip1 & 2) == 2) { x1 = x0 + ((x1 - x0) * (cy0 - y0)) / (y1 - y0); y1 = cy0; continue; }
-        if ((clip1 & 4) == 4) { y1 = y0 + ((y1 - y0) * (cx1 - x0)) / (x1 - x0); x1 = cx1; continue; }
-        if ((clip1 & 8) == 8) { y1 = y0 + ((y1 - y0) * (cx0 - x0)) / (x1 - x0); x1 = cx0; continue; }
-    }
+    double t0 = 0.0, t1 = 1.0;
+    const double fdx = (double)x1 - (double)x0;
+    const double fdy = (double)y1 - (double)y0;
+    auto clipEdge = [&](double p, double q) -> bool {
+        if (p == 0.0) return q >= 0.0;
+        double r = q / p;
+        if (p < 0.0) {
+            if (r > t1) return false;
+            if (r > t0) t0 = r;
+        }
+        else {
+            if (r < t0) return false;
+            if (r < t1) t1 = r;
+        }
+        return true;
+    };
+    if (!clipEdge(-fdx, (double)x0 - (double)cx0)) return;
+    if (!clipEdge(fdx, (double)cx1 - (double)x0)) return;
+    if (!clipEdge(-fdy, (double)y0 - (double)cy0)) return;
+    if (!clipEdge(fdy, (double)cy1 - (double)y0)) return;
+    if (t0 > t1) return;
+
+    const int sx0 = x0, sy0 = y0;
+    x0 = (int)std::lround((double)sx0 + t0 * fdx);
+    y0 = (int)std::lround((double)sy0 + t0 * fdy);
+    x1 = (int)std::lround((double)sx0 + t1 * fdx);
+    y1 = (int)std::lround((double)sy0 + t1 * fdy);
     dx = x1 - x0; dy = y1 - y0;
     if ((dx | dy) == 0) { setPixel(x0, y0, color_argb); return; }
     if (dx >= 0) { sx = 1; ax = dx; }
