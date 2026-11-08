@@ -132,6 +132,14 @@ gxRuntime* gxRuntime::openRuntime(HINSTANCE hinst, const std::string& cmd_line, 
 	run_flag = true;
 
 	HWND hwnd = CreateWindowEx(0, "Blitz Runtime Class", " ", WS_CAPTION, 0, 0, 0, 0, 0, 0, 0, 0);
+
+	if (HANDLE iconSm = LoadImage(hinst, MAKEINTRESOURCE(1), IMAGE_ICON, 16, 16, LR_SHARED)) {
+		SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)iconSm);
+		if (HANDLE iconLg = LoadImage(hinst, MAKEINTRESOURCE(1), IMAGE_ICON, 256, 256, LR_SHARED)) {
+			SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)iconLg);
+		}
+	}
+
 	UpdateWindow(hwnd);
 
 	runtime = new gxRuntime(hinst, cmd_line, hwnd);
