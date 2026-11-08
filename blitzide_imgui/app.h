@@ -59,6 +59,7 @@ private:
 	void drawExitPrompt();
 	void drawClosePrompt();
 	void checkDiskChanges(bool force = false);
+	bool reloadDocFromDisk(Doc& d);
 	void drawDiskPrompt();
 	void fileRecent(const std::string& path);
 	void addRecent(const std::string& path);

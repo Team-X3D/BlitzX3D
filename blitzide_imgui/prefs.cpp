@@ -199,6 +199,8 @@ void Prefs::open() {
 	inipp::get_value(ini.sections["EDITOR"], "ToolbarImage", img_toolbar);
 	inipp::get_value(ini.sections["EDITOR"], "NoBackup", noBackup);
 	inipp::get_value(ini.sections["EDITOR"], "AutoComplete", edit_autocomplete);
+	inipp::get_value(ini.sections["EDITOR"], "DiskChangeAction", disk_change_action);
+	if (disk_change_action < 0 || disk_change_action > 2) disk_change_action = 0;
 
 	inipp::get_value(ini.sections["UI"], "Theme", theme);
 	inipp::get_value(ini.sections["UI"], "Rounding", ui_rounding);
@@ -286,6 +288,7 @@ void Prefs::close() {
 	editorSection.insert(std::make_pair("ToolbarImage", img_toolbar));
 	editorSection.insert(std::make_pair("NoBackup", boolToString(noBackup)));
 	editorSection.insert(std::make_pair("AutoComplete", boolToString(edit_autocomplete)));
+	editorSection.insert(std::make_pair("DiskChangeAction", std::to_string(disk_change_action)));
 
 	auto& uiSection = ini.sections["UI"];
 	uiSection.insert(std::make_pair("Theme", theme));

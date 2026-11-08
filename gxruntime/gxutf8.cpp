@@ -217,6 +217,17 @@ std::wstring UTF8::convertToUtf16(const std::string& str) {
 	return result;
 }
 
+std::string UTF8::convertFromUtf16(const std::wstring& str) {
+	if (str.empty()) return "";
+
+	int n = WideCharToMultiByte(CP_UTF8, 0, str.c_str(), (int)str.size(), nullptr, 0, nullptr, nullptr);
+	if (n <= 0) return "";
+
+	std::string result(n, '\0');
+	WideCharToMultiByte(CP_UTF8, 0, str.c_str(), (int)str.size(), result.data(), n, nullptr, nullptr);
+	return result;
+}
+
 std::string UTF8::replaceAll(const std::string_view& str, const std::string_view& pattern, const std::string_view& newpat) {
 	std::string result;
 	result.reserve(str.size());
@@ -313,14 +324,5 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 
 	RegCloseKey(hKey);
 
-	if (wsFontFile.empty()) {
-		return "";
-	}
-
-	int n = WideCharToMultiByte(CP_UTF8, 0, wsFontFile.c_str(), (int)wsFontFile.size(), nullptr, 0, nullptr, nullptr);
-	if (n <= 0) return "";
-
-	std::string utf8(n, '\0');
-	WideCharToMultiByte(CP_UTF8, 0, wsFontFile.c_str(), (int)wsFontFile.size(), utf8.data(), n, nullptr, nullptr);
-	return utf8;
+	return UTF8::convertFromUtf16(wsFontFile);
 }

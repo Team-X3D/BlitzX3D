@@ -1918,6 +1918,19 @@ void App::drawClosePrompt() {
 	}
 }
 
+bool App::reloadDocFromDisk(Doc& d) {
+	std::ifstream in(d.path, std::ios::binary);
+	if (!in.good()) return false;
+
+	std::stringstream ss;
+	ss << in.rdbuf();
+	d.editor.SetText(ss.str());
+	d.editor.ClearTextChanged();
+	d.modified = false;
+	rebuildFuncList(d);
+	return true;
+}
+
 void App::checkDiskChanges(bool force) {
 	unsigned long long now = SDL_GetTicks();
 	if (!force && now - lastDiskCheck < 1000) return;
@@ -1928,8 +1941,18 @@ void App::checkDiskChanges(bool force) {
 		std::error_code ec;
 		auto t = fs::last_write_time(d.path, ec);
 		if (ec) continue;
-		if (d.lastWrite != fs::file_time_type{} && t != d.lastWrite)
-			d.externalChanged = true;
+		if (d.lastWrite != fs::file_time_type{} && t != d.lastWrite) {
+			if (prefs.disk_change_action == 1) {
+				if (!reloadDocFromDisk(d)) { d.externalChanged = true; continue; }
+				d.lastWrite = t;
+			}
+			else if (prefs.disk_change_action == 2) {
+				d.lastWrite = t;
+			}
+			else {
+				d.externalChanged = true;
+			}
+		}
 	}
 
 	if (diskPromptPath.empty()) {
@@ -1968,15 +1991,7 @@ void App::drawDiskPrompt() {
 		float width = ImGui::GetContentRegionAvail().x;
 		float btn = (width - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
 		if (ImGui::Button("Load from Disk", ImVec2(btn, 0))) {
-			std::ifstream in(d->path, std::ios::binary);
-			if (in.good()) {
-				std::stringstream ss;
-				ss << in.rdbuf();
-				d->editor.SetText(ss.str());
-				d->editor.ClearTextChanged();
-				d->modified = false;
-				rebuildFuncList(*d);
-			}
+			reloadDocFromDisk(*d);
 			std::error_code ec;
 			d->lastWrite = fs::last_write_time(d->path, ec);
 			d->externalChanged = false;
@@ -2325,9 +2340,14 @@ void App::drawStylize() {
 				}
 				if (roundingDone || alphaDone) prefs.close();
 				ImGui::Separator();
+				const char* const diskChoices[] = { "Ask", "Always load", "Always keep" };
+				if (ImGui::Combo("File changed on disk", &prefs.disk_change_action, diskChoices, 3))
+					prefs.close();
+				ImGui::Separator();
 				if (ImGui::Button("Reset to defaults")) {
 					prefs.ui_rounding = 0;
 					prefs.ui_alpha = 1.0f;
+					prefs.disk_change_action = 0;
 					applyCurrentTheme();
 					prefs.close();
 				}
