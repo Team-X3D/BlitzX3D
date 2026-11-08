@@ -320,7 +320,7 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	int n = WideCharToMultiByte(CP_UTF8, 0, wsFontFile.c_str(), (int)wsFontFile.size(), nullptr, 0, nullptr, nullptr);
 	if (n <= 0) return "";
 
-	std::string result(n, '\0');
-	WideCharToMultiByte(CP_UTF8, 0, wsFontFile.c_str(), (int)wsFontFile.size(), result.data(), n, nullptr, nullptr);
-	return result;
+	std::string utf8(n, '\0');
+	WideCharToMultiByte(CP_UTF8, 0, wsFontFile.c_str(), (int)wsFontFile.size(), utf8.data(), n, nullptr, nullptr);
+	return utf8;
 }
