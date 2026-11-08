@@ -207,13 +207,13 @@ std::string UTF8::substr(const std::string& str, int start, int length) {
 }
 
 std::wstring UTF8::convertToUtf16(const std::string& str) {
-	std::wstring result = L"";
+	if (str.empty()) return L"";
 
-	for (int i = 0; i < str.size();) {
-		result.push_back(decodeCharacter(str.c_str(), i));
-		i += measureCharacter(str.c_str(), i);
-	}
+	int n = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), nullptr, 0);
+	if (n <= 0) return L"";
 
+	std::wstring result(n, L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, str.c_str(), (int)str.size(), result.data(), n);
 	return result;
 }
 
@@ -239,7 +239,7 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 	static LPCWSTR fontRegistryPath = L"Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
 	HKEY hKey;
 	LONG result;
-	std::wstring wsFaceName(faceName.begin(), faceName.end());
+	std::wstring wsFaceName = UTF8::convertToUtf16(faceName);
 
 	// Open Windows font registry key
 	result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, fontRegistryPath, 0, KEY_READ, &hKey);
@@ -317,5 +317,10 @@ std::string UTF8::getSystemFontFile(const std::string& faceName) {
 		return "";
 	}
 
-	return std::string(wsFontFile.begin(), wsFontFile.end());
+	int n = WideCharToMultiByte(CP_UTF8, 0, wsFontFile.c_str(), (int)wsFontFile.size(), nullptr, 0, nullptr, nullptr);
+	if (n <= 0) return "";
+
+	std::string result(n, '\0');
+	WideCharToMultiByte(CP_UTF8, 0, wsFontFile.c_str(), (int)wsFontFile.size(), result.data(), n, nullptr, nullptr);
+	return result;
 }

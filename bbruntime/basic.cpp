@@ -144,8 +144,24 @@ void _bbVecFree(void* vec, BBVecType* type) {
 	bbFree(vec);
 }
 
+static std::wstring toWide(const char* s) {
+	int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
+	if (n <= 0) return L"";
+	std::wstring w(n, L'\0');
+	MultiByteToWideChar(CP_UTF8, 0, s, -1, w.data(), n);
+	w.pop_back();
+	return w;
+}
+
+static void boundsError(const char* msg) {
+	if (debug) RTEX(msg);
+	bbruntime_panic(toWide(msg).c_str());
+	ExitProcess(-1);
+}
+
 void _bbVecBoundsEx(const char* function) {
-	ErrorLog(function, MultiLang::array_bounds_ex);
+	(void)function;
+	boundsError(MultiLang::array_bounds_ex);
 }
 
 void _bbUndimArray(BBArray* array) {
@@ -180,7 +196,8 @@ void _bbDimArray(BBArray* array) {
 }
 
 void _bbArrayBoundsEx(const char* function) {
-	ErrorLog(function, MultiLang::array_index_out_of_bounds);
+	(void)function;
+	boundsError(MultiLang::array_index_out_of_bounds);
 }
 
 static void unlinkObj(BBObj* obj) {

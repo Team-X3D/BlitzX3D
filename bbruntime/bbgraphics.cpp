@@ -5,6 +5,7 @@
 #include "../MultiLang/MultiLang.h"
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <vector>
 #include "../blitz3d/texture.h"
 #include "../blitz3d/cachedtexture.h"
@@ -1337,6 +1338,10 @@ gxFont* bbLoadFont(BBStr* name, int height, bool bold, bool italic, bool underli
         gxFont* font = gx_graphics->loadFont(*name, height, bold, italic, underlined);
         delete name;
         return font;
+    } catch (const std::exception&) {
+        ErrorLog("LoadFont", MultiLang::font_not_exist);
+        delete name;
+        return nullptr;
     } catch (...) {
         delete name;
         return nullptr;

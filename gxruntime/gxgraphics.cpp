@@ -93,7 +93,7 @@ gxGraphics::~gxGraphics() {
 	}
 	*/
 
-	for (auto it = font_res.begin(); it != font_res.end(); ++it) RemoveFontResource((*it).c_str());
+	for (auto it = font_res.begin(); it != font_res.end(); ++it) RemoveFontResourceW(UTF8::convertToUtf16(*it).c_str());
 	font_res.clear();
 
 	delete antialias_canvas;
@@ -768,7 +768,7 @@ gxFont* gxGraphics::loadFont(std::string f, int height, bool bold, bool italic, 
 		std::string sysFont = UTF8::getSystemFontFile(f);
 		if (!sysFont.empty()) {
 			t = sysFont;
-			if (!font_res.count(t) && AddFontResource(t.c_str())) font_res.insert(t);
+			if (!font_res.count(t) && AddFontResourceW(UTF8::convertToUtf16(t).c_str())) font_res.insert(t);
 		}
 	}
 

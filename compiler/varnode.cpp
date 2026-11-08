@@ -142,7 +142,7 @@ void VectorVarNode::semant(Environ* e) {
 	exprs->castTo(Type::int_type, e);
 	for(int k = 0; k < exprs->size(); ++k) {
 		if(ConstNode* t = exprs->exprs[k]->constNode()) {
-			if(t->intValue() >= vec_type->sizes[k]) {
+			if(t->intValue() < 0 || t->intValue() >= vec_type->sizes[k]) {
 				ex(MultiLang::blitz_array_subscript_out_of_range);
 			}
 		}

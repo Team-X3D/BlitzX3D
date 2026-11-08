@@ -111,6 +111,12 @@ enum { WM_STOP = WM_APP + 1, WM_RUN, WM_END };
 ////////////////////
 // STATIC STARTUP //
 ////////////////////
+static BOOL CALLBACK firstIconProc(HMODULE module, LPCSTR type, LPSTR name, LONG_PTR param) {
+	(void)type;
+	*reinterpret_cast<HICON*>(param) = LoadIconA(module, name);
+	return FALSE;
+}
+
 gxRuntime* gxRuntime::openRuntime(HINSTANCE hinst, const std::string& cmd_line, Debugger* d) {
 	SetAppDPIAware();
 	if(runtime) return 0;
@@ -131,13 +137,13 @@ gxRuntime* gxRuntime::openRuntime(HINSTANCE hinst, const std::string& cmd_line, 
 	busy = suspended = false;
 	run_flag = true;
 
-	HWND hwnd = CreateWindowEx(0, "Blitz Runtime Class", " ", WS_CAPTION, 0, 0, 0, 0, 0, 0, 0, 0);
+	HWND hwnd = CreateWindowEx(0, "Blitz Runtime Class", " ", WS_CAPTION, 0, 0, 0, 0, 0, 0, hinst, 0);
 
-	if (HANDLE iconSm = LoadImage(hinst, MAKEINTRESOURCE(1), IMAGE_ICON, 16, 16, LR_SHARED)) {
-		SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)iconSm);
-		if (HANDLE iconLg = LoadImage(hinst, MAKEINTRESOURCE(1), IMAGE_ICON, 256, 256, LR_SHARED)) {
-			SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)iconLg);
-		}
+	HICON icon = nullptr;
+	EnumResourceNamesA(hinst, RT_GROUP_ICON, firstIconProc, (LONG_PTR)&icon);
+	if (icon) {
+		SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
+		SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
 	}
 
 	UpdateWindow(hwnd);
@@ -1181,7 +1187,6 @@ gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) 
 				int cx = (GetSystemMetrics(SM_CXSCREEN) - w) / 2;
 				int cy = (GetSystemMetrics(SM_CYSCREEN) - h) / 2;
 				MoveWindow(hwnd, cx, cy, w + tw, h + th, true);
-				ShowWindow(hwnd, SW_HIDE);
 				ShowWindow(hwnd, SW_SHOW);
 			}
 		}
