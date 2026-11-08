@@ -100,11 +100,8 @@ TNode* ArrayVarNode::translate(Codegen* g) {
 			TNode* s = mem(add(global("_a" + ident), iconst((k - 1) * 4 + ps + 8)));
 			e = add(t, mul(e, s));
 		}
-		if(g->debug) {
-			TNode* s = mem(add(global("_a" + ident), iconst(k * 4 + ps + 8)));
-			t = jumpge(e, s, "__bbArrayBoundsEx");
-		}
-		else t = e;
+		TNode* s = mem(add(global("_a" + ident), iconst(k * 4 + ps + 8)));
+		t = jumpge(e, s, "__bbArrayBoundsEx");
 	}
 	TNode* base = mem(global("_a" + ident));
 	base->vkind = VK_PTR;
@@ -164,9 +161,7 @@ TNode* VectorVarNode::translate(Codegen* g) {
 		}
 		else {
 			p = e->translate(g);
-			if(g->debug) {
-				p = jumpge(p, iconst(vec_type->sizes[k]), "__bbVecBoundsEx");
-			}
+			p = jumpge(p, iconst(vec_type->sizes[k]), "__bbVecBoundsEx");
 			p = mul(p, iconst(sz));
 		}
 		sz = sz * vec_type->sizes[k];
