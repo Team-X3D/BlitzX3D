@@ -1333,9 +1333,14 @@ gxFont* bbLoadFont(BBStr* name, int height, bool bold, bool italic, bool underli
         delete name;
         return nullptr;
     }
-    gxFont* font = gx_graphics->loadFont(*name, height, bold, italic, underlined);
-    delete name;
-    return font;
+    try {
+        gxFont* font = gx_graphics->loadFont(*name, height, bold, italic, underlined);
+        delete name;
+        return font;
+    } catch (...) {
+        delete name;
+        return nullptr;
+    }
 }
 
 void bbFreeFont(gxFont* f)

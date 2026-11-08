@@ -13,6 +13,18 @@
 #include <algorithm>
 #include <freetype/ftsynth.h>
 
+static unsigned long __cdecl streamRead(FT_Stream stream, unsigned long offset, unsigned char* buffer, unsigned long count) {
+	std::ifstream* file = reinterpret_cast<std::ifstream*>(stream->descriptor.pointer);
+	file->seekg(offset, std::ios::beg);
+	file->read(reinterpret_cast<char*>(buffer), count);
+	return static_cast<unsigned long>(file->gcount());
+}
+
+static void __cdecl streamClose(FT_Stream stream) {
+	delete reinterpret_cast<std::ifstream*>(stream->descriptor.pointer);
+	delete stream;
+}
+
 gxFont::gxFont(FT_Library ftLibrary, gxGraphics* gfx, const std::string& fn, int h, bool bold, bool italic, bool underlined) {
 	graphics = gfx;
 	filename = fn;
@@ -22,11 +34,28 @@ gxFont::gxFont(FT_Library ftLibrary, gxGraphics* gfx, const std::string& fn, int
 	this->underlined = underlined;
 	smooth = true;
 
-	if (FT_New_Face(ftLibrary,
-		filename.c_str(),
-		0,
-		&freeTypeFace)) {
-		RTEX(std::format("Failed to load file: {}", fn).c_str());
+	FT_StreamRec* rec = new FT_StreamRec();
+	std::ifstream* file = new std::ifstream(std::filesystem::path(UTF8::convertToUtf16(filename)), std::ios::binary);
+	if (!file->is_open()) {
+		delete file;
+		delete rec;
+		throw std::runtime_error("Failed to open font file!");
+	}
+
+	rec->base = nullptr;
+	rec->size = 0x7FFFFFFF;
+	rec->descriptor.pointer = file;
+	rec->read = reinterpret_cast<FT_Stream_IoFunc>(streamRead);
+	rec->close = reinterpret_cast<FT_Stream_CloseFunc>(streamClose);
+
+	FT_Open_Args args{};
+	args.flags = FT_OPEN_STREAM;
+	args.stream = rec;
+
+	if (FT_Open_Face(ftLibrary, &args, 0, &freeTypeFace)) {
+		delete file;
+		delete rec;
+		throw std::runtime_error("Failed to load font file!");
 	}
 
 	FT_Set_Pixel_Sizes(freeTypeFace,
