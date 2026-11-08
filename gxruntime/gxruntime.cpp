@@ -131,7 +131,7 @@ gxRuntime* gxRuntime::openRuntime(HINSTANCE hinst, const std::string& cmd_line, 
 	busy = suspended = false;
 	run_flag = true;
 
-	HWND hwnd = CreateWindowEx(0, "Blitz Runtime Class", " ", WS_CAPTION, 0, 0, 0, 0, 0, 0, 0, 0);
+	HWND hwnd = CreateWindowEx(0, "Blitz Runtime Class", " ", WS_CAPTION, 0, 0, 0, 0, 0, 0, hinst, 0);
 	UpdateWindow(hwnd);
 
 	runtime = new gxRuntime(hinst, cmd_line, hwnd);
@@ -1173,6 +1173,8 @@ gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) 
 				int cx = (GetSystemMetrics(SM_CXSCREEN) - w) / 2;
 				int cy = (GetSystemMetrics(SM_CYSCREEN) - h) / 2;
 				MoveWindow(hwnd, cx, cy, w + tw, h + th, true);
+				ShowWindow(hwnd, SW_HIDE);
+				ShowWindow(hwnd, SW_SHOW);
 			}
 		}
 		else {
