@@ -3,6 +3,7 @@
 // ASCII
 
 static constexpr const char* array_bounds_ex = "Blitz array index out of bounds.";
+static constexpr const wchar_t* array_bounds_ex_w = L"Blitz array index out of bounds.";
 static constexpr const char* null_obj_ex = "Object does not exist!";
 static constexpr const char* bad_data_type = "Bad data type! Type is not a float, string or an integer.";
 static constexpr const char* out_of_data = "Out of data!";
@@ -87,6 +88,7 @@ static constexpr const char* cant_find_symbol = "Can't find symbol: {0}";
 static constexpr const char* unknown_exception_thrown = "Unknown/non-standard exception thrown!";
 static constexpr const char* startup_error = "Startup Error: {0}";
 static constexpr const char* array_index_out_of_bounds = "Array index out of bounds.";
+static constexpr const wchar_t* array_index_out_of_bounds_w = L"Array index out of bounds.";
 static constexpr const char* unable_start_program = "Unable to start program! A required module could not be started.";
 static constexpr const char* expect_identifier = "expecting identifier after \".\"";
 static constexpr const char* expect_string_afrer_directive = "expecting string after lib directive";
