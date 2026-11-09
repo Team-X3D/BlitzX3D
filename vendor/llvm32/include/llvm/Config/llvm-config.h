@@ -1,0 +1,15 @@
+#ifndef LLVM_CONFIG_H
+#define LLVM_CONFIG_H
+
+#define LLVM_VERSION_MAJOR 21
+#define LLVM_VERSION_MINOR 1
+#define LLVM_VERSION_PATCH 8
+#define LLVM_VERSION_SUFFIX ""
+#define LLVM_VERSION_STRING "21.1.8"
+
+#define LLVM_ENABLE_THREADS 1
+#define LLVM_ENABLE_LLVM_C_EXPORT_ANNOTATIONS 1
+#define LLVM_DEFAULT_TARGET_TRIPLE "i686-pc-windows-msvc"
+#define LLVM_HOST_TRIPLE "i686-pc-windows-msvc"
+
+#endif
