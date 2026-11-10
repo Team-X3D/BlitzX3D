@@ -22,5 +22,9 @@ _release/*.ttf
 */objs/*
 *.zip
 temp
-llvm
+/llvm
 blitzide_imgui/bin
+vendor/llvm32/bin/
+vendor/llvm32/lib/
+vendor/d3dx9/
+_release_package/

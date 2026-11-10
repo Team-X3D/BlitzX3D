@@ -26,9 +26,20 @@ static DWORD WINAPI dbgCmdThreadFunc(LPVOID param) {
 static std::string dllDir() {
 	HMODULE h = GetModuleHandleA("debugger_imgui.dll");
 	if (!h) h = GetModuleHandleA(NULL);
-	char buf[MAX_PATH];
-	if (!GetModuleFileNameA(h, buf, MAX_PATH)) return "";
-	std::string p(buf);
+	std::string p(MAX_PATH, '\0');
+	for (;;) {
+		DWORD n = GetModuleFileNameA(h, p.data(), (DWORD)p.size());
+		if (!n) return "";
+		if (n < p.size()) {
+			p.resize(n);
+			break;
+		}
+		if (p.size() >= 32768) {
+			p.resize(32767);
+			break;
+		}
+		p.resize(p.size() * 2);
+	}
 	size_t s = p.find_last_of("\\/");
 	return s == std::string::npos ? "" : p.substr(0, s);
 }

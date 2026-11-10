@@ -79,6 +79,7 @@ void IdentVarNode::semant(Environ* e) {
 		sem_decl = e->decls->insertDecl(ident, t, DECL_LOCAL);
 	}
 	sem_type = sem_decl->type;
+	if (sem_decl) ++sem_decl->useCount;
 }
 
 /////////////////
@@ -106,11 +107,8 @@ TNode* ArrayVarNode::translate(Codegen* g) {
 			TNode* s = mem(add(global("_a" + ident), iconst((k - 1) * 4 + ps + 8)));
 			e = add(t, mul(e, s));
 		}
-		if(g->debug) {
-			TNode* s = mem(add(global("_a" + ident), iconst(k * 4 + ps + 8)));
-			t = jumpge(e, s, "__bbArrayBoundsEx");
-		}
-		else t = e;
+		TNode* s = mem(add(global("_a" + ident), iconst(k * 4 + ps + 8)));
+		t = jumpge(e, s, "__bbArrayBoundsEx");
 	}
 	TNode* base = mem(global("_a" + ident));
 	base->vkind = VK_PTR;
@@ -151,7 +149,7 @@ void VectorVarNode::semant(Environ* e) {
 	exprs->castTo(Type::int_type, e);
 	for(int k = 0; k < exprs->size(); ++k) {
 		if(ConstNode* t = exprs->exprs[k]->constNode()) {
-			if(t->intValue() >= vec_type->sizes[k]) {
+			if(t->intValue() < 0 || t->intValue() >= vec_type->sizes[k]) {
 				ex(MultiLang::blitz_array_subscript_out_of_range);
 			}
 		}
@@ -170,9 +168,7 @@ TNode* VectorVarNode::translate(Codegen* g) {
 		}
 		else {
 			p = e->translate(g);
-			if(g->debug) {
-				p = jumpge(p, iconst(vec_type->sizes[k]), "__bbVecBoundsEx");
-			}
+			p = jumpge(p, iconst(vec_type->sizes[k]), "__bbVecBoundsEx");
 			p = mul(p, iconst(sz));
 		}
 		sz = sz * vec_type->sizes[k];

@@ -19,6 +19,8 @@
 #if !defined(_WIN32)
 #include <unistd.h>
 #include <sys/wait.h>
+#else
+#include <windows.h>
 #endif
 
 #include <cstdio>
@@ -46,6 +48,21 @@ static bool startsWithWord(const std::string& s, const std::string& w) {
 	if (s.compare(0, w.size(), w) != 0) return false;
 	if (s.size() == w.size()) return true;
 	return std::isspace((unsigned char)s[w.size()]) != 0;
+}
+
+static bool isWarningDiagnosticLine(const std::string& line) {
+	if (line.empty() || line[0] != '"') return false;
+	size_t n = line.find('"', 1);
+	if (n == std::string::npos) return false;
+	return line.find(":Warning: ", n + 2) != std::string::npos;
+}
+
+static bool isWarningSummaryLine(const std::string& line) {
+	size_t p = 0;
+	while (p < line.size() && std::isdigit((unsigned char)line[p])) ++p;
+	if (p == 0 || p >= line.size() || line[p] != ' ') return false;
+	std::string rest = line.substr(p + 1);
+	return rest == "warning." || rest == "warnings.";
 }
 
 static void parseBlitzDecl(const std::string& text, std::set<std::string>& names) {
@@ -469,12 +486,13 @@ void App::frame() {
 	drawDiskPrompt();
 
 	drawExitPrompt();
+	drawClosePrompt();
 
 	if (aboutOpen) {
 		ImGui::Begin("About BlitzX3D", &aboutOpen);
 		ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 		ImGui::Text("BlitzX3D IDE");
-		ImGui::Text("Version V1.7.0");
+		ImGui::Text("Version V1.7.2");
 		ImGui::Separator();
 		ImGui::Text("blitzpath: %s", prefs.homeDir.c_str());
 		ImGui::End();
@@ -509,7 +527,7 @@ void App::menuBar() {
 		if (ImGui::MenuItem("Open...", "Ctrl+O")) fileOpen();
 		ImGui::Separator();
 		if (ImGui::MenuItem("Close", "Ctrl+W")) if (currentIndex >= 0) fileClose(currentIndex);
-		if (ImGui::MenuItem("Close All")) while (!docs.empty()) fileClose((int)docs.size() - 1);
+		if (ImGui::MenuItem("Close All")) fileCloseAll();
 		ImGui::Separator();
 		if (ImGui::MenuItem("Save", "Ctrl+S")) if (currentIndex >= 0) fileSave(currentIndex);
 		if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S")) if (currentIndex >= 0) fileSaveAs(currentIndex);
@@ -588,6 +606,7 @@ void App::menuBar() {
 			if (ImGui::MenuItem("Very quiet", nullptr, &prefs.prg_veryquiet) && prefs.prg_veryquiet)
 				prefs.prg_quiet = true;
 			ImGui::MenuItem("Dump keys", nullptr, &prefs.prg_dumpkeys);
+			ImGui::MenuItem("Warnings", nullptr, &prefs.prg_warnings);
 			ImGui::EndMenu();
 		}
 		if (optsChanged) persistOpts();
@@ -1041,27 +1060,91 @@ void App::drawOutput() {
 	ImGui::SetNextWindowSize(ImVec2(900, 220), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Output");
 	constrainFloatingWindow();
-	{
-		std::lock_guard<std::mutex> lock(outputMutex);
-		outputView = output;
-	}
-	if (outputView.empty())
-		outputView.push_back('\n');
 
-	ImGui::PushStyleColor(ImGuiCol_Text, compileOK ? IM_COL32(200, 255, 200, 255) : IM_COL32(255, 200, 200, 255));
-	ImGui::InputTextMultiline("##output", (char*)outputView.c_str(), (int)outputView.capacity() + 1,
-		ImVec2(ImGui::GetContentRegionAvail().x, -ImGui::GetFrameHeightWithSpacing() - 4),
-		ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_NoUndoRedo | ImGuiInputTextFlags_CallbackResize,
-		OutputTextResizeCallback, (void*)&outputView);
-	ImGui::PopStyleColor();
+	if (ImGui::BeginTabBar("##output_tabs")) {
+		if (ImGui::BeginTabItem("Output")) {
+			{
+				std::lock_guard<std::mutex> lock(outputMutex);
+				outputView = output;
+			}
+			if (outputView.empty())
+				outputView.push_back('\n');
 
-	if (ImGui::Button(compiling ? "Compiling..." : "Clear")) {
-		if (!compiling) {
-			std::lock_guard<std::mutex> lock(outputMutex);
-			output.clear();
+			ImGui::PushStyleColor(ImGuiCol_Text, compileOK ? IM_COL32(200, 255, 200, 255) : IM_COL32(255, 200, 200, 255));
+			ImGui::InputTextMultiline("##output", (char*)outputView.c_str(), (int)outputView.capacity() + 1,
+				ImVec2(ImGui::GetContentRegionAvail().x, -ImGui::GetFrameHeightWithSpacing() - 4),
+				ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_NoUndoRedo | ImGuiInputTextFlags_CallbackResize,
+				OutputTextResizeCallback, (void*)&outputView);
+			ImGui::PopStyleColor();
+
+			if (ImGui::Button(compiling ? "Compiling..." : "Clear")) {
+				if (!compiling) {
+					std::lock_guard<std::mutex> lock(outputMutex);
+					output.clear();
+					problems.clear();
+				}
+			}
+			ImGui::EndTabItem();
 		}
+
+		int problemCount = 0;
+		{
+			std::lock_guard<std::mutex> lock(outputMutex);
+			problemCount = (int)problems.size();
+		}
+		char problemsLabel[64];
+		snprintf(problemsLabel, sizeof(problemsLabel), "Problems (%d)###problems", problemCount);
+		if (ImGui::BeginTabItem(problemsLabel)) {
+			drawProblems();
+			ImGui::EndTabItem();
+		}
+		ImGui::EndTabBar();
 	}
 	ImGui::End();
+}
+
+void App::drawProblems() {
+	std::vector<Problem> items;
+	{
+		std::lock_guard<std::mutex> lock(outputMutex);
+		items = problems;
+	}
+
+	if (items.empty()) {
+		ImGui::Spacing();
+		ImGui::TextDisabled("No problems found, compile to collect errors and warnings!");
+		return;
+	}
+
+	if (ImGui::Button("Clear")) {
+		std::lock_guard<std::mutex> lock(outputMutex);
+		problems.clear();
+	}
+	ImGui::SameLine();
+	ImGui::TextDisabled("%d problem%s", (int)items.size(), items.size() == 1 ? "" : "s");
+	ImGui::Separator();
+
+	ImGui::BeginChild("##problem_list", ImVec2(0, 0), false);
+	for (int i = 0; i < (int)items.size(); ++i) {
+		const Problem& p = items[i];
+		std::string name = p.file;
+		try { name = fs::path(p.file).filename().string(); } catch (...) {}
+		std::string label = std::string(p.warning ? "[warning] " : "[error] ") + name + ":" + std::to_string(p.row) + "  " + p.message;
+		ImGui::PushID(i);
+		ImGui::PushStyleColor(ImGuiCol_Text, p.warning ? IM_COL32(240, 200, 90, 255) : IM_COL32(255, 130, 130, 255));
+		if (ImGui::Selectable(label.c_str())) {
+			std::lock_guard<std::mutex> lock(outputMutex);
+			pendingGotoPath = p.file;
+			pendingGotoRow = p.row;
+			pendingGotoCol = p.col;
+			pendingGoto = true;
+		}
+		ImGui::PopStyleColor();
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("%s:%d:%d\n%s", p.file.c_str(), p.row, p.col, p.message.c_str());
+		ImGui::PopID();
+	}
+	ImGui::EndChild();
 }
 
 int App::InputTextFindCallback(ImGuiInputTextCallbackData* data) {
@@ -1597,10 +1680,51 @@ bool App::fileSave(int idx) {
 	Doc* d = doc(idx);
 	if (!d) return false;
 	if (d->path.empty()) return fileSaveAs(idx);
-	std::ofstream out(d->path, std::ios::binary | std::ios::trunc);
-	if (!out.good()) return false;
-	out << d->editor.GetText();
-	out.close();
+
+	if (!prefs.noBackup && prefs.edit_backup > 0) {
+		std::error_code ec;
+		if (fs::is_regular_file(d->path, ec)) {
+			for (int k = prefs.edit_backup; k > 1; --k) {
+				std::string from = d->path + "_bak" + std::to_string(k - 1);
+				std::string to = d->path + "_bak" + std::to_string(k);
+				if (fs::exists(from, ec))
+					fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+			}
+			fs::copy_file(d->path, d->path + "_bak1", fs::copy_options::overwrite_existing, ec);
+		}
+	}
+
+	std::string tmp = d->path + ".tmp";
+#if defined(_WIN32)
+	tmp += std::to_string((unsigned long long)GetCurrentProcessId());
+#else
+	tmp += std::to_string((unsigned long long)getpid());
+#endif
+	std::string text = d->editor.GetText();
+	bool wrote = false;
+	{
+		std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+		if (out.good()) {
+			out.write(text.data(), (std::streamsize)text.size());
+			out.flush();
+			wrote = out.good();
+		}
+	}
+	bool replaced = false;
+	if (wrote) {
+#if defined(_WIN32)
+		replaced = MoveFileExA(tmp.c_str(), d->path.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+		replaced = std::rename(tmp.c_str(), d->path.c_str()) == 0;
+#endif
+	}
+	if (!replaced) {
+		std::error_code ec;
+		fs::remove(tmp, ec);
+		return false;
+	}
+
 	d->modified = false;
 	std::error_code ec;
 	d->lastWrite = fs::last_write_time(d->path, ec);
@@ -1629,10 +1753,42 @@ bool App::fileSaveAll() {
 	return ok;
 }
 void App::fileClose(int idx) {
-	if (docs[idx].modified) {
-		if (!docs[idx].path.empty()) fileSave(idx);
+	if (showClosePrompt) return;
+	if (idx < 0 || idx >= (int)docs.size()) return;
+
+	if (docs[idx].modified && docs[idx].path.empty()) {
+		closePromptIndex = idx;
+		showClosePrompt = true;
+		return;
 	}
-	std::string closedPath = docs[idx].path;
+	if (docs[idx].modified && !fileSave(idx)) {
+		closeAllPending = false;
+		return;
+	}
+	closeDocNow(idx);
+}
+
+void App::fileCloseAll() {
+	if (showClosePrompt) return;
+	closeAllPending = true;
+	for (int i = (int)docs.size() - 1; i >= 0; --i) {
+		if (i >= (int)docs.size()) continue;
+		if (docs[i].modified && docs[i].path.empty()) {
+			closePromptIndex = i;
+			showClosePrompt = true;
+			return;
+		}
+		if (docs[i].modified && !fileSave(i)) {
+			closeAllPending = false;
+			return;
+		}
+		closeDocNow(i);
+	}
+	closeAllPending = false;
+}
+
+void App::closeDocNow(int idx) {
+	if (idx < 0 || idx >= (int)docs.size()) return;
 	docs.erase(docs.begin() + idx);
 	if (currentIndex >= (int)docs.size()) currentIndex = (int)docs.size() - 1;
 	if (docs.empty()) currentIndex = -1;
@@ -1710,6 +1866,71 @@ void App::drawExitPrompt() {
 	}
 }
 
+void App::drawClosePrompt() {
+	if (!showClosePrompt) return;
+	if (closePromptIndex < 0 || closePromptIndex >= (int)docs.size()) {
+		showClosePrompt = false;
+		closePromptIndex = -1;
+		closeAllPending = false;
+		return;
+	}
+
+	const std::string name = docs[closePromptIndex].name;
+	const bool continueAll = closeAllPending;
+	bool closed = false;
+	bool cancel = false;
+
+	ImGui::SetNextWindowSize(ImVec2(460, 0), ImGuiCond_Always);
+	if (!ImGui::IsPopupOpen("Unsaved Changes##close"))
+		ImGui::OpenPopup("Unsaved Changes##close");
+	if (ImGui::BeginPopupModal("Unsaved Changes##close", nullptr,
+		ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize)) {
+		ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+		ImGui::TextWrapped("Save changes to \"%s\" before closing?", name.c_str());
+		ImGui::Spacing();
+
+		float width = ImGui::GetContentRegionAvail().x;
+		float btn = (width - ImGui::GetStyle().ItemSpacing.x * 2) / 3.0f;
+		if (ImGui::Button("Save", ImVec2(btn, 0))) {
+			if (fileSaveAs(closePromptIndex)) closed = true;
+			else cancel = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Discard", ImVec2(btn, 0))) closed = true;
+		ImGui::SameLine();
+		if (ImGui::Button("Cancel", ImVec2(btn, 0))) cancel = true;
+
+		if (closed || cancel) {
+			showClosePrompt = false;
+			closeAllPending = false;
+		}
+		ImGui::EndPopup();
+	}
+
+	if (closed) {
+		const int idx = closePromptIndex;
+		closePromptIndex = -1;
+		closeDocNow(idx);
+		if (continueAll) fileCloseAll();
+	}
+	else if (cancel) {
+		closePromptIndex = -1;
+	}
+}
+
+bool App::reloadDocFromDisk(Doc& d) {
+	std::ifstream in(d.path, std::ios::binary);
+	if (!in.good()) return false;
+
+	std::stringstream ss;
+	ss << in.rdbuf();
+	d.editor.SetText(ss.str());
+	d.editor.ClearTextChanged();
+	d.modified = false;
+	rebuildFuncList(d);
+	return true;
+}
+
 void App::checkDiskChanges(bool force) {
 	unsigned long long now = SDL_GetTicks();
 	if (!force && now - lastDiskCheck < 1000) return;
@@ -1720,8 +1941,18 @@ void App::checkDiskChanges(bool force) {
 		std::error_code ec;
 		auto t = fs::last_write_time(d.path, ec);
 		if (ec) continue;
-		if (d.lastWrite != fs::file_time_type{} && t != d.lastWrite)
-			d.externalChanged = true;
+		if (d.lastWrite != fs::file_time_type{} && t != d.lastWrite) {
+			if (prefs.disk_change_action == 1) {
+				if (!reloadDocFromDisk(d)) { d.externalChanged = true; continue; }
+				d.lastWrite = t;
+			}
+			else if (prefs.disk_change_action == 2) {
+				d.lastWrite = t;
+			}
+			else {
+				d.externalChanged = true;
+			}
+		}
 	}
 
 	if (diskPromptPath.empty()) {
@@ -1760,15 +1991,7 @@ void App::drawDiskPrompt() {
 		float width = ImGui::GetContentRegionAvail().x;
 		float btn = (width - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
 		if (ImGui::Button("Load from Disk", ImVec2(btn, 0))) {
-			std::ifstream in(d->path, std::ios::binary);
-			if (in.good()) {
-				std::stringstream ss;
-				ss << in.rdbuf();
-				d->editor.SetText(ss.str());
-				d->editor.ClearTextChanged();
-				d->modified = false;
-				rebuildFuncList(*d);
-			}
+			reloadDocFromDisk(*d);
 			std::error_code ec;
 			d->lastWrite = fs::last_write_time(d->path, ec);
 			d->externalChanged = false;
@@ -2117,9 +2340,14 @@ void App::drawStylize() {
 				}
 				if (roundingDone || alphaDone) prefs.close();
 				ImGui::Separator();
+				const char* const diskChoices[] = { "Ask", "Always load", "Always keep" };
+				if (ImGui::Combo("File changed on disk", &prefs.disk_change_action, diskChoices, 3))
+					prefs.close();
+				ImGui::Separator();
 				if (ImGui::Button("Reset to defaults")) {
 					prefs.ui_rounding = 0;
 					prefs.ui_alpha = 1.0f;
+					prefs.disk_change_action = 0;
 					applyCurrentTheme();
 					prefs.close();
 				}
@@ -2235,6 +2463,11 @@ Prefs::CompileOptions App::effectiveCompileOptions() {
 void App::build(bool exec, bool publish) {
 	if (compiling) return;
 	compiling = true;
+	{
+		std::lock_guard<std::mutex> lock(outputMutex);
+		problems.clear();
+		compileFirstError = true;
+	}
 	Doc* e = currentDoc();
 	if (!e) { compiling = false; return; }
 
@@ -2265,6 +2498,7 @@ void App::build(bool exec, bool publish) {
 	if (!publish && !exec) args.push_back("-c");
 	if (prefs.prg_debug) args.push_back("-d");
 	if (prefs.prg_dumpkeys) args.push_back("-k");
+	if (!prefs.prg_warnings) args.push_back("-nowarn");
 	if (prefs.prg_nolaa) args.push_back("-nlaa");
 	if (prefs.prg_llvm) args.push_back("-llvm");
 	if (co.noautodecl) args.push_back("-noautodecl");
@@ -2288,9 +2522,6 @@ void App::build(bool exec, bool publish) {
 		}
 		out << e->editor.GetText();
 		out.close();
-		e->path = src;
-		e->name = "tmp.bb";
-		rebuildFuncList(*e);
 	}
 	else {
 		prefs.prg_lastbuild = src_file;
@@ -2332,22 +2563,26 @@ void App::compile(const std::vector<std::string> args) {
 					std::string line = output.substr(consumed, end - consumed);
 					consumed = end + 1;
 					if (!line.empty() && line.back() == '\r') line.pop_back();
-					ready += line;
-					ready += '\n';
+					if (!isWarningDiagnosticLine(line) && !isWarningSummaryLine(line)) {
+						ready += line;
+						ready += '\n';
+					}
 					newLines.push_back(std::move(line));
 				}
 				if (progress.done && consumed < output.size()) {
 					std::string line = output.substr(consumed);
 					consumed = output.size();
 					if (!line.empty() && line.back() == '\r') line.pop_back();
-					ready += line;
-					ready += '\n';
+					if (!isWarningDiagnosticLine(line) && !isWarningSummaryLine(line)) {
+						ready += line;
+						ready += '\n';
+					}
 					newLines.push_back(std::move(line));
 				}
 				done = progress.done;
 			}
-			if (!ready.empty()) {
-				{
+			if (!newLines.empty()) {
+				if (!ready.empty()) {
 					std::lock_guard<std::mutex> lock(outputMutex);
 					this->output += ready;
 				}
@@ -2387,9 +2622,27 @@ void App::parseOutputLine(const std::string& line) {
 	if (n + 1 >= line.size() || line[n + 1] != ':') return;
 	std::string file = line.substr(1, n - 1);
 	std::string rest = line.substr(n + 2);
-	int row1 = 0, col1 = 0, row2 = 0, col2 = 0;
-	if (sscanf(rest.c_str(), "%d:%d:%d:%d", &row1, &col1, &row2, &col2) == 4) {
-		std::lock_guard<std::mutex> lock(outputMutex);
+	int row1 = 0, col1 = 0, row2 = 0, col2 = 0, consumed = 0;
+	if (sscanf(rest.c_str(), "%d:%d:%d:%d%n", &row1, &col1, &row2, &col2, &consumed) != 4) return;
+
+	std::string message = consumed > 0 ? rest.substr(consumed) : std::string();
+	if (!message.empty() && message[0] == ':') message.erase(0, 1);
+	bool warning = message.rfind("Warning: ", 0) == 0 || message.rfind("warning: ", 0) == 0;
+	if (warning) message = message.substr(9);
+
+	std::lock_guard<std::mutex> lock(outputMutex);
+	Problem p;
+	p.file = file;
+	p.row = row1;
+	p.col = col1;
+	p.endRow = row2;
+	p.endCol = col2;
+	p.message = message;
+	p.warning = warning;
+	problems.push_back(p);
+
+	if (!warning && compileFirstError) {
+		compileFirstError = false;
 		pendingGotoPath = file;
 		pendingGotoRow = row1;
 		pendingGotoCol = col1;

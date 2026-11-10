@@ -3,6 +3,7 @@
 // GB 2312
 
 static constexpr const char* array_bounds_ex = "Blitz数组索引越界";
+static constexpr const wchar_t* array_bounds_ex_w = L"Blitz数组索引越界";
 static constexpr const char* null_obj_ex = "对象不存在";
 static constexpr const char* bad_data_type = "错误的数据类型！数据类型不应是浮点值、字符串或整型";
 static constexpr const char* out_of_data = "数据不足";
@@ -87,6 +88,7 @@ static constexpr const char* cant_find_symbol = "找不到符号：{0}";
 static constexpr const char* unknown_exception_thrown = "未知/非标准异常抛出！";
 static constexpr const char* startup_error = "启动错误：{0}";
 static constexpr const char* array_index_out_of_bounds = "数组索引超出范围";
+static constexpr const wchar_t* array_index_out_of_bounds_w = L"数组索引超出范围";
 static constexpr const char* unable_start_program = "无法启动程序！无法启动所需模块";
 static constexpr const char* reserved_pseudo_namespace = "保留的伪命名空间";
 static constexpr const char* expect_identifier = "\".\"后应为标识符";

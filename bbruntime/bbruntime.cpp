@@ -6,6 +6,7 @@
 #include "../MultiLang/MultiLang.h"
 #include "../debugger/debugger.h"
 #include <codecvt>
+#include <cstdlib>
 
 std::string* ErrorMessagePool::memoryAccessViolation = 0;
 int ErrorMessagePool::size = 0;
@@ -138,15 +139,23 @@ BBStr* bbSystemProperty(BBStr* p) {
 }
 
 BBStr* bbGetEnv(BBStr* env_var) {
-    char* p = getenv(env_var->c_str());
-    BBStr* val = new BBStr(p ? p : "");
+    std::wstring name = UTF8::convertToUtf16(*env_var);
     delete env_var;
-    return val;
+
+    size_t len = 0;
+    _wgetenv_s(&len, nullptr, 0, name.c_str());
+    if (!len) return new BBStr("");
+
+    std::wstring value(len, L'\0');
+    _wgetenv_s(&len, value.data(), len, name.c_str());
+    if (len) value.resize(len - 1);
+    return new BBStr(UTF8::convertFromUtf16(value));
 }
 
 void bbSetEnv(BBStr* env_var, BBStr* val) {
-    std::string t = *env_var + "=" + *val;
-    putenv(t.c_str());
+    std::wstring name = UTF8::convertToUtf16(*env_var);
+    std::wstring value = UTF8::convertToUtf16(*val);
+    _wputenv_s(name.c_str(), value.c_str());
     delete env_var;
     delete val;
 }

@@ -1492,6 +1492,14 @@ void TextEditor::Render()
 				}
 			}
 
+			if (mExecutionLine == lineNo)
+			{
+				auto end = ImVec2(lineStartScreenPos.x + contentSize.x + 2.0f * scrollX, lineStartScreenPos.y + mCharAdvance.y);
+				drawList->AddRectFilled(start, end, mPalette[(int)PaletteIndex::ExecutionLineFill]);
+				drawList->AddRectFilled(ImVec2(lineStartScreenPos.x + 2.0f, lineStartScreenPos.y), ImVec2(lineStartScreenPos.x + 5.0f, lineStartScreenPos.y + mCharAdvance.y), mPalette[(int)PaletteIndex::ExecutionLineEdge]);
+				drawList->AddRect(start, end, mPalette[(int)PaletteIndex::ExecutionLineEdge], 0.0f, 0, 1.0f);
+			}
+
 			// Draw line number (right aligned)
 			snprintf(buf, 16, "%d  ", lineNo + 1);
 
@@ -2921,6 +2929,8 @@ const TextEditor::Palette & TextEditor::GetDarkPalette()
 			0x40000000, // Current line fill
 			0x40808080, // Current line fill (inactive)
 			0x40a0a0a0, // Current line edge
+			0x40ff8000, // Execution line fill
+			0xffff8000 // Execution line edge
 		} };
 	return p;
 }
@@ -2951,6 +2961,8 @@ const TextEditor::Palette & TextEditor::GetLightPalette()
 			0x40000000, // Current line fill
 			0x40808080, // Current line fill (inactive)
 			0x40000000, // Current line edge
+			0x40ff8000, // Execution line fill
+			0xffff8000 // Execution line edge
 		} };
 	return p;
 }
@@ -2981,6 +2993,8 @@ const TextEditor::Palette & TextEditor::GetRetroBluePalette()
 			0x40000000, // Current line fill
 			0x40808080, // Current line fill (inactive)
 			0x40000000, // Current line edge
+			0x40ffff00, // Execution line fill
+			0xffffff00, // Execution line edge
 		} };
 	return p;
 }

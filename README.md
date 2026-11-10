@@ -34,11 +34,12 @@ Need help, have a question, or found a problem?
 - "Faster than old Blitz3D" 
 
 ### Used in
-* [**SCP – Containment Breach Multiplayer v1.3R**](https://store.steampowered.com/app/1782380/SCP_Containment_Breach_Multiplayer/)
+* **SCP – Containment Breach Ultimate Edition Reborn Multiplayer**
 * [**SCP – Containment Breach Ultimate Edition Reborn 1.6**](https://github.com/Jabka666/scpcb-ue-my/tree/1.5.x)
 * [**SCP – Terror Hunt**](https://www.moddb.com/mods/scp-terror-hunt-mod)
 * [**SCP – Janitorial Work**](https://www.moddb.com/mods/scp-janitorial-work)
 * [**SCP – Containment Breach Amended**](https://www.moddb.com/mods/scp-amended1)
+* [**SCP – Containment Breach Inclemency**](https://www.moddb.com/mods/cb-inclemency)
 * [**SCP – Treachery**](https://www.moddb.com/mods/treachery)
 * [**SCP – Chaos Containment**](https://www.moddb.com/mods/scp-chaos-containment)
 * [**YOU ARE NOT IMPORTANT**](https://www.moddb.com/mods/you-are-not-important)
@@ -70,11 +71,6 @@ the AGPL-3.0 License (see LICENSE).
 
 Contributions are welcome, but please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
 AI-generated PRs, issues, and descriptions are not accepted.
-
-> [!NOTE]
-> This repository uses an AI code review bot on some pull requests. Its
-> comments are advisory, and they do not handle the merging.
-> See [CONTRIBUTING.md](CONTRIBUTING.md#the-automated-review).
 
 ---
 

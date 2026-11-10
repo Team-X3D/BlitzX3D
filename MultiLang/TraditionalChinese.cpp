@@ -3,6 +3,7 @@
 // Big5
 
 static constexpr const char* array_bounds_ex = "Blitz陣列索引越界";
+static constexpr const wchar_t* array_bounds_ex_w = L"Blitz陣列索引越界";
 static constexpr const char* null_obj_ex = "物件不存在";
 static constexpr const char* bad_data_type = "錯誤的資料型別！資料型別不應是浮點值、字串或整型";
 static constexpr const char* out_of_data = "資料不足";
@@ -87,6 +88,7 @@ static constexpr const char* cant_find_symbol = "找不到符號：{0}";
 static constexpr const char* unknown_exception_thrown = "未知/非標準異常丟擲！";
 static constexpr const char* startup_error = "啟動錯誤：{0}";
 static constexpr const char* array_index_out_of_bounds = "陣列索引超出範圍";
+static constexpr const wchar_t* array_index_out_of_bounds_w = L"陣列索引超出範圍";
 static constexpr const char* unable_start_program = "無法啟動程式！無法啟動所需模組";
 static constexpr const char* reserved_pseudo_namespace = "保留的偽名稱空間";
 static constexpr const char* expect_identifier = "\".\"後應為識別符號";

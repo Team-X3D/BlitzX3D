@@ -51,9 +51,13 @@ bool gxFileSystem::setCurrentDir(const std::string& dir) {
 }
 
 std::string gxFileSystem::getCurrentDir()const {
-	char buff[MAX_PATH];
-	if(!GetCurrentDirectory(MAX_PATH, buff)) return "";
-	std::string t = buff; if(t.size() && t[t.size() - 1] != '\\') t += '\\';
+	DWORD size = GetCurrentDirectoryA(0, 0);
+	if(!size) return "";
+	std::string t(size, '\0');
+	DWORD n = GetCurrentDirectoryA(size, t.data());
+	if(!n || n >= size) return "";
+	t.resize(n);
+	if(t.size() && t[t.size() - 1] != '\\') t += '\\';
 	return t;
 }
 

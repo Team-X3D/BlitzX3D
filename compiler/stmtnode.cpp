@@ -27,15 +27,28 @@ void StmtSeqNode::reset(const std::string& file, const std::string& lab) {
 // Statement Sequence //
 ////////////////////////
 void StmtSeqNode::semant(Environ* e) {
+	std::string prevFile = Ex_currentFile;
+	Ex_currentFile = file;
 	for(int k = 0; k < stmts.size(); ++k) {
+		bool analyzed = true;
 		try { stmts[k]->semant(e); }
 		catch(Ex& x) {
+			analyzed = false;
 			Ex_fill(x, stmts[k]->pos, file);
 			if (!Ex_collecting || !Ex_errors) throw;
 			Ex_errors->push_back(x);
 			if ((int)Ex_errors->size() >= Ex_MAX_ERRORS) throw;
 		}
+		if (analyzed && stmts[k]->alwaysTerminates() && k + 1 < (int)stmts.size()) {
+			bool hasLabel = false;
+			for (int j = k + 1; j < (int)stmts.size(); ++j) {
+				if (stmts[j]->isLabel()) { hasLabel = true; break; }
+			}
+			if (!hasLabel)
+				Ex_warn("Unreachable code", stmts[k + 1]->pos);
+		}
 	}
+	Ex_currentFile = prevFile;
 }
 
 void StmtSeqNode::translate(Codegen* g) {
@@ -152,6 +165,8 @@ void AssNode::semant(Environ* e) {
 	if(var->sem_type->constType()) ex(MultiLang::constants_can_not_assigned_to);
 	if(var->sem_type->vectorType()) ex(MultiLang::blitz_arrays_can_not_assigned_to);
 	expr = expr->semant(e);
+	if (!expr->constNode())
+		warnImplicitConversion(expr->sem_type, var->sem_type, pos);
 	expr = expr->castTo(var->sem_type, e);
 }
 
@@ -448,6 +463,7 @@ void ReturnNode::semant(Environ* e) {
 	if(e->level <= 0 && expr) {
 		ex(MultiLang::main_cannot_return_value);
 	}
+	sem_terminates = e->level > 0;
 	if(e->level > 0) {
 		if(!expr) {
 			if(e->returnType == Type::float_type) {
@@ -464,6 +480,8 @@ void ReturnNode::semant(Environ* e) {
 			}
 		}
 		expr = expr->semant(e);
+		if (!expr->constNode())
+			warnImplicitConversion(expr->sem_type, e->returnType, pos);
 		expr = expr->castTo(e->returnType, e);
 		returnLabel = e->funcLabel + "_leave";
 	}

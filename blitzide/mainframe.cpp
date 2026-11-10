@@ -332,20 +332,23 @@ int MainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct) {
 }
 
 void MainFrame::OnDropFiles(HDROP hDropInfo) {
-	TCHAR szFileName[MAX_PATH + 1] = {};
-	UINT nFiles = DragQueryFile(hDropInfo, 0xFFFFFFFF, szFileName, MAX_PATH);
-	for (int i = 0; i < nFiles; ++i)
+	UINT nFiles = DragQueryFile(hDropInfo, 0xFFFFFFFF, NULL, 0);
+	for (UINT i = 0; i < nFiles; ++i)
 	{
-		DragQueryFile(hDropInfo, i, szFileName, MAX_PATH);
-		std::filesystem::path extension = std::filesystem::path(szFileName).extension();
+		UINT len = DragQueryFile(hDropInfo, i, NULL, 0);
+		if (!len) continue;
+		std::vector<TCHAR> buf(len + 1, 0);
+		if (DragQueryFile(hDropInfo, i, buf.data(), len + 1) != len) continue;
+		std::string fileName(buf.data(), len);
+		std::filesystem::path extension = std::filesystem::path(fileName).extension();
 		if (extension == ".htm" || extension == ".html")
 		{
 			HtmlHelp* h = findHelp();
-			h->Navigate(szFileName);
+			h->Navigate(fileName.c_str());
 		} else if (extension == ".bb" || extension == ".txt")
-			open(szFileName);
+			open(fileName);
 		else
-			ShellExecute(nullptr, "open", szFileName, "", "", SW_SHOW);
+			ShellExecute(nullptr, "open", fileName.c_str(), "", "", SW_SHOW);
 	}
 }
 
@@ -537,8 +540,9 @@ bool MainFrame::open(const std::string& f) {
 	}
 	else
 	{
-		char buff[MAX_PATH], * p;
-		if (GetFullPathName(file.c_str(), MAX_PATH, buff, &p)) file = buff;
+		std::error_code ec;
+		std::filesystem::path abs = std::filesystem::absolute(file, ec);
+		if (!ec) file = abs.lexically_normal().string();
 		else file = f;
 	}
 

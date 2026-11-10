@@ -19,6 +19,7 @@ struct Prefs {
 	bool prg_quiet = true;
 	bool prg_veryquiet = false;
 	bool prg_dumpkeys = false;
+	bool prg_warnings = true;
 	std::string prg_lastbuild;
 	std::string cmd_line;
 
@@ -51,6 +52,7 @@ struct Prefs {
 	int edit_backup = 2;
 	bool edit_autocomplete = true;
 	bool noBackup = false;
+	int disk_change_action = 0; // 0 = ask 1 = always load 2 = always keep
 	std::string img_toolbar = "toolbar.bmp";
 
 	std::string theme = "Classic Dark";

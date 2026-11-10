@@ -542,6 +542,30 @@ static gxCanvas* tformCanvas(gxCanvas* c, float m[2][2], int x_handle, int y_han
     return t;
 }
 
+static void materializeTForm(bbImage* i)
+{
+    if (i->isTFormIdentity()) return;
+
+    float m[2][2] = {
+        { i->tform[0][0], i->tform[0][1] },
+        { i->tform[1][0], i->tform[1][1] }
+    };
+    float sx = i->drawScaleX, sy = i->drawScaleY;
+
+    const std::vector<gxCanvas*>& f = i->getFrames();
+    for (int k = 0; k < (int)f.size(); ++k)
+    {
+        gxCanvas* c = f[k];
+        int hx, hy; c->getHandle(&hx, &hy);
+        gxCanvas* t = tformCanvas(c, m, hx, hy);
+        i->replaceFrame(k, t);
+        t->backup();
+    }
+
+    i->drawScaleX = sx;
+    i->drawScaleY = sy;
+}
+
 static bool saveCanvas(gxCanvas* c, const std::string& f)
 {
     std::ofstream out(f.c_str(), std::ios::binary);
@@ -1333,9 +1357,15 @@ gxFont* bbLoadFont(BBStr* name, int height, bool bold, bool italic, bool underli
         delete name;
         return nullptr;
     }
-    gxFont* font = gx_graphics->loadFont(*name, height, bold, italic, underlined);
-    delete name;
-    return font;
+    try {
+        gxFont* font = gx_graphics->loadFont(*name, height, bold, italic, underlined);
+        delete name;
+        return font;
+    } catch (...) {
+        ErrorLog("LoadFont", MultiLang::font_not_exist);
+        delete name;
+        return nullptr;
+    }
 }
 
 void bbFreeFont(gxFont* f)
@@ -1873,6 +1903,7 @@ void bbMaskImage(bbImage* i, int r, int g, int b)
 void bbHandleImage(bbImage* i, int x, int y)
 {
     debugImage(i, "HandleImage");
+    materializeTForm(i);
     const std::vector<gxCanvas*>& f = i->getFrames();
     for (int k = 0; k < f.size(); ++k) f[k]->setHandle(x, y);
 }
@@ -1880,6 +1911,7 @@ void bbHandleImage(bbImage* i, int x, int y)
 void bbMidHandle(bbImage* i)
 {
     debugImage(i, "MidHandle");
+    materializeTForm(i);
     const std::vector<gxCanvas*>& f = i->getFrames();
     for (int k = 0; k < f.size(); ++k) f[k]->setHandle(f[k]->getWidth() / 2, f[k]->getHeight() / 2);
 }

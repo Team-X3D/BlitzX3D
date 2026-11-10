@@ -14,14 +14,6 @@ must be backed by a human who understands it
   can't explain it and defend it, don't submit it
 - **You must understand every line you submit.** "The AI wrote it" is not an
   acceptable answer to review questions
-
-## The Automated review
-
-This repository uses an AI code review bot on incoming PRs, via ([opencode-review](https://github.com/marketplace/actions/opencode-review))
-
-- The bot's comments are advisory and do not dictate merging
-- Add `/no-bot-review` to your PR description to opt out of automatic review
-- You can't invoke the bot yourself
   
 ## Contributions
 

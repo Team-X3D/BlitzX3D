@@ -151,8 +151,15 @@ void _bbVecFree(void* vec, BBVecType* type) {
 	bbFree(vec);
 }
 
+static void boundsError(const char* msg, const wchar_t* wmsg) {
+	if (debug) RTEX(msg);
+	bbruntime_panic(wmsg);
+	ExitProcess(-1);
+}
+
 void _bbVecBoundsEx(const char* function) {
-	ErrorLog(function, MultiLang::array_bounds_ex);
+	(void)function;
+	boundsError(MultiLang::array_bounds_ex, MultiLang::array_bounds_ex_w);
 }
 
 void _bbUndimArray(BBArray* array) {
@@ -192,7 +199,8 @@ void _bbDimArray(BBArray* array) {
 }
 
 void _bbArrayBoundsEx(const char* function) {
-	ErrorLog(function, MultiLang::array_index_out_of_bounds);
+	(void)function;
+	boundsError(MultiLang::array_index_out_of_bounds, MultiLang::array_index_out_of_bounds_w);
 }
 
 static void unlinkObj(BBObj* obj) {

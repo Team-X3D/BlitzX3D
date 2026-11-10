@@ -10,6 +10,9 @@ struct StmtNode : public Node {
 	StmtNode() :pos(-1) {}
 	void debug(int pos, Codegen* g);
 
+	virtual bool alwaysTerminates() const { return false; }
+	virtual bool isLabel() const { return false; }
+
 	virtual void semant(Environ* e) {}
 	virtual void translate(Codegen* g) {}
 };
@@ -82,6 +85,7 @@ struct LabelNode : public StmtNode {
 	std::string ident;
 	int data_sz;
 	LabelNode(const std::string& s, int sz) :ident(s), data_sz(sz) {}
+	bool isLabel() const override { return true; }
 	void semant(Environ* e);
 	void translate(Codegen* g);
 };
@@ -89,6 +93,7 @@ struct LabelNode : public StmtNode {
 struct GotoNode : public StmtNode {
 	std::string ident;
 	GotoNode(const std::string& s) :ident(s) {}
+	bool alwaysTerminates() const override { return true; }
 	void semant(Environ* e);
 	void translate(Codegen* g);
 };
@@ -111,12 +116,14 @@ struct IfNode : public StmtNode {
 
 struct ExitNode : public StmtNode {
 	std::string sem_brk;
+	bool alwaysTerminates() const override { return true; }
 	void semant(Environ* e);
 	void translate(Codegen* g);
 };
 
 struct ContinueNode : public StmtNode {
 	std::string sem_cont;
+	bool alwaysTerminates() const override { return true; }
 	void semant(Environ* e);
 	void translate(Codegen* g);
 };
@@ -159,8 +166,10 @@ struct ForEachNode : public StmtNode {
 struct ReturnNode : public StmtNode {
 	ExprNode* expr;
 	std::string returnLabel;
+	bool sem_terminates = false;
 	ReturnNode(ExprNode* e) :expr(e) {}
 	~ReturnNode() { delete expr; }
+	bool alwaysTerminates() const override { return sem_terminates; }
 	void semant(Environ* e);
 	void translate(Codegen* g);
 };

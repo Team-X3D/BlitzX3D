@@ -5,11 +5,23 @@
 #include "../procutil.h"
 
 static std::string getAppDir() {
-	char buffer[MAX_PATH];
-	std::string t = std::string(buffer, GetModuleFileName(NULL, buffer, MAX_PATH));
-	int n = t.find_last_of('\\');
-	if(n != std::string::npos) t = t.substr(0, n); //Remove filename from the path and return it
-	return t;
+	std::string buf(MAX_PATH, '\0');
+	for(;;) {
+		DWORD n = GetModuleFileNameA(NULL, buf.data(), (DWORD)buf.size());
+		if(!n) return std::string();
+		if(n < buf.size()) {
+			buf.resize(n);
+			break;
+		}
+		if(buf.size() >= 32768) {
+			buf.resize(32767);
+			break;
+		}
+		buf.resize(buf.size() * 2);
+	}
+	size_t n = buf.find_last_of("\\/");
+	if(n != std::string::npos) buf.resize(n); //Remove filename from the path and return it
+	return buf;
 }
 
 static void fail(const char* p) {

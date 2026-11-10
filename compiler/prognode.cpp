@@ -20,6 +20,7 @@ Environ* ProgNode::semant(Environ* e) {
 	structs->semant(env.get());
 	funcs->proto(env->funcDecls, env.get());
 	stmts->semant(env.get());
+	warnUnusedLocals(env->decls);
 	funcs->semant(env.get());
 	datas->proto(env->decls, env.get());
 	datas->semant(env.get());

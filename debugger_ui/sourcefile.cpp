@@ -43,6 +43,8 @@ void SourceFile::load(const char* file) {
 	pal[(int)TextEditor::PaletteIndex::Cursor] = IM_COL32(220, 220, 220, 255);
 	pal[(int)TextEditor::PaletteIndex::Selection] = IM_COL32(60, 90, 120, 120);
 	pal[(int)TextEditor::PaletteIndex::LineNumber] = IM_COL32(120, 120, 120, 200);
+	pal[(int)TextEditor::PaletteIndex::ExecutionLineFill] = IM_COL32(255, 140, 0, 55);
+	pal[(int)TextEditor::PaletteIndex::ExecutionLineEdge] = IM_COL32(255, 175, 40, 255);
 	editor.SetPalette(pal);
 
 	std::stringstream ss;
@@ -57,6 +59,7 @@ void SourceFile::load(const char* file) {
 	}
 
 	editor.SetText(ss.str());
+	editor.SetExecutionLine(-1);
 	editor.SetCursorPosition(TextEditor::Coordinates(0, 0));
 	loaded = true;
 }
@@ -79,6 +82,8 @@ void SourceFile::highLight(int row, int col) {
 
 	editor.SetCursorPosition(TextEditor::Coordinates(row, end));
 	editor.SetSelection(TextEditor::Coordinates(row, col), TextEditor::Coordinates(row, end));
+	editor.SetExecutionLine(row);
+	editor.EnsureCursorVisible();
 }
 
 void SourceFile::render(const char* tabId) {
