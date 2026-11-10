@@ -614,7 +614,6 @@ std::string Parser::parseTypeTag() {
 	case '$':toker->next(); return "$";
 	case '@':toker->next(); return "@";
 	case '.':toker->next(); return parseIdent();
-	case ':':toker->next(); return parseIdent();
 	}
 	return "";
 }

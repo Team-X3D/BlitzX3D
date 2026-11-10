@@ -11,8 +11,6 @@ public:
 	virtual void leave(TNode* cleanup, int pop_sz);
 	virtual void label(const std::string& l);
 	virtual void i_data(int i, const std::string& l);
-	virtual void b_data(char i, const std::string& l);
-	virtual void w_data(short i, const std::string& l);
 	virtual void s_data(const std::string& s, const std::string& l);
 	virtual void p_data(const std::string& p, const std::string& l);
 	virtual void align_data(int n);

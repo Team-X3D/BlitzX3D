@@ -698,27 +698,6 @@ void Codegen_llvm::i_data(int i, const std::string& l) {
 	dataSize += 4;
 }
 
-void Codegen_llvm::b_data(char i, const std::string& l) {
-	dataLabel(l);
-	DataChunk c;
-	c.kind = DataChunk::C_BYTES;
-	c.offset = dataSize;
-	c.size = 1;
-	c.ival = i;
-	dataChunks.push_back(c);
-	dataSize += 1;
-}
-
-void Codegen_llvm::w_data(short i, const std::string& l) {
-	dataLabel(l);
-	DataChunk c;
-	c.kind = DataChunk::C_BYTES;
-	c.offset = dataSize;
-	c.size = 2;
-	c.ival = i;
-	dataChunks.push_back(c);
-	dataSize += 2;
-}
 void Codegen_llvm::s_data(const std::string& s, const std::string& l) {
 	dataLabel(l);
 	DataChunk c;
