@@ -548,6 +548,7 @@ void gxScene::setFogColor(const float rgb[3]) {
 }
 
 void gxScene::setFogRange(float nr, float fr) {
+	nr = std::max(0.0f, nr); fr = std::max(0.0f, fr);
 	if(nr == fogrange_nr && fr == fogrange_fr) return;
 	fogrange_nr = nr; fogrange_fr = fr;
 	setRS(D3DRS_FOGSTART, *(DWORD*)&fogrange_nr);
