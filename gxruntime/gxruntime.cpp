@@ -1187,6 +1187,7 @@ gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) 
 				int cx = (GetSystemMetrics(SM_CXSCREEN) - w) / 2;
 				int cy = (GetSystemMetrics(SM_CYSCREEN) - h) / 2;
 				MoveWindow(hwnd, cx, cy, w + tw, h + th, true);
+				ShowWindow(hwnd, SW_HIDE);
 				ShowWindow(hwnd, SW_SHOW);
 			}
 		}
