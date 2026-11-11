@@ -90,9 +90,7 @@ int _bbStrCompare(BBStr* lhs, BBStr* rhs) {
 }
 
 int _bbStrToInt(BBStr* s) {
-	int n = 0;
-	auto [ptr, ec] = std::from_chars(s->data(), s->data() + s->size(), n);
-	if (ec != std::errc()) n = 0;
+	int n = std::atoi(s->data());
 	delete s;
 	return n;
 }
@@ -102,9 +100,7 @@ BBStr* _bbStrFromInt(int n) {
 }
 
 float _bbStrToFloat(BBStr* s) {
-	float n = 0.f;
-	auto [ptr, ec] = std::from_chars(s->data(), s->data() + s->size(), n);
-	if (ec != std::errc()) n = 0.f;
+	float n = std::atof(s->data());
 	delete s;
 	return n;
 }
