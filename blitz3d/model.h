@@ -66,6 +66,11 @@ public:
 	void setRenderSpace(int n) { space = n; }
 	int getRenderSpace()const { return space; }
 
+	void setInstancingOptIn(bool enable) { instancing_opt_in = enable; if(enable) any_instancing_opt_in = true; }
+	bool getInstancingOptIn()const { return instancing_opt_in; }
+	virtual bool supportsInstancing()const { return false; }
+	static bool brushSupportsInstancing(const Brush& brush);
+
 	void setAutoFade(float nr, float fr) { auto_fade_nr = nr; auto_fade_fr = fr; auto_fade = true; }
 
 	bool doAutoFade(const Vector& eye);
@@ -103,6 +108,8 @@ private:
 
 	gxEffect* entityEffect = nullptr;
 	gxEffect* renderEffect = nullptr;
+	bool instancing_opt_in = false;
+	static bool any_instancing_opt_in;
 };
 
 #endif

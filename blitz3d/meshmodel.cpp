@@ -181,6 +181,21 @@ void MeshModel::updateNormals() {
 	rep->updateNormals();
 }
 
+bool MeshModel::supportsInstancing()const {
+	if(!gx_graphics || !gx_graphics->ensureInstancingShader()) return false;
+	if(getRenderSpace() != RENDER_SPACE_LOCAL) return false;
+	if(!surf_bones.empty()) return false;
+	if(getEffect() || getBrush().getEffect()) return false;
+	if(rep->surfaces.empty()) return false;
+
+	for(int k = 0; k < rep->surfaces.size(); ++k) {
+		Surface* s = rep->surfaces[k];
+		Brush b(s->getBrush(), render_brush);
+		if(!brushSupportsInstancing(b)) return false;
+	}
+	return true;
+}
+
 void MeshModel::setCullBox(const Box& box) {
 	rep->setCullBox(box);
 }

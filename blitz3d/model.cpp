@@ -80,7 +80,8 @@ public:
 Model::MeshQueue* Model::MeshQueue::pool;
 
 bool Model::batch_opaque = false;
-bool Model::instancing_enabled = true;
+bool Model::instancing_enabled = false;
+bool Model::any_instancing_opt_in = false;
 std::vector<Model::MeshQueue*> Model::pending_opaque;
 
 struct InstanceKey {
@@ -100,6 +101,7 @@ struct InstanceKey {
 
 static bool canInstanceBrush(const Brush& brush) {
 	const gxScene::RenderState& rs = brush.getRenderState();
+	if(rs.effect) return false;
 	if(rs.fx & (gxScene::FX_FLATSHADED | gxScene::FX_EMISSIVE)) return false;
 
 	for(int k = 0; k < gxScene::MAX_TEXTURES; ++k) {
@@ -110,6 +112,10 @@ static bool canInstanceBrush(const Brush& brush) {
 		if(ts.canvas->getFlags() & (gxCanvas::CANVAS_TEX_SPHERE | gxCanvas::CANVAS_TEX_CUBE)) return false;
 	}
 	return true;
+}
+
+bool Model::brushSupportsInstancing(const Brush& brush) {
+	return canInstanceBrush(brush);
 }
 
 static uint64_t computeStateKey(const Brush& b, gxEffect* e) {
@@ -144,7 +150,7 @@ Model::Model(const Model& t) :Object(t),
 space(t.space), brush(t.brush),
 auto_fade(t.auto_fade), auto_fade_nr(t.auto_fade_nr), auto_fade_fr(t.auto_fade_fr),
 captured_alpha(t.captured_alpha), tweened_alpha(t.tweened_alpha), w_brush(true),
-entityEffect(t.entityEffect), renderEffect(nullptr) {
+entityEffect(t.entityEffect), renderEffect(nullptr), instancing_opt_in(t.instancing_opt_in) {
 }
 
 void Model::capture() {
@@ -220,7 +226,7 @@ void Model::renderQueue(int type) {
 
 	if(batch_opaque && type == QUEUE_OPAQUE) {
 		for(auto q : que) {
-			bool batchable = q->instance_ok && q->bone_cnt == 0 && !q->effect && q->owner->getMeshModel() != 0 && q->owner->getRenderSpace() == RENDER_SPACE_LOCAL && canInstanceBrush(q->brush);
+			bool batchable = (instancing_enabled || q->owner->getInstancingOptIn()) && q->instance_ok && q->bone_cnt == 0 && !q->effect && q->owner->getMeshModel() != 0 && q->owner->getRenderSpace() == RENDER_SPACE_LOCAL && brushSupportsInstancing(q->brush);
 			if(batchable) {
 				pending_opaque.push_back(q);
 			}
@@ -242,7 +248,7 @@ void Model::renderQueue(int type) {
 
 void Model::beginOpaqueBatch() {
 	pending_opaque.clear();
-	batch_opaque = instancing_enabled && gx_graphics && gx_graphics->instancingSupported();
+	batch_opaque = gx_graphics && gx_graphics->instancingSupported() && (instancing_enabled || any_instancing_opt_in);
 }
 
 void Model::flushOpaqueBatch() {

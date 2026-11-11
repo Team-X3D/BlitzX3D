@@ -26,6 +26,7 @@ public:
 	virtual void setRenderBrush(const Brush& b);
 	virtual bool render(const RenderContext& rc);
 	virtual void renderQueue(int type);
+	virtual bool supportsInstancing()const;
 
 	//boned mesh!
 	void createBones();

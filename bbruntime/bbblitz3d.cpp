@@ -290,7 +290,7 @@ void bbGpuSkinning(int enable) {
 
 void bbMeshInstancing(int enable) {
 	debug3d("MeshInstancing");
-	Model::setInstancingEnabled(!!enable); // why would you ever want to turn this off
+	Model::setInstancingEnabled(!!enable);
 }
 
 void bbWBuffer(int enable) {
@@ -2074,6 +2074,12 @@ void  bbEntityFX(Model* m, int fx) {
 	m->setFX(fx);
 }
 
+int bbEntityInstancing(Model* m, int enable) {
+	debugModel(m, "EntityInstancing");
+	m->setInstancingOptIn(!!enable);
+	return m->supportsInstancing() ? 1 : 0;
+}
+
 int bbEntityColorR(Model* m) {
 	debugModel(m, "EntityColorR");
 	return (int)(m->getBrush().getColor().x * 255.0f);
@@ -2646,7 +2652,7 @@ void blitz3d_close() {
 bool blitz3d_create() {
 	tri_count = 0;
 	gx_scene = 0; world = 0;
-	Model::setInstancingEnabled(true);
+	Model::setInstancingEnabled(false);
 	return true;
 }
 
@@ -2986,6 +2992,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("#GetEntityAlpha%entity", bbGetEntityAlpha);
 	rtSym("%GetEntityBlend%entity", bbGetEntityBlend);
 	rtSym("EntityFX%entity%fx", bbEntityFX);
+	rtSym("%EntityInstancing%entity%enable", bbEntityInstancing);
 	rtSym("EntityAutoFade%entity#near#far", bbEntityAutoFade);
 	rtSym("EntityOrder%entity%order", bbEntityOrder);
 	rtSym("HideEntity%entity", bbHideEntity);
