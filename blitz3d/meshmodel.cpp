@@ -282,7 +282,7 @@ bool MeshModel::render(const RenderContext& rc) {
 				}
 			}
 			if(gxMesh* mesh = s->getMesh(surf_bones)) {
-				enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k]);
+				enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k], false);
 			}
 		}
 		else {
@@ -308,7 +308,7 @@ void MeshModel::renderQueue(int type) {
 					}
 				}
 				if(gxMesh* mesh = s->getMesh(surf_bones)) {
-					enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k]);
+					enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k], false);
 				}
 			}
 		}

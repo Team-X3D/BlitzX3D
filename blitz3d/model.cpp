@@ -7,6 +7,7 @@ extern gxScene* gx_scene;
 extern gxGraphics* gx_graphics;
 
 class Model::MeshQueue {
+	friend class Model;
 	union {
 		gxMesh* mesh;
 		MeshQueue* next;
@@ -18,22 +19,24 @@ class Model::MeshQueue {
 	uint64_t stateKey;
 	std::vector<float> bone_data;
 	int bone_cnt;
+	Model* owner;
+	bool instance_ok;
 
 	static MeshQueue* pool;
 
 public:
 	MeshQueue() {}
 
-	MeshQueue(gxMesh* m, int fv, int vc, int ft, int tc, const Brush& b, gxEffect* e, uint64_t key) :
-		mesh(m), fv(fv), vc(vc), ft(ft), tc(tc), brush(b), effect(e), stateKey(key), bone_cnt(0) {
+	MeshQueue(Model* o, gxMesh* m, int fv, int vc, int ft, int tc, const Brush& b, gxEffect* e, uint64_t key, bool inst) :
+		mesh(m), fv(fv), vc(vc), ft(ft), tc(tc), brush(b), effect(e), stateKey(key), bone_cnt(0), owner(o), instance_ok(inst) {
 		int n = brush.getBlend();
 		q_type = (n == gxScene::BLEND_REPLACE) ? QUEUE_OPAQUE : QUEUE_TRANSPARENT;
 	}
 
-	MeshQueue(gxMesh* m, int fv, int vc, int ft, int tc, const Brush& b, gxEffect* e, uint64_t key,
+	MeshQueue(Model* o, gxMesh* m, int fv, int vc, int ft, int tc, const Brush& b, gxEffect* e, uint64_t key,
 		const float* bones, int n_bones) :
 		mesh(m), fv(fv), vc(vc), ft(ft), tc(tc), brush(b), effect(e), stateKey(key),
-		bone_data(bones, bones + n_bones * 12), bone_cnt(n_bones) {
+		bone_data(bones, bones + n_bones * 12), bone_cnt(n_bones), owner(o), instance_ok(false) {
 		int n = brush.getBlend();
 		q_type = (n == gxScene::BLEND_REPLACE) ? QUEUE_OPAQUE : QUEUE_TRANSPARENT;
 	}
@@ -75,6 +78,39 @@ public:
 };
 
 Model::MeshQueue* Model::MeshQueue::pool;
+
+bool Model::batch_opaque = false;
+bool Model::instancing_enabled = true;
+std::vector<Model::MeshQueue*> Model::pending_opaque;
+
+struct InstanceKey {
+	gxMesh* mesh;
+	int fv, vc, ft, tc;
+	Brush brush;
+
+	bool operator<(const InstanceKey& o)const {
+		if(mesh != o.mesh) return mesh < o.mesh;
+		if(fv != o.fv) return fv < o.fv;
+		if(vc != o.vc) return vc < o.vc;
+		if(ft != o.ft) return ft < o.ft;
+		if(tc != o.tc) return tc < o.tc;
+		return brush < o.brush;
+	}
+};
+
+static bool canInstanceBrush(const Brush& brush) {
+	const gxScene::RenderState& rs = brush.getRenderState();
+	if(rs.fx & (gxScene::FX_FLATSHADED | gxScene::FX_EMISSIVE)) return false;
+
+	for(int k = 0; k < gxScene::MAX_TEXTURES; ++k) {
+		const gxScene::RenderState::TexState& ts = rs.tex_states[k];
+		if(!ts.canvas) continue;
+		if(ts.matrix) return false;
+		if(ts.flags & gxScene::TEX_COORDS2) return false;
+		if(ts.canvas->getFlags() & (gxCanvas::CANVAS_TEX_SPHERE | gxCanvas::CANVAS_TEX_CUBE)) return false;
+	}
+	return true;
+}
 
 static uint64_t computeStateKey(const Brush& b, gxEffect* e) {
 	const auto& rs = b.getRenderState();
@@ -162,18 +198,18 @@ void Model::enqueue(MeshQueue* q) {
 
 void Model::enqueue(gxMesh* mesh, int fv, int vc, int ft, int tc) {
 	uint64_t key = computeStateKey(render_brush, renderEffect);
-	enqueue(new MeshQueue(mesh, fv, vc, ft, tc, render_brush, renderEffect, key));
+	enqueue(new MeshQueue(this, mesh, fv, vc, ft, tc, render_brush, renderEffect, key, true));
 }
 
-void Model::enqueue(gxMesh* mesh, int fv, int vc, int ft, int tc, const Brush& brush) {
+void Model::enqueue(gxMesh* mesh, int fv, int vc, int ft, int tc, const Brush& brush, bool allow_instance) {
 	uint64_t key = computeStateKey(brush, renderEffect);
-	enqueue(new MeshQueue(mesh, fv, vc, ft, tc, brush, renderEffect, key));
+	enqueue(new MeshQueue(this, mesh, fv, vc, ft, tc, brush, renderEffect, key, allow_instance));
 }
 
 void Model::enqueueSkinned(gxMesh* mesh, int fv, int vc, int ft, int tc, const Brush& brush,
 	const float* bone_data, int bone_cnt) {
 	uint64_t key = computeStateKey(brush, renderEffect);
-	enqueue(new MeshQueue(mesh, fv, vc, ft, tc, brush, renderEffect, key, bone_data, bone_cnt));
+	enqueue(new MeshQueue(this, mesh, fv, vc, ft, tc, brush, renderEffect, key, bone_data, bone_cnt));
 }
 
 void Model::renderQueue(int type) {
@@ -182,11 +218,79 @@ void Model::renderQueue(int type) {
 			return a->getStateKey() < b->getStateKey();
 		});
 
+	if(batch_opaque && type == QUEUE_OPAQUE) {
+		for(auto q : que) {
+			bool batchable = q->instance_ok && q->bone_cnt == 0 && !q->effect && q->owner->getMeshModel() != 0 && q->owner->getRenderSpace() == RENDER_SPACE_LOCAL && canInstanceBrush(q->brush);
+			if(batchable) {
+				pending_opaque.push_back(q);
+			}
+			else {
+				q->render();
+				delete q;
+			}
+		}
+		que.clear();
+		return;
+	}
+
 	for (auto q : que) {
 		q->render();
 		delete q;
 	}
 	que.clear();
+}
+
+void Model::beginOpaqueBatch() {
+	pending_opaque.clear();
+	batch_opaque = instancing_enabled && gx_graphics && gx_graphics->instancingSupported();
+}
+
+void Model::flushOpaqueBatch() {
+	batch_opaque = false;
+	if(pending_opaque.empty()) return;
+
+	std::map<InstanceKey, std::vector<MeshQueue*>> groups;
+	for(auto q : pending_opaque) {
+		InstanceKey key = { q->mesh, q->fv, q->vc, q->ft, q->tc, q->brush };
+		groups[key].push_back(q);
+	}
+	pending_opaque.clear();
+
+	for(auto& group : groups) {
+		std::vector<MeshQueue*>& items = group.second;
+		MeshQueue* first = items[0];
+
+		if(items.size() < 2) {
+			gx_scene->setWorldMatrix((gxScene::Matrix*)&first->owner->getRenderTform());
+			first->render();
+			delete first;
+			continue;
+		}
+
+		std::vector<float> instance_data;
+		instance_data.reserve(items.size() * 12);
+		for(auto q : items) {
+			const Transform& t = q->owner->getRenderTform();
+			instance_data.push_back(t.m.i.x); instance_data.push_back(t.m.j.x); instance_data.push_back(t.m.k.x); instance_data.push_back(t.v.x);
+			instance_data.push_back(t.m.i.y); instance_data.push_back(t.m.j.y); instance_data.push_back(t.m.k.y); instance_data.push_back(t.v.y);
+			instance_data.push_back(t.m.i.z); instance_data.push_back(t.m.j.z); instance_data.push_back(t.m.k.z); instance_data.push_back(t.v.z);
+		}
+
+		gx_scene->setRenderState(first->brush.getRenderState());
+		Sprite::flushStage();
+
+		if(gx_scene->renderInstanced(first->mesh, first->fv, first->vc, first->ft, first->tc,
+			instance_data.data(), (int)items.size())) {
+			for(auto q : items) delete q;
+			continue;
+		}
+
+		for(auto q : items) {
+			gx_scene->setWorldMatrix((gxScene::Matrix*)&q->owner->getRenderTform());
+			q->render();
+			delete q;
+		}
+	}
 }
 
 void Model::setEffect(gxEffect* e) {

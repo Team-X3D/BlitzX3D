@@ -490,10 +490,12 @@ void World::render(Camera* cam, Mirror* mirror) {
 	}
 
 	gx_scene->setZMode(gxScene::ZMODE_NORMAL);
+	Model::beginOpaqueBatch();
 	for (Model* mod : unord_mods) {
 		if (!mod->doAutoFade(cam_tform.v)) continue;
 		render(mod, rc);
 	}
+	Model::flushOpaqueBatch();
 	gx_scene->setZMode(gxScene::ZMODE_CMPONLY);
 	flushTransparent();
 

@@ -46,6 +46,7 @@ void MeshLoader::addTriangle(const int verts[3], const Brush& b) {
 }
 
 void MeshLoader::addBone(int n, float w, int b) {
+	if (!ml_mesh || n < 0 || n >= (int)ml_mesh->verts.size()) return;
 	Surface::Vertex& v = ml_mesh->verts[n];
 	int i;
 	for(i = 0; i < MAX_SURFACE_BONES; ++i) {
@@ -100,6 +101,7 @@ void MeshLoader::endMesh(MeshModel* mesh) {
 		}
 		std::map<int, int> vert_map;
 		std::map<Brush, Surf*>::iterator it;
+		int num_verts = (int)ml_mesh->verts.size();
 		for(it = ml_mesh->brush_map.begin(); it != ml_mesh->brush_map.end(); ++it) {
 			vert_map.clear();
 			Brush b = it->first;
@@ -107,9 +109,11 @@ void MeshLoader::endMesh(MeshModel* mesh) {
 			Surface* surf = mesh->findSurface(b);
 			if(!surf) surf = mesh->createSurface(b);
 			for(int k = 0; k < t->tris.size(); ++k) {
+				const Tri& rt = t->tris[k];
+				if(rt.verts[0] < 0 || rt.verts[0] >= num_verts || rt.verts[1] < 0 || rt.verts[1] >= num_verts || rt.verts[2] < 0 || rt.verts[2] >= num_verts) continue;
 				Surface::Triangle tri;
 				for(int j = 0; j < 3; ++j) {
-					int n = t->tris[k].verts[j], id;
+					int n = rt.verts[j], id;
 					std::map<int, int>::const_iterator it = vert_map.find(n);
 					if(it != vert_map.end()) id = it->second;
 					else {

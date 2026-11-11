@@ -288,6 +288,11 @@ void bbGpuSkinning(int enable) {
 	*/
 }
 
+void bbMeshInstancing(int enable) {
+	debug3d("MeshInstancing");
+	Model::setInstancingEnabled(!!enable); // why would you ever want to turn this off
+}
+
 void bbWBuffer(int enable) {
 	debug3d("WBuffer");
 	gx_scene->setWBuffer(!!enable);
@@ -2641,6 +2646,7 @@ void blitz3d_close() {
 bool blitz3d_create() {
 	tri_count = 0;
 	gx_scene = 0; world = 0;
+	Model::setInstancingEnabled(true);
 	return true;
 }
 
@@ -2653,6 +2659,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("LoaderMatrix$file_ext#xx#xy#xz#yx#yy#yz#zx#zy#zz", bbLoaderMatrix);
 	rtSym("HWMultiTex%enable", bbHWMultiTex);
 	rtSym("GpuSkinning%enable", bbGpuSkinning);
+	rtSym("MeshInstancing%enable", bbMeshInstancing);
 	rtSym("%HWTexUnits", bbHWTexUnits);
 	rtSym("%GfxDriverCaps3D", bbGfxDriverCaps3D);
 	rtSym("WBuffer%enable", bbWBuffer);

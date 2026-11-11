@@ -6,6 +6,7 @@
 
 
 static FILE* in;
+static long file_end;
 static std::vector<int> chunk_stack;
 static std::vector<Texture> textures;
 static std::vector<Brush> brushes;
@@ -27,8 +28,16 @@ static void clear() {
 
 static int readChunk() {
 	int header[2];
-	if (fread(header, 8, 1, in) < 1) return 0;
-	chunk_stack.push_back(ftell(in) + header[1]);
+	if (fread(header, 8, 1, in) < 1) {
+		chunk_stack.push_back((int)ftell(in));
+		return 0;
+	}
+	long pos = ftell(in);
+	long size = header[1];
+	long avail = file_end > pos ? file_end - pos : 0;
+	if (size < 0) size = 0;
+	if (size > avail) size = avail;
+	chunk_stack.push_back((int)(pos + size));
 	return swap_endian(header[0]);
 }
 
@@ -38,11 +47,14 @@ static void exitChunk() {
 }
 
 static int chunkSize() {
-	return chunk_stack.back() - ftell(in);
+	if (chunk_stack.empty()) return 0;
+	long n = chunk_stack.back() - ftell(in);
+	return n > 0 ? n : 0;
 }
 
 static void read(void* buf, int n) {
-	fread(buf, n, 1, in);
+	size_t got = fread(buf, 1, n, in);
+	if (got < (size_t)n) memset((char*)buf + got, 0, n - got);
 }
 
 static void skip(int n) {
@@ -115,8 +127,6 @@ static void readTextures() {
 static void readBrushes() {
 	int n_texs = readInt();
 
-	int tex_id[8] = { -1,-1,-1,-1,-1,-1,-1,-1 };
-
 	while (chunkSize()) {
 		std::string name = readString();
 		float col[4];
@@ -124,6 +134,7 @@ static void readBrushes() {
 		float shi = readFloat();
 		int blend = readInt();
 		int fx = readInt();
+		int tex_id[8] = { -1,-1,-1,-1,-1,-1,-1,-1 };
 		readIntArray(tex_id, std::clamp(n_texs, 0, 8));
 
 		Brush bru;
@@ -135,7 +146,7 @@ static void readBrushes() {
 		bru.setFX(fx);
 
 		for (int k = 0; k < 8; ++k) {
-			if (tex_id[k] < 0) continue;
+			if (tex_id[k] < 0 || tex_id[k] >= (int)textures.size()) continue;
 			bru.setTexture(k, textures[tex_id[k]], 0);
 		}
 
@@ -160,10 +171,11 @@ static int readVertices() {
 	vertex_size += (int)(tc_sets * (long long)tc_size * sizeof(float));
 
 	int remaining = chunk_stack.back() - ftell(in);
+	if (remaining <= 0) return flags;
 	int num_vertices = remaining / vertex_size;
 
 	char* buffer = new char[remaining];
-	fread(buffer, remaining, 1, in);
+	read(buffer, remaining);
 
 	char* ptr = buffer;
 	float tc[4] = { 0 };
@@ -200,7 +212,7 @@ static int readVertices() {
 
 static void readTriangles() {
 	int brush_id = readInt();
-	Brush b = brush_id >= 0 ? brushes[brush_id] : Brush();
+	Brush b = brush_id >= 0 && brush_id < (int)brushes.size() ? brushes[brush_id] : Brush();
 	while (chunkSize()) {
 		int verts[3];
 		readIntArray(verts, 3);
@@ -326,7 +338,7 @@ static Object* readObject(Object* parent) {
 	if (mesh) {
 		MeshLoader::endMesh(mesh);
 		if (!(mesh_flags & 1)) mesh->updateNormals();
-		if (mesh_brush != -1) mesh->setBrush(brushes[mesh_brush]);
+		if (mesh_brush >= 0 && mesh_brush < (int)brushes.size()) mesh->setBrush(brushes[mesh_brush]);
 	}
 
 	if (mesh && bones.size()) {
@@ -351,6 +363,10 @@ MeshModel* Loader_B3D::load(const std::string& f, const Transform& conv, int hin
 
 	in = fopen(f.c_str(), "rb");
 	if (!in) return 0;
+
+	fseek(in, 0, SEEK_END);
+	file_end = ftell(in);
+	fseek(in, 0, SEEK_SET);
 
 	::clear();
 

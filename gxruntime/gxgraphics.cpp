@@ -12,7 +12,7 @@
 extern gxRuntime* gx_runtime;
 static Debugger* debugger;
 
-gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9* front, IDirect3DSurface9* back, bool d3d) : runtime(rt), dir3dDev(dev), frontBuffer(front), backBuffer(back), gfx_lost(false), dummy_mesh(0), skin_vshader(nullptr), skin_decl(nullptr), skin_shader_load_failed(false), skin_caps_checked(-1), copy_scratch(nullptr), copy_scratch_w(0), copy_scratch_h(0), copy_scratch_fmt(D3DFMT_UNKNOWN) {
+gxGraphics::gxGraphics(gxRuntime* rt, IDirect3DDevice9Ex* dev, IDirect3DSurface9* front, IDirect3DSurface9* back, bool d3d) : runtime(rt), dir3dDev(dev), frontBuffer(front), backBuffer(back), gfx_lost(false), dummy_mesh(0), skin_vshader(nullptr), skin_decl(nullptr), skin_shader_load_failed(false), skin_caps_checked(-1), inst_vshader(nullptr), inst_decl(nullptr), inst_shader_load_failed(false), inst_caps_checked(-1), copy_scratch(nullptr), copy_scratch_w(0), copy_scratch_h(0), copy_scratch_fmt(D3DFMT_UNKNOWN) {
 
 	if (dir3dDev) dir3dDev->AddRef();
 	if (frontBuffer) frontBuffer->AddRef();
@@ -83,6 +83,8 @@ gxGraphics::~gxGraphics() {
 	while (mesh_set.size()) freeMesh(*mesh_set.begin());
 	if (skin_vshader) { skin_vshader->Release(); skin_vshader = nullptr; }
 	if (skin_decl) { skin_decl->Release(); skin_decl = nullptr; }
+	if (inst_vshader) { inst_vshader->Release(); inst_vshader = nullptr; }
+	if (inst_decl) { inst_decl->Release(); inst_decl = nullptr; }
 	/*
 	std::set<std::set<std::any>*>::iterator custom_set_it;
 	for (custom_set_it = custom_set.begin(); custom_set_it != custom_set.end(); ++custom_set_it) {
@@ -923,6 +925,7 @@ static const char* SKIN_VSHADER_SRC =
 "    float packedFlags = eyePos.w;\n"
 "    bool useVertexColor = (fmod(packedFlags, 2.0) >= 1.0);\n"
 "    bool useSpecular = (fmod(floor(packedFlags / 2.0), 2.0) >= 1.0);\n"
+"    bool useVertexAlpha = (fmod(floor(packedFlags / 4.0), 2.0) >= 1.0);\n"
 "\n"
 "    float3 wPos = float3(0,0,0);\n"
 "    float3 wNrm = float3(0,0,0);\n"
@@ -979,7 +982,7 @@ static const char* SKIN_VSHADER_SRC =
 "        }\n"
 "    }\n"
 "\n"
-"    OUT.color = float4(saturate(lit + spec), (useVertexColor ? IN.color.a : 1) * materialDiffuse.a);\n"
+"    OUT.color = float4(saturate(lit + spec), ((useVertexColor || useVertexAlpha) ? IN.color.a : 1) * materialDiffuse.a);\n"
 "    return OUT;\n"
 "}\n";
 
@@ -1050,5 +1053,163 @@ bool gxGraphics::ensureSkinningShader() {
 	}
 
 	runtime->debugLog("GPU skinning shader compiled successfully");
+	return true;
+}
+
+// MESH INSTANCING
+static const char* INST_VSHADER_SRC =
+"#define MAX_LIGHTS 8\n"
+"\n"
+"float4x4 viewProj : register(c192);\n"
+"\n"
+"float4 lightPos[MAX_LIGHTS]     : register(c196); \n"
+"float4 lightDiffuse[MAX_LIGHTS] : register(c204); \n"
+"float4 lightAtten[MAX_LIGHTS]   : register(c212); \n"
+"float4 lightDir[MAX_LIGHTS]     : register(c220); \n"
+"\n"
+"float4 ambientColor     : register(c228); \n"
+"float4 materialDiffuse  : register(c229); \n"
+"float4 materialSpecular : register(c230); \n"
+"float4 eyePos           : register(c231); \n"
+"\n"
+"struct VS_INPUT {\n"
+"    float3 pos      : POSITION;\n"
+"    float3 normal   : NORMAL;\n"
+"    float4 color    : COLOR0;\n"
+"    float2 tex0     : TEXCOORD0;\n"
+"    float2 tex1     : TEXCOORD1;\n"
+"    float4 world0   : TEXCOORD4;\n"
+"    float4 world1   : TEXCOORD5;\n"
+"    float4 world2   : TEXCOORD6;\n"
+"};\n"
+"\n"
+"struct VS_OUTPUT {\n"
+"    float4 pos    : POSITION;\n"
+"    float4 color  : COLOR0;\n"
+"    float2 tex0   : TEXCOORD0;\n"
+"    float2 tex1   : TEXCOORD1;\n"
+"    float  fog    : FOG;\n"
+"};\n"
+"\n"
+"VS_OUTPUT main(VS_INPUT IN) {\n"
+"    VS_OUTPUT OUT;\n"
+"\n"
+"    float packedFlags = eyePos.w;\n"
+"    bool useVertexColor = (fmod(packedFlags, 2.0) >= 1.0);\n"
+"    bool useSpecular = (fmod(floor(packedFlags / 2.0), 2.0) >= 1.0);\n"
+"    bool useVertexAlpha = (fmod(floor(packedFlags / 4.0), 2.0) >= 1.0);\n"
+"\n"
+"    float3 wPos = float3(dot(IN.world0, float4(IN.pos, 1)), dot(IN.world1, float4(IN.pos, 1)), dot(IN.world2, float4(IN.pos, 1)));\n"
+"    float3 wNrm = normalize(float3(dot(IN.world0, float4(IN.normal, 0)), dot(IN.world1, float4(IN.normal, 0)), dot(IN.world2, float4(IN.normal, 0))));\n"
+"\n"
+"    OUT.pos = mul(float4(wPos, 1), viewProj);\n"
+"    OUT.fog = OUT.pos.z;\n"
+"    OUT.tex0 = IN.tex0;\n"
+"    OUT.tex1 = IN.tex1;\n"
+"\n"
+"    float3 diffuseBase = useVertexColor ? IN.color.rgb : materialDiffuse.rgb;\n"
+"    float3 lit = ambientColor.rgb * diffuseBase;\n"
+"    float3 spec = float3(0,0,0);\n"
+"    float3 toEye = normalize(eyePos.xyz - wPos);\n"
+"\n"
+"    [loop]\n"
+"    for (int n = 0; n < MAX_LIGHTS; ++n) {\n"
+"        if (n >= (int)ambientColor.w) break;\n"
+"        float3 toLight;\n"
+"        float atten = 1;\n"
+"        if (lightPos[n].w < 0.5) {\n"
+"            toLight = lightPos[n].xyz;\n"
+"        } else {\n"
+"            float3 delta = lightPos[n].xyz - wPos;\n"
+"            float dist = length(delta);\n"
+"            toLight = delta / max(dist, 0.0001);\n"
+"            atten = 1.0 / max(1.0, 1.0 + lightAtten[n].x * dist);\n"
+"            if (lightPos[n].w > 1.5) {\n"
+"                float cosAng = dot(-toLight, lightDir[n].xyz);\n"
+"                float spotT = saturate((cosAng - lightAtten[n].z) / max(lightAtten[n].y - lightAtten[n].z, 0.0001));\n"
+"                atten *= pow(spotT, max(lightAtten[n].w, 0.0001));\n"
+"            }\n"
+"        }\n"
+"        float ndotl = max(0, dot(wNrm, toLight));\n"
+"        lit += lightDiffuse[n].rgb * diffuseBase * ndotl * atten;\n"
+"        if (useSpecular && ndotl > 0) {\n"
+"            float3 halfVec = normalize(toLight + toEye);\n"
+"            float specPow = pow(max(0, dot(wNrm, halfVec)), max(materialSpecular.w, 1.0));\n"
+"            spec += lightDiffuse[n].rgb * materialSpecular.rgb * specPow * atten;\n"
+"        }\n"
+"    }\n"
+"\n"
+"    OUT.color = float4(saturate(lit + spec), ((useVertexColor || useVertexAlpha) ? IN.color.a : 1) * materialDiffuse.a);\n"
+"    return OUT;\n"
+"}\n";
+
+bool gxGraphics::instancingSupported() {
+	if (inst_caps_checked == -1) {
+		D3DCAPS9 caps;
+		inst_caps_checked = 0;
+		if (dir3dDev && SUCCEEDED(dir3dDev->GetDeviceCaps(&caps))) {
+			if (caps.VertexShaderVersion >= D3DVS_VERSION(3, 0) && caps.MaxStreams >= 2) {
+				inst_caps_checked = 1;
+			}
+		}
+	}
+	return inst_caps_checked == 1;
+}
+
+bool gxGraphics::ensureInstancingShader() {
+	if (inst_vshader && inst_decl) return true;
+	if (inst_shader_load_failed) return false;
+
+	if (!instancingSupported()) {
+		runtime->debugLog("Mesh instancing: vs_3_0 not supported...");
+		inst_shader_load_failed = true;
+		return false;
+	}
+
+	if (!inst_decl) {
+		static const D3DVERTEXELEMENT9 decl[] = {
+			{0, 0,  D3DDECLTYPE_FLOAT3, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0},
+			{0, 12, D3DDECLTYPE_FLOAT3, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_NORMAL,   0},
+			{0, 24, D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR, 0},
+			{0, 28, D3DDECLTYPE_FLOAT2, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0},
+			{0, 36, D3DDECLTYPE_FLOAT2, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 1},
+			{1, 0,  D3DDECLTYPE_FLOAT4, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 4},
+			{1, 16, D3DDECLTYPE_FLOAT4, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 5},
+			{1, 32, D3DDECLTYPE_FLOAT4, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 6},
+			D3DDECL_END()
+		};
+		if (FAILED(dir3dDev->CreateVertexDeclaration(decl, &inst_decl))) {
+			runtime->debugLog("Mesh instancing: CreateVertexDeclaration failed");
+			inst_shader_load_failed = true;
+			return false;
+		}
+	}
+
+	ID3DXBuffer* code = nullptr;
+	ID3DXBuffer* errors = nullptr;
+	HRESULT hr = D3DXCompileShader(INST_VSHADER_SRC, (UINT)strlen(INST_VSHADER_SRC), nullptr, nullptr, "main", "vs_3_0", 0, &code, &errors, nullptr);
+	if (FAILED(hr)) {
+		if (errors) {
+			runtime->debugLog("Mesh instancing shader compilation failed:");
+			runtime->debugLog((const char*)errors->GetBufferPointer());
+			errors->Release();
+		}
+		else {
+			runtime->debugLog("Mesh instancing: D3DXCompileShader failed with no error buffer?");
+		}
+		inst_shader_load_failed = true;
+		return false;
+	}
+	if (errors) errors->Release();
+
+	hr = dir3dDev->CreateVertexShader((const DWORD*)code->GetBufferPointer(), &inst_vshader);
+	code->Release();
+	if (FAILED(hr)) {
+		runtime->debugLog("Mesh instancing: CreateVertexShader failed");
+		inst_shader_load_failed = true;
+		return false;
+	}
+
+	// runtime->debugLog("Mesh instancing shader compiled!!");
 	return true;
 }

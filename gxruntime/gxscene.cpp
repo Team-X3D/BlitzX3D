@@ -974,6 +974,7 @@ void gxScene::setSkinShaderConstants() {
 	float flags = 0;
 	if (fx & FX_VERTEXCOLOR) flags += 1.0f;
 	if (shininess > 0) flags += 2.0f;
+	if (fx & FX_VERTEXALPHA) flags += 4.0f;
 	float eye[4] = { eyePos[0], eyePos[1], eyePos[2], flags };
 	dev->SetVertexShaderConstantF(231, eye, 1);
 }
@@ -982,6 +983,18 @@ void gxScene::renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int firs
 	setSkinShaderConstants();
 	mesh->renderSkinned(first_vert, vert_cnt, first_tri, tri_cnt, bone_data, bone_cnt);
 	tris_drawn += tri_cnt;
+}
+
+bool gxScene::renderInstanced(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* instance_data, int instance_count) {
+	if (currentEffect) return false;
+	if (n_texs > tex_stages) return false;
+	if (!graphics->ensureInstancingShader()) return false;
+
+	setSkinShaderConstants();
+	if (!mesh->renderInstanced(first_vert, vert_cnt, first_tri, tri_cnt, instance_data, instance_count)) return false;
+
+	tris_drawn += tri_cnt * instance_count;
+	return true;
 }
 
 void gxScene::end() {

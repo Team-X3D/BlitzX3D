@@ -41,6 +41,7 @@ public:
 
     void render(int first_vert, int vert_cnt, int first_tri, int tri_cnt);
     void renderSkinned(int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* bone_data, int bone_cnt);
+    bool renderInstanced(int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* instance_data, int instance_count);
 
     void backup();
     void restore();
@@ -52,6 +53,8 @@ private:
     IDirect3DVertexBuffer9* vertex_buff;
     IDirect3DIndexBuffer9* index_buff;
     IDirect3DVertexDeclaration9* vertex_decl;
+    IDirect3DVertexBuffer9* instance_buff;
+    int instance_capacity;
 
     int  max_verts, max_tris;
     bool mesh_dirty;
@@ -59,6 +62,8 @@ private:
     dxVertex* locked_verts;
     dxSkinVertex* locked_skin_verts;
     WORD* locked_indices;
+
+    bool ensureInstanceCapacity(int count);
 
     /***** GX INTERFACE *****/
 public:
