@@ -228,6 +228,17 @@ std::string UTF8::convertFromUtf16(const std::wstring& str) {
 	return result;
 }
 
+std::string UTF8::convertToAnsi(const std::wstring& str) {
+	if (str.empty()) return "";
+
+	int n = WideCharToMultiByte(CP_ACP, 0, str.c_str(), (int)str.size(), nullptr, 0, nullptr, nullptr);
+	if (n <= 0) return "";
+
+	std::string result(n, '\0');
+	WideCharToMultiByte(CP_ACP, 0, str.c_str(), (int)str.size(), result.data(), n, nullptr, nullptr);
+	return result;
+}
+
 std::string UTF8::replaceAll(const std::string_view& str, const std::string_view& pattern, const std::string_view& newpat) {
 	std::string result;
 	result.reserve(str.size());

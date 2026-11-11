@@ -149,7 +149,7 @@ BBStr* bbGetEnv(BBStr* env_var) {
     std::wstring value(len, L'\0');
     _wgetenv_s(&len, value.data(), len, name.c_str());
     if (len) value.resize(len - 1);
-    return new BBStr(UTF8::convertFromUtf16(value));
+    return new BBStr(UTF8::convertToAnsi(value));
 }
 
 void bbSetEnv(BBStr* env_var, BBStr* val) {
