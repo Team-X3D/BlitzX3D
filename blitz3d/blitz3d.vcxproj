@@ -153,6 +153,7 @@
     <ClCompile Include="listener.cpp" />
     <ClCompile Include="loader_3ds.cpp" />
     <ClCompile Include="loader_b3d.cpp" />
+    <ClCompile Include="loader_fbx.cpp" />
     <ClCompile Include="loader_x.cpp" />
     <ClCompile Include="md2model.cpp" />
     <ClCompile Include="md2norms.cpp" />
@@ -174,6 +175,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">std.h</PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="..\vendor\ufbx\ufbx.c" />
     <ClCompile Include="surface.cpp" />
     <ClCompile Include="terrain.cpp" />
     <ClCompile Include="terrainrep.cpp" />
@@ -195,6 +197,7 @@
     <ClInclude Include="listener.h" />
     <ClInclude Include="loader_3ds.h" />
     <ClInclude Include="loader_b3d.h" />
+    <ClInclude Include="loader_fbx.h" />
     <ClInclude Include="loader_x.h" />
     <ClInclude Include="md2model.h" />
     <ClInclude Include="md2norms.h" />

@@ -171,6 +171,7 @@ MeshModel::MeshModel(const MeshModel& t) : Model(t),
 rep(t.rep), brush_changes(rep->brush_changes - 1) {
 	++rep->ref_cnt;
 	surf_bones.resize(t.surf_bones.size());
+	bone_objs = t.bone_objs;
 }
 
 MeshModel::~MeshModel() {
@@ -206,8 +207,13 @@ void MeshModel::setRenderBrush(const Brush& b) {
 }
 
 void MeshModel::createBones() {
-	setRenderSpace(RENDER_SPACE_WORLD);
 	const std::vector<Object*>& bones = getAnimator()->getObjects();
+	createBones(bones);
+}
+
+void MeshModel::createBones(const std::vector<Object*>& bones) {
+	setRenderSpace(RENDER_SPACE_WORLD);
+	bone_objs = bones;
 
 	surf_bones.resize(bones.size());
 
@@ -272,7 +278,7 @@ bool MeshModel::render(const RenderContext& rc) {
 	}
 
 	//OK, its boned!
-	const std::vector<Object*>& bones = getAnimator()->getObjects();
+	const std::vector<Object*>& bones = getAnimator() ? getAnimator()->getObjects() : bone_objs;
 
 	int k;
 	for(k = 0; k < bones.size(); ++k) {
