@@ -1055,7 +1055,7 @@ void gxCanvas::beginBlitBatch() const {
     if (blit_batch_depth++ > 0) return;
 
     IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
-    if (!dev || !isRenderTarget(surf)) {
+    if (!dev || isLocked() || !isRenderTarget(surf)) {
         blit_batch_active = false;
         return;
     }
@@ -1089,6 +1089,18 @@ void gxCanvas::endBlitBatch() const {
         blit_batch_saved = nullptr;
         blit_batch_active = false;
     }
+}
+
+static unsigned blendARGB(unsigned srcArgb, unsigned dstArgb) {
+    unsigned alpha = srcArgb >> 24;
+    if (alpha == 0) return dstArgb;
+    if (alpha == 255) return srcArgb;
+    unsigned invAlpha = 255 - alpha;
+    unsigned outA = alpha + ((dstArgb >> 24) * invAlpha) / 255;
+    unsigned outR = (((srcArgb >> 16) & 0xff) * alpha + ((dstArgb >> 16) & 0xff) * invAlpha) / 255;
+    unsigned outG = (((srcArgb >> 8) & 0xff) * alpha + ((dstArgb >> 8) & 0xff) * invAlpha) / 255;
+    unsigned outB = ((srcArgb & 0xff) * alpha + (dstArgb & 0xff) * invAlpha) / 255;
+    return (outA << 24) | (outR << 16) | (outG << 8) | outB;
 }
 
 static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const RECT& src_r, bool solid) {
@@ -1179,6 +1191,10 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
                 unsigned argb = sf.toARGB(sf.getPixel((void*)(srow + sx * sp)));
                     if (doMask && maskMatch(argb, maskRGB, src->graphics->mask565)) continue;
                 if (!doAlpha) argb |= 0xff000000u;
+                if (!solid && doAlpha && (argb >> 24) != 255) {
+                    if ((argb >> 24) == 0) continue;
+                    argb = blendARGB(argb, df.toARGB(df.getPixel(drow + x * dp)));
+                }
                 df.setPixel(drow + x * dp, df.fromARGB(argb));
             }
         }
@@ -1214,9 +1230,8 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
         }
     }
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         cpuBlit(this, dest_r, src, src_r, solid);
-        damage(dest_r);
         return;
     }
 
@@ -1282,9 +1297,8 @@ void gxCanvas::blitstretch(int x, int y, int w, int h,
 
     if (!::clip(src->clip_rect, &src_r)) return;
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         cpuBlit(this, dest_r, src, src_r, solid);
-        damage(dest_r);
         return;
     }
 
@@ -1400,9 +1414,9 @@ static void cpuBlitAlpha(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, cons
             unsigned srcR = (srcArgb >> 16) & 0xff, srcG = (srcArgb >> 8) & 0xff, srcB = srcArgb & 0xff;
             unsigned dstR = (dstArgb >> 16) & 0xff, dstG = (dstArgb >> 8) & 0xff, dstB = dstArgb & 0xff;
             unsigned invA = 255 - srcA;
-            unsigned outR = (tintR * srcA + dstR * invA) / 255;
-            unsigned outG = (tintG * srcA + dstG * invA) / 255;
-            unsigned outB = (tintB * srcA + dstB * invA) / 255;
+            unsigned outR = ((srcR * tintR / 255) * srcA + dstR * invA) / 255;
+            unsigned outG = ((srcG * tintG / 255) * srcA + dstG * invA) / 255;
+            unsigned outB = ((srcB * tintB / 255) * srcA + dstB * invA) / 255;
             dest->setPixelFast(dx, dy, df.fromARGB((outA << 24) | (outR << 16) | (outG << 8) | outB));
         }
     }
@@ -1657,7 +1671,7 @@ void gxCanvas::unlock() const {
 void gxCanvas::setPixel(int x, int y, unsigned argb) {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return;
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
-    lock();
+    if (!lock()) return;
     setPixelFast(x, y, argb);
     unlock();
 }
@@ -1665,7 +1679,7 @@ void gxCanvas::setPixel(int x, int y, unsigned argb) {
 unsigned gxCanvas::getPixel(int x, int y) const {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return format.toARGB(mask_surf);
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return format.toARGB(mask_surf);
-    lock();
+    if (!lock()) return format.toARGB(mask_surf);
     unsigned p = getPixelFast(x, y);
     unlock();
     return p;
@@ -1693,7 +1707,8 @@ void gxCanvas::copyPixel(int x, int y, gxCanvas* src, int src_x, int src_y) {
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
     src_x += src->origin_x; if (src_x < src->viewport.left || src_x >= src->viewport.right) return;
     src_y += src->origin_y; if (src_y < src->viewport.top || src_y >= src->viewport.bottom) return;
-    lock(); src->lock();
+    if (!lock()) return;
+    if (!src->lock()) { unlock(); return; }
     copyPixelFast(x, y, src, src_x, src_y);
     src->unlock(); unlock();
 }
@@ -1710,7 +1725,7 @@ void gxCanvas::blitTForm(int x, int y, gxCanvas* src, int src_x, int src_y, int 
     float sx = mat[0][1] * src_h;
     float sy = mat[1][1] * src_h;
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         float det = mat[0][0] * mat[1][1] - mat[0][1] * mat[1][0];
         if (fabsf(det) < 1e-6f) return;
         float inv00 = mat[1][1] / det;
@@ -1781,7 +1796,12 @@ void gxCanvas::blitTForm(int x, int y, gxCanvas* src, int src_x, int src_y, int 
                     if (a==0 && doMask) continue;
                     argb = (a<<24)|(r<<16)|(g<<8)|b;
                 }
-                format.setPixel(locked_surf + dy*locked_pitch + dx*format.getPitch(), format.fromARGB(argb));
+                unsigned char* dstPixel = locked_surf + dy * locked_pitch + dx * format.getPitch();
+                if ((doAlpha || doMask) && (argb >> 24) != 255) {
+                    if ((argb >> 24) == 0) continue;
+                    argb = blendARGB(argb, format.toARGB(format.getPixel(dstPixel)));
+                }
+                format.setPixel(dstPixel, format.fromARGB(argb));
             }
         }
         src->unlock(); unlock();
