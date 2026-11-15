@@ -703,7 +703,7 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     damage(dest);
 }
 
-static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3DTexture9* tex, const RECT& dst, const RECT& src, int texW, int texH, bool useAlpha = false, unsigned color_argb = 0xFFFFFFFF) {
+static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3DTexture9* tex, const RECT& dst, const RECT& src, int texW, int texH, bool useAlpha, bool solid, unsigned color_argb = 0xFFFFFFFF) {
     D3DXMATRIX proj, view, world;
     D3DXMatrixIdentity(&world);
     D3DXMatrixIdentity(&view);
@@ -726,6 +726,23 @@ static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3
             ((color_argb >> 24) & 0xFF) / 255.0f
         };
         effect->setVector("color", color);
+    }
+
+    dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+    if (useAlpha) {
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    }
+    else {
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        dev->SetRenderState(D3DRS_ALPHATESTENABLE, solid ? FALSE : TRUE);
+        if (!solid) {
+            dev->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
+            dev->SetRenderState(D3DRS_ALPHAREF, 0);
+        }
     }
 
     UINT passes;
@@ -1193,7 +1210,7 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
     FillModeGuard guard(dev);
 
     if (effect2D) {
-        drawQuadWithEffect(dev, effect2D, blitTex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, false, 0);
+        drawQuadWithEffect(dev, effect2D, blitTex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, false, solid);
     }
     else {
         setupBlitRenderState(dev, solid);
@@ -1397,7 +1414,7 @@ void gxCanvas::blitAlpha(int x, int y, gxCanvas* src,
     FillModeGuard guard(dev);
 
     if (effect2D) {
-        drawQuadWithEffect(dev, effect2D, (IDirect3DTexture9*)tex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, true, color_argb);
+        drawQuadWithEffect(dev, effect2D, (IDirect3DTexture9*)tex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, true, true, color_argb);
     }
     else {
         dev->SetRenderState(D3DRS_LIGHTING, FALSE);
