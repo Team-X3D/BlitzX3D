@@ -1329,11 +1329,11 @@ void bbCopyRect(int sx, int sy, int w, int h, int dx, int dy, gxCanvas* src, gxC
     if (dest) debugCanvas(dest, "CopyRect");
     else dest = gx_canvas;
 
-    if (dest->getFlags() & gxCanvas::CANVAS_TEXTURE) {
-        gx_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
+    if (dest->isLocked() || src->isLocked() || !(dest->getFlags() & gxCanvas::CANVAS_TEXTURE)) {
+        dest->blit(dx, dy, src, sx, sy, w, h, true);
     }
     else {
-        dest->blit(dx, dy, src, sx, sy, w, h, true);
+        gx_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
     }
 }
 

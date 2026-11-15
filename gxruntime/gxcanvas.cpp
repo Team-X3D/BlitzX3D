@@ -6,6 +6,7 @@
 #include "gxutf8.h"
 
 #include <cmath>
+#include <vector>
 
 static int canvas_cnt;
 
@@ -537,15 +538,15 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
     if ((color_argb >> 24) == 0) return;
     bool ownBatch = (color_argb >> 24) != 255 && !blit_batch_active && !isLocked() && isRenderTarget(surf) && graphics && graphics->dir3dDev;
     if (ownBatch) beginBlitBatch();
-    bool ownLock = !isLocked() && ((color_argb >> 24) == 255 || !blit_batch_active);
+    bool ownLock = !isLocked() && !blit_batch_active;
     if (ownLock && !lock()) { if (ownBatch) endBlitBatch(); return; }
     if (ax > ay) {
         ddf = -ax; sadj = ax + ax; padj = ay + ay;
-        while (ax-- >= 0) { if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; } }
+        while (ax-- >= 0) { if (blit_batch_active || (color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; } }
     }
     else {
         ddf = -ay; sadj = ay + ay; padj = ax + ax;
-        while (ay-- >= 0) { if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; } }
+        while (ay-- >= 0) { if (blit_batch_active || (color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; } }
     }
     if (ownLock) unlock();
     if (ownBatch) endBlitBatch();
@@ -1094,7 +1095,7 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
     D3DSURFACE_DESC destDesc;
     bool destIsSysMem = SUCCEEDED(dest->surf->GetDesc(&destDesc)) && destDesc.Pool == D3DPOOL_SYSTEMMEM;
 
-    if (!destIsSysMem) {
+    if (!destIsSysMem && !dest->isLocked() && !src->isLocked()) {
         IDirect3DDevice9* dev = dest->graphics->dir3dDev;
         if (dev) {
             RECT srcRect = { src_r.left, src_r.top, src_r.right, src_r.bottom };
@@ -1146,6 +1147,15 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
     const PixelFormat& sf = src->format;
     const PixelFormat& df = dest->format;
     int sp = sf.getPitch(), dp = df.getPitch();
+    int srcLeft = src_r.left, srcTop = src_r.top;
+    std::vector<unsigned char> srcCopy;
+    if (src == dest && dest_r.left < src_r.right && dest_r.right > src_r.left && dest_r.top < src_r.bottom && dest_r.bottom > src_r.top) {
+        srcCopy.resize(sw * sh * sp);
+        for (int y = 0; y < sh; ++y) memcpy(srcCopy.data() + y * sw * sp, srcBits + (src_r.top + y) * srcPitchBytes + src_r.left * sp, sw * sp);
+        srcBits = srcCopy.data();
+        srcPitchBytes = sw * sp;
+        srcLeft = srcTop = 0;
+    }
 
     unsigned maskRGB = solid ? ~0u : (sf.toARGB(src->mask_surf) & 0x00ffffffu);
     bool doMask = (maskRGB != ~0u);
@@ -1154,7 +1164,7 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
     if (!stretch && !doMask && !doAlpha && sp == dp && sf.getDepth() == df.getDepth()) {
         int rowBytes = dw * sp;
         for (int y = 0; y < dh; ++y) {
-            const unsigned char* srow = srcBits + (src_r.top + y) * srcPitchBytes + src_r.left * sp;
+            const unsigned char* srow = srcBits + (srcTop + y) * srcPitchBytes + srcLeft * sp;
             unsigned char* drow = dstBits + (dest_r.top + y) * dstPitchBytes + dest_r.left * dp;
             memcpy(drow, srow, rowBytes);
         }
@@ -1162,7 +1172,7 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
     else {
         for (int y = 0; y < dh; ++y) {
             int sy = stretch ? (y * sh / dh) : y;
-            const unsigned char* srow = srcBits + (src_r.top + sy) * srcPitchBytes + src_r.left * sp;
+            const unsigned char* srow = srcBits + (srcTop + sy) * srcPitchBytes + srcLeft * sp;
             unsigned char* drow = dstBits + (dest_r.top + y) * dstPitchBytes + dest_r.left * dp;
             for (int x = 0; x < dw; ++x) {
                 int sx = stretch ? (x * sw / dw) : x;
@@ -1190,6 +1200,7 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
 
     if (!clip(&dest_r, &src_r)) return;
     if (!::clip(src->clip_rect, &src_r, &dest_r)) return;
+    if (isLocked() || src->isLocked()) { cpuBlit(this, dest_r, src, src_r, solid); return; }
 
     if (solid) {
         D3DSURFACE_DESC srcDesc, dstDesc;
@@ -1413,7 +1424,7 @@ void gxCanvas::blitAlpha(int x, int y, gxCanvas* src,
     if (!clip(&dest_r, &src_r)) return;
     if (!::clip(src->clip_rect, &src_r, &dest_r)) return;
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         cpuBlitAlpha(this, dest_r, src, src_r, color_argb);
         return;
     }
