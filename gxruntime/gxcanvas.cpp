@@ -484,10 +484,12 @@ void gxCanvas::cls() {
 void gxCanvas::plot(int x, int y) {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return;
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
+    if ((color_argb >> 24) != 255) { rectBlend(x - origin_x, y - origin_y, 1, 1, color_argb); return; }
     Rect dest(x, y, 1, 1);
     fillRect(dest, format.toARGB(color_surf));
     damage(dest);
 }
+static bool isRenderTarget(IDirect3DSurface9* s);
 
 void gxCanvas::line(int x0, int y0, int x1, int y1) {
     int ddf, padj, sadj;
@@ -527,29 +529,54 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
     x1 = (int)std::lround((double)sx0 + t1 * fdx);
     y1 = (int)std::lround((double)sy0 + t1 * fdy);
     dx = x1 - x0; dy = y1 - y0;
-    if ((dx | dy) == 0) { setPixel(x0, y0, color_argb); return; }
+    if ((dx | dy) == 0) { plot(x0 - origin_x, y0 - origin_y); return; }
     if (dx >= 0) { sx = 1; ax = dx; }
     else { sx = -1; ax = -dx; }
     if (dy >= 0) { sy = 1; ay = dy; }
     else { sy = -1; ay = -dy; }
-    lock();
+    if ((color_argb >> 24) == 0) return;
+    bool ownBatch = (color_argb >> 24) != 255 && !blit_batch_active && !isLocked() && isRenderTarget(surf) && graphics && graphics->dir3dDev;
+    if (ownBatch) beginBlitBatch();
+    bool ownLock = !isLocked() && ((color_argb >> 24) == 255 || !blit_batch_active);
+    if (ownLock && !lock()) { if (ownBatch) endBlitBatch(); return; }
     if (ax > ay) {
         ddf = -ax; sadj = ax + ax; padj = ay + ay;
-        while (ax-- >= 0) { setPixelFast(x0, y0, color_argb); x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; } }
+        while (ax-- >= 0) { if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; } }
     }
     else {
         ddf = -ay; sadj = ay + ay; padj = ax + ax;
-        while (ay-- >= 0) { setPixelFast(x0, y0, color_argb); y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; } }
+        while (ay-- >= 0) { if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; } }
     }
-    unlock();
+    if (ownLock) unlock();
+    if (ownBatch) endBlitBatch();
 }
-
-static bool isRenderTarget(IDirect3DSurface9* s);
 
 void gxCanvas::rect(int x, int y, int w, int h, bool solid) {    
     x += origin_x; y += origin_y;
     Rect dest(x, y, w, h);
     if (!clip(&dest)) return;
+    unsigned alpha = color_argb >> 24;
+    if (alpha == 0) return;
+    if (alpha != 255) {
+        if (solid) {
+            rectBlend(x - origin_x, y - origin_y, w, h, color_argb);
+        }
+        else {
+            bool ownBatch = !blit_batch_active && !isLocked() && isRenderTarget(surf) && graphics && graphics->dir3dDev;
+            if (ownBatch) beginBlitBatch();
+            bool ownLock = !blit_batch_active && !isLocked();
+            if (ownLock && !lock()) { if (ownBatch) endBlitBatch(); return; }
+            rectBlend(x - origin_x, y - origin_y, w, 1, color_argb);
+            if (h > 1) rectBlend(x - origin_x, y + h - 1 - origin_y, w, 1, color_argb);
+            if (h > 2) {
+                rectBlend(x - origin_x, y + 1 - origin_y, 1, h - 2, color_argb);
+                if (w > 1) rectBlend(x + w - 1 - origin_x, y + 1 - origin_y, 1, h - 2, color_argb);
+            }
+            if (ownLock) unlock();
+            if (ownBatch) endBlitBatch();
+        }
+        return;
+    }
     unsigned argb = format.toARGB(color_surf);
     if (solid) {
         fillRect(dest, argb);
@@ -565,14 +592,18 @@ void gxCanvas::rect(int x, int y, int w, int h, bool solid) {
 
 void gxCanvas::rectBlend(int x, int y, int w, int h, unsigned argb) {
     unsigned tintA = (argb >> 24) & 0xff;
-    if (tintA == 255) { rect(x, y, w, h, true); return; }
     if (tintA == 0 || w <= 0 || h <= 0) return;
     x += origin_x; y += origin_y;
     Rect dest_r(x, y, w, h);
     if (!clip(&dest_r)) return;
+    if (tintA == 255) { fillRect(dest_r, argb); damage(dest_r); return; }
 
     IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
-    if (!isRenderTarget(surf) || !dev) {
+    bool ownBatch = !blit_batch_active;
+    bool blendOnCpu = isLocked() || !isRenderTarget(surf) || !dev;
+    if (!blendOnCpu && ownBatch) beginBlitBatch();
+    if (!blendOnCpu && !blit_batch_active) { if (ownBatch) endBlitBatch(); blendOnCpu = true; }
+    if (blendOnCpu) {
         if (!lock()) return;
         unsigned sR = (argb >> 16) & 0xff, sG = (argb >> 8) & 0xff, sB = argb & 0xff;
         unsigned invA = 255 - tintA;
@@ -592,14 +623,7 @@ void gxCanvas::rectBlend(int x, int y, int w, int h, unsigned argb) {
         return;
     }
 
-    bool ownBatch = !blit_batch_active;
-    if (ownBatch) beginBlitBatch();
-    if (!blit_batch_active) {
-        if (ownBatch) endBlitBatch();
-        rect(x - origin_x, y - origin_y, w, h, true);
-        return;
-    }
-
+    FillModeGuard guard(dev);
     IDirect3DBaseTexture9* oldTex = nullptr;
     DWORD oldFVF = 0, oldCOp, oldCArg1, oldAOp, oldAArg1;
     DWORD oldAB, oldSB, oldDB, oldAT, oldLight, oldZ;
@@ -665,6 +689,12 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     float xr = w * .5f, yr = h * .5f, ar = (float)w / (float)h;
     float cx = x1 + xr + .5f, cy = y1 + yr - .5f, rsq = yr * yr, y;
     unsigned argb = format.toARGB(color_surf);
+    unsigned alpha = color_argb >> 24;
+    if (alpha == 0) return;
+    bool ownBatch = alpha != 255 && !blit_batch_active && !isLocked() && isRenderTarget(surf) && graphics && graphics->dir3dDev;
+    if (ownBatch) beginBlitBatch();
+    bool ownLock = alpha != 255 && !blit_batch_active && !isLocked();
+    if (ownLock && !lock()) { if (ownBatch) endBlitBatch(); return; }
     if (solid) {
         y = dest.top - cy;
         for (int t = dest.top; t < dest.bottom; ++y, ++t) {
@@ -674,9 +704,12 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
             Rect dr; dr.top = t; dr.bottom = t + 1;
             dr.left = xa < viewport.left ? viewport.left : xa;
             dr.right = xb > viewport.right ? viewport.right : xb;
-            fillRect(dr, argb);
+            if (alpha != 255) rectBlend(dr.left - origin_x, dr.top - origin_y, dr.right - dr.left, 1, color_argb);
+            else fillRect(dr, argb);
         }
         damage(dest);
+        if (ownLock) unlock();
+        if (ownBatch) endBlitBatch();
         return;
     }
     int p_xa, p_xb, t, hh = (int)floor(cy);
@@ -686,8 +719,12 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     for (; t <= hh; ++y, ++t) {
         float x = sqrtf(rsq - y * y) * ar;
         int xa = (int)floor(cx - x), xb = (int)floor(cx + x);
-        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1; if (clip(&r1)) fillRect(r1, argb);
-        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1; if (clip(&r2)) fillRect(r2, argb);
+        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1;
+        bool drawR1 = clip(&r1);
+        if (drawR1) { if (alpha != 255) rectBlend(r1.left - origin_x, r1.top - origin_y, r1.right - r1.left, 1, color_argb); else fillRect(r1, argb); }
+        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1;
+        if (alpha != 255 && drawR1 && r2.left < r1.right) r2.left = r1.right;
+        if (clip(&r2)) { if (alpha != 255) rectBlend(r2.left - origin_x, r2.top - origin_y, r2.right - r2.left, 1, color_argb); else fillRect(r2, argb); }
         p_xa = xa; p_xb = xb;
     }
     p_xa = p_xb = (int)cx;
@@ -696,11 +733,17 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     for (; t > hh; --y, --t) {
         float x = sqrtf(rsq - y * y) * ar;
         int xa = (int)floor(cx - x), xb = (int)floor(cx + x);
-        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1; if (clip(&r1)) fillRect(r1, argb);
-        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1; if (clip(&r2)) fillRect(r2, argb);
+        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1;
+        bool drawR1 = clip(&r1);
+        if (drawR1) { if (alpha != 255) rectBlend(r1.left - origin_x, r1.top - origin_y, r1.right - r1.left, 1, color_argb); else fillRect(r1, argb); }
+        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1;
+        if (alpha != 255 && drawR1 && r2.left < r1.right) r2.left = r1.right;
+        if (clip(&r2)) { if (alpha != 255) rectBlend(r2.left - origin_x, r2.top - origin_y, r2.right - r2.left, 1, color_argb); else fillRect(r2, argb); }
         p_xa = xa; p_xb = xb;
     }
     damage(dest);
+    if (ownLock) unlock();
+    if (ownBatch) endBlitBatch();
 }
 
 static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3DTexture9* tex, const RECT& dst, const RECT& src, int texW, int texH, bool useAlpha = false, unsigned color_argb = 0xFFFFFFFF) {
