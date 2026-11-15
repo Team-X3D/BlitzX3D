@@ -402,7 +402,10 @@ void gxCanvas::updateBitMask(const RECT& r) const {
     int w = r.right - r.left; if (w <= 0) return;
     int h = r.bottom - r.top; if (h <= 0) return;
 
-    lock();
+    if (!lock()) {
+        memset(cm_mask, 0, sizeof(unsigned) * cm_pitch * clip_rect.bottom);
+        return;
+    }
     RECT t = r;
     t.left &= ~31;
     t.right = (t.right + 31) & ~31;
@@ -493,7 +496,6 @@ static void drawLineD3D(IDirect3DDevice9* dev, int x0, int y0, int x1, int y1, u
     struct LineVertex { float x, y, z, rhw; DWORD color; };
     dev->SetRenderState(D3DRS_ZENABLE, FALSE);
     dev->SetRenderState(D3DRS_LIGHTING, FALSE);
-    dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
     dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
     dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
@@ -554,7 +556,9 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
     else { sx = -1; ax = -dx; }
     if (dy >= 0) { sy = 1; ay = dy; }
     else { sy = -1; ay = -dy; }
-    if (!lock()) {
+    D3DSURFACE_DESC surfDesc;
+    bool msaaTarget = surf && SUCCEEDED(surf->GetDesc(&surfDesc)) && (surfDesc.Usage & D3DUSAGE_RENDERTARGET) && surfDesc.MultiSampleType != D3DMULTISAMPLE_NONE;
+    if (msaaTarget || !lock()) {
         IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
         if (!dev) return;
         bool ownBatch = !blit_batch_active;
@@ -1659,7 +1663,7 @@ void gxCanvas::setPixel(int x, int y, unsigned argb) {
 unsigned gxCanvas::getPixel(int x, int y) const {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return format.toARGB(mask_surf);
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return format.toARGB(mask_surf);
-    lock();
+    if (!lock()) return format.toARGB(mask_surf);
     unsigned p = getPixelFast(x, y);
     unlock();
     return p;
@@ -1687,7 +1691,8 @@ void gxCanvas::copyPixel(int x, int y, gxCanvas* src, int src_x, int src_y) {
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
     src_x += src->origin_x; if (src_x < src->viewport.left || src_x >= src->viewport.right) return;
     src_y += src->origin_y; if (src_y < src->viewport.top || src_y >= src->viewport.bottom) return;
-    lock(); src->lock();
+    if (!lock()) return;
+    if (!src->lock()) { unlock(); return; }
     copyPixelFast(x, y, src, src_x, src_y);
     src->unlock(); unlock();
 }
