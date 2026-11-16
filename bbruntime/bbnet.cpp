@@ -475,7 +475,7 @@ static NetSession* bbNetJoinSession(BBStr* host, int port) {
 	INetTransport* t = createDirectTransport();
 	if (!t->connect(h.c_str(), port)) {
 		delete t;
-		RTEX("Failed to connect to session");
+		return 0;
 	}
 	NetSession* s = new NetSession();
 	s->transport = t;
