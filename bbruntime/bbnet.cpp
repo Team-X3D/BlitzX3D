@@ -451,11 +451,11 @@ namespace {
 }
 
 static NetSession* bbNetCreateSession(int port, int dedicated) {
-	if (port < 0 || port > 65535) RTEX("Invalid network port");
+	if (port < 0 || port > 65535) return 0;
 	INetTransport* t = createDirectTransport();
 	if (!t->listen(port)) {
 		delete t;
-		RTEX("Failed to create listen session");
+		return 0;
 	}
 	NetSession* s = new NetSession();
 	s->transport = t;
@@ -471,7 +471,7 @@ static NetSession* bbNetCreateSession(int port, int dedicated) {
 static NetSession* bbNetJoinSession(BBStr* host, int port) {
 	std::string h = *host;
 	delete host;
-	if (port < 0 || port > 65535) RTEX("Invalid network port");
+	if (port < 0 || port > 65535) return 0;
 	INetTransport* t = createDirectTransport();
 	if (!t->connect(h.c_str(), port)) {
 		delete t;
