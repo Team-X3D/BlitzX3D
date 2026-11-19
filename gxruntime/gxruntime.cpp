@@ -1189,6 +1189,8 @@ gxGraphics* gxRuntime::openGraphics(int w, int h, int d, int driver, int flags) 
 				MoveWindow(hwnd, cx, cy, w + tw, h + th, true);
 				ShowWindow(hwnd, SW_HIDE);
 				ShowWindow(hwnd, SW_SHOW);
+				SetForegroundWindow(hwnd);
+				SetFocus(hwnd);
 			}
 		}
 		else {
