@@ -560,20 +560,40 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
     if (dy >= 0) { sy = 1; ay = dy; }
     else { sy = -1; ay = -dy; }
     if ((color_argb >> 24) == 0) return;
-    bool ownBatch = (color_argb >> 24) != 255 && !blit_batch_active && !isLocked() && isRenderTarget(surf) && graphics && graphics->dir3dDev;
-    if (ownBatch) beginBlitBatch();
-    bool ownLock = !isLocked() && !blit_batch_active;
-    if (ownLock && !lock()) { if (ownBatch) endBlitBatch(); return; }
+
+    D3DSURFACE_DESC surfDesc;
+    bool isTarget = surf && SUCCEEDED(surf->GetDesc(&surfDesc)) && (surfDesc.Usage & D3DUSAGE_RENDERTARGET);
+    bool msaaTarget = isTarget && surfDesc.MultiSampleType != D3DMULTISAMPLE_NONE;
+    IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
+    bool alphaTarget = (color_argb >> 24) != 255 && isTarget && dev;
+
+    if ((!isLocked() && (msaaTarget || alphaTarget)) || !lock()) {
+        if (!dev) return;
+        bool ownBatch = !blit_batch_active;
+        if (ownBatch) beginBlitBatch();
+        if (!blit_batch_active) { if (ownBatch) endBlitBatch(); return; }
+        drawLineD3D(dev, x0, y0, x1, y1, color_argb);
+        if (ownBatch) endBlitBatch();
+        return;
+    }
+
     if (ax > ay) {
         ddf = -ax; sadj = ax + ax; padj = ay + ay;
-        while (ax-- >= 0) { if (blit_batch_active || (color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; } }
+        while (ax-- >= 0) {
+            if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb);
+            else setPixelFast(x0, y0, color_argb);
+            x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; }
+        }
     }
     else {
         ddf = -ay; sadj = ay + ay; padj = ax + ax;
-        while (ay-- >= 0) { if (blit_batch_active || (color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb); else setPixelFast(x0, y0, color_argb); y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; } }
+        while (ay-- >= 0) {
+            if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb);
+            else setPixelFast(x0, y0, color_argb);
+            y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; }
+        }
     }
-    if (ownLock) unlock();
-    if (ownBatch) endBlitBatch();
+    unlock();
 }
 
 void gxCanvas::rect(int x, int y, int w, int h, bool solid) {    
