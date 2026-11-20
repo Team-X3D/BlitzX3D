@@ -1336,11 +1336,11 @@ void bbCopyRect(int sx, int sy, int w, int h, int dx, int dy, gxCanvas* src, gxC
     if (dest) debugCanvas(dest, "CopyRect");
     else dest = gx_canvas;
 
-    if (dest->getFlags() & gxCanvas::CANVAS_TEXTURE) {
-        gx_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
+    if (dest->isLocked() || src->isLocked() || !(dest->getFlags() & gxCanvas::CANVAS_TEXTURE)) {
+        dest->blit(dx, dy, src, sx, sy, w, h, true);
     }
     else {
-        dest->blit(dx, dy, src, sx, sy, w, h, true);
+        gx_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
     }
 }
 
@@ -1873,7 +1873,7 @@ void bbDrawImageRectStretch(bbImage* i, int dx, int dy, int dw, int dh, int sx, 
 {
     debugImage(i, "DrawImageRectStretch", 0);
     gxCanvas* c = i->getFrames()[0];
-    gx_canvas->blitstretch(dx, dy, dw, dh, c, sx, sy, sw, sh, true);
+    gx_canvas->blitstretch(dx, dy, dw, dh, c, sx, sy, sw, sh, !c->hasMask() && !((c->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask()));
 }
 
 void bbDrawBlockRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_h, int frame)
