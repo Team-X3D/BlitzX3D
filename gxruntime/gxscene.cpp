@@ -852,6 +852,12 @@ void gxScene::clear(const float rgb[3], float alpha, float z, bool clear_argb, b
 
 void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt) {
 	if (currentEffect) {
+		bool effectBlend = blend == BLEND_REPLACE;
+		if (effectBlend) {
+			setRS(D3DRS_ALPHABLENDENABLE, true);
+			setRS(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+			setRS(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		}
 		UINT passes;
 		if (currentEffect->begin(&passes)) {
 			currentEffect->setAutoMatrices(currentWorld, currentView, currentProj);
@@ -863,6 +869,7 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 			}
 			currentEffect->end();
 		}
+		if (effectBlend) setRS(D3DRS_ALPHABLENDENABLE, false);
 		tris_drawn += tri_cnt;
 		return;
 	}

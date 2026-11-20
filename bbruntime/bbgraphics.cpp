@@ -1046,12 +1046,16 @@ void bbWritePixel(int x, int y, int argb, gxCanvas* buff)
 
 int bbReadPixelFast(int x, int y, gxCanvas* buff)
 {
-    return (buff ? buff : gx_canvas)->getPixelFast(x, y);
+    gxCanvas* c = buff ? buff : gx_canvas;
+    if (!c->isLocked()) return 0;
+    return c->getPixelFast(x, y);
 }
 
 void bbWritePixelFast(int x, int y, int argb, gxCanvas* buff)
 {
-    (buff ? buff : gx_canvas)->setPixelFast(x, y, argb);
+    gxCanvas* c = buff ? buff : gx_canvas;
+    if (!c->isLocked()) return;
+    c->setPixelFast(x, y, argb);
 }
 
 void bbCopyPixel(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gxCanvas* buff)
@@ -1061,7 +1065,10 @@ void bbCopyPixel(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gx
 
 void bbCopyPixelFast(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gxCanvas* buff)
 {
-    (buff ? buff : gx_canvas)->copyPixelFast(dest_x, dest_y, src ? src : gx_canvas, src_x, src_y);
+    gxCanvas* dest = buff ? buff : gx_canvas;
+    gxCanvas* from = src ? src : gx_canvas;
+    if (!dest->isLocked() || !from->isLocked()) return;
+    dest->copyPixelFast(dest_x, dest_y, from, src_x, src_y);
 }
 
 int bbScanLine()

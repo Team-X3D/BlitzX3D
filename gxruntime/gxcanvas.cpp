@@ -180,7 +180,7 @@ static const DWORD QUAD_FVF = D3DFVF_XYZRHW | D3DFVF_TEX1;
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
     graphics(g), plain_surf(s), tex(nullptr), cube_tex(nullptr), surf(s), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
@@ -206,7 +206,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
     graphics(g), plain_surf(nullptr), tex(t), cube_tex(nullptr), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
@@ -236,7 +236,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     graphics(g), plain_surf(nullptr), tex(nullptr), cube_tex(ct), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
 
@@ -403,7 +403,10 @@ void gxCanvas::updateBitMask(const RECT& r) const {
     int w = r.right - r.left; if (w <= 0) return;
     int h = r.bottom - r.top; if (h <= 0) return;
 
-    lock();
+    if (!lock()) {
+        memset(cm_mask, 0, sizeof(unsigned) * cm_pitch * clip_rect.bottom);
+        return;
+    }
     RECT t = r;
     t.left &= ~31;
     t.right = (t.right + 31) & ~31;
@@ -491,6 +494,27 @@ void gxCanvas::plot(int x, int y) {
     damage(dest);
 }
 static bool isRenderTarget(IDirect3DSurface9* s);
+
+static void drawLineD3D(IDirect3DDevice9* dev, int x0, int y0, int x1, int y1, unsigned argb) {
+    struct LineVertex { float x, y, z, rhw; DWORD color; };
+    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+    dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+    dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    dev->SetTexture(0, nullptr);
+    dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+    LineVertex v[2] = {
+        { (float)x0 - 0.5f, (float)y0 - 0.5f, 0.0f, 1.0f, (DWORD)argb },
+        { (float)x1 - 0.5f, (float)y1 - 0.5f, 0.0f, 1.0f, (DWORD)argb }
+    };
+    dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+    dev->DrawPrimitiveUP(D3DPT_LINELIST, 1, v, sizeof(LineVertex));
+}
 
 void gxCanvas::line(int x0, int y0, int x1, int y1) {
     int ddf, padj, sadj;
@@ -747,7 +771,7 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     if (ownBatch) endBlitBatch();
 }
 
-static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3DTexture9* tex, const RECT& dst, const RECT& src, int texW, int texH, bool useAlpha = false, unsigned color_argb = 0xFFFFFFFF) {
+static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3DTexture9* tex, const RECT& dst, const RECT& src, int texW, int texH, bool useAlpha, bool solid, unsigned color_argb = 0xFFFFFFFF) {
     D3DXMATRIX proj, view, world;
     D3DXMatrixIdentity(&world);
     D3DXMatrixIdentity(&view);
@@ -770,6 +794,23 @@ static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3
             ((color_argb >> 24) & 0xFF) / 255.0f
         };
         effect->setVector("color", color);
+    }
+
+    dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+    if (useAlpha) {
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    }
+    else {
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        dev->SetRenderState(D3DRS_ALPHATESTENABLE, solid ? FALSE : TRUE);
+        if (!solid) {
+            dev->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
+            dev->SetRenderState(D3DRS_ALPHAREF, 0);
+        }
     }
 
     UINT passes;
@@ -1262,7 +1303,7 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
     FillModeGuard guard(dev);
 
     if (effect2D) {
-        drawQuadWithEffect(dev, effect2D, blitTex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, false, 0);
+        drawQuadWithEffect(dev, effect2D, blitTex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, false, solid);
     }
     else {
         setupBlitRenderState(dev, solid);
@@ -1465,7 +1506,7 @@ void gxCanvas::blitAlpha(int x, int y, gxCanvas* src,
     FillModeGuard guard(dev);
 
     if (effect2D) {
-        drawQuadWithEffect(dev, effect2D, (IDirect3DTexture9*)tex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, true, color_argb);
+        drawQuadWithEffect(dev, effect2D, (IDirect3DTexture9*)tex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, true, true, color_argb);
     }
     else {
         dev->SetRenderState(D3DRS_LIGHTING, FALSE);

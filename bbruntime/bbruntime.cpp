@@ -284,6 +284,9 @@ void sockets_link(void (*rtSym)(const char* sym, void* pc));
 bool net_create();
 bool net_destroy();
 void net_link(void (*rtSym)(const char* sym, void* pc));
+bool nav_create();
+bool nav_destroy();
+void nav_link(void (*rtSym)(const char* sym, void* pc));
 bool filesystem_create();
 bool filesystem_destroy();
 void filesystem_link(void (*rtSym)(const char* sym, void* pc));
@@ -358,6 +361,7 @@ void bbruntime_link(void (*rtSym)(const char* sym, void* pc)) {
     stream_link(rtSym);
     sockets_link(rtSym);
     net_link(rtSym);
+    nav_link(rtSym);
     filesystem_link(rtSym);
     bank_link(rtSym);
     graphics_link(rtSym);
@@ -381,6 +385,7 @@ bool bbruntime_create() {
     INIT(stream);
     INIT(sockets);
     INIT(net);
+    INIT(nav);
     INIT(filesystem);
     INIT(bank);
     INIT(graphics);
@@ -401,6 +406,7 @@ bool bbruntime_destroy() {
     bank_destroy();
     filesystem_destroy();
     net_destroy();
+    nav_destroy();
     sockets_destroy();
     stream_destroy();
     string_destroy();

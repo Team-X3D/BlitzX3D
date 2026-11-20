@@ -179,6 +179,11 @@ bool World::checkLOS(Object* src, Object* dest) {
 	return true;
 }
 
+void World::enabledObjects(std::vector<Object*>& out) {
+	enumEnabled();
+	out = _enabled;
+}
+
 Object* World::traceRay(const Line& line, float radius, ObjCollision* curr_coll) {
 
 	enumEnabled();

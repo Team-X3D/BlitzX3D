@@ -69,7 +69,7 @@
       <ProgramDataBaseFileName>.\Debug\</ProgramDataBaseFileName>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <CallingConvention>StdCall</CallingConvention>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on;..\vendor\angelscript-JIT</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on;..\vendor\angelscript-JIT;..\vendor\recastnavigation\Recast\Include;..\vendor\recastnavigation\Detour\Include</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
@@ -125,7 +125,7 @@
       <CallingConvention>StdCall</CallingConvention>
       <ExceptionHandling>Async</ExceptionHandling>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on;..\vendor\angelscript-JIT</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(DXSDK_DIR)Include;..\freetype\include;..\bass\include;..\angelscript\sdk\angelscript\include;..\angelscript\sdk\add_on;..\vendor\angelscript-JIT;..\vendor\recastnavigation\Recast\Include;..\vendor\recastnavigation\Detour\Include</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>
       </AdditionalOptions>
@@ -162,6 +162,7 @@
     <ClCompile Include="bbsockets.cpp" />
     <ClCompile Include="bbnet.cpp" />
     <ClCompile Include="bbnet_direct.cpp" />
+    <ClCompile Include="bbnav.cpp" />
     <ClCompile Include="bbstream.cpp" />
     <ClCompile Include="bbstring.cpp" />
     <ClCompile Include="bbsys.cpp" />
@@ -188,6 +189,60 @@
     <ClCompile Include="..\angelscript\sdk\add_on\scripthelper\scripthelper.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\Recast.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastAlloc.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastArea.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastAssert.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastContour.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastFilter.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastLayers.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastMesh.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastMeshDetail.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastRasterization.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Recast\Source\RecastRegion.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Detour\Source\DetourAlloc.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Detour\Source\DetourAssert.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Detour\Source\DetourCommon.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Detour\Source\DetourNavMesh.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Detour\Source\DetourNavMeshBuilder.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Detour\Source\DetourNavMeshQuery.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\vendor\recastnavigation\Detour\Source\DetourNode.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="basic.h" />
@@ -204,6 +259,7 @@
     <ClInclude Include="bbsockets.h" />
     <ClInclude Include="bbnet.h" />
     <ClInclude Include="bbnet_transport.h" />
+    <ClInclude Include="bbnav.h" />
     <ClInclude Include="bbstream.h" />
     <ClInclude Include="bbstring.h" />
     <ClInclude Include="bbsys.h" />
