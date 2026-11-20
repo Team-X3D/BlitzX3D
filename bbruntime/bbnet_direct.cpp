@@ -3,9 +3,13 @@
 
 #include <winsock2.h>
 #include <cstring>
+#include <atomic>
+#include <memory>
+#include <thread>
 
 static const int DIRECT_MAX_FRAME = 16 * 1024 * 1024;
 static const int DIRECT_MAX_UDP = 1200;
+static const unsigned long long DIRECT_CONNECT_TIMEOUT_MS = 5000;
 static const unsigned char FRAME_TOKEN = 0;
 static const unsigned char FRAME_USER = 1;
 
@@ -59,36 +63,55 @@ public:
 	}
 
 	bool connect(const char* host, int port) {
+		if (connectSock_ != INVALID_SOCKET) {
+			::closesocket(connectSock_);
+			connectSock_ = INVALID_SOCKET;
+		}
+		resolve_.reset();
 		SOCKET s = ::socket(AF_INET, SOCK_STREAM, 0);
 		if (s == INVALID_SOCKET) return false;
-		sockaddr_in a = {};
-		a.sin_family = AF_INET;
-		a.sin_port = htons((u_short)port);
-		a.sin_addr.s_addr = ::inet_addr(host);
-		if (a.sin_addr.s_addr == INADDR_NONE) {
-			HOSTENT* h = ::gethostbyname(host);
-			if (!h || !h->h_addr_list[0]) { ::closesocket(s); return false; }
-			memcpy(&a.sin_addr, h->h_addr_list[0], 4);
-		}
-		if (::connect(s, (sockaddr*)&a, sizeof(a))) { ::closesocket(s); return false; }
 		setNonBlocking(s);
-		NetPeerId id = addPeer(s);
-		peers_[id].udpAddr = a;
-		peers_[id].hasUdp = true;
+		connectSock_ = s;
+		connectStartMs_ = GetTickCount64();
+		connectAddr_ = {};
+		connectAddr_.sin_family = AF_INET;
+		connectAddr_.sin_port = htons((u_short)port);
+		unsigned long ip = ::inet_addr(host);
+		if (ip != INADDR_NONE) {
+			connectAddr_.sin_addr.s_addr = ip;
+			beginConnect();
+		} else {
+			auto res = std::make_shared<Resolve>();
+			res->port = (u_short)port;
+			resolve_ = res;
+			std::string h = host;
+			std::thread([res, h]() {
+				HOSTENT* he = ::gethostbyname(h.c_str());
+				if (he && he->h_addr_list[0]) {
+					res->addr.sin_family = AF_INET;
+					res->addr.sin_port = htons(res->port);
+					memcpy(&res->addr.sin_addr, he->h_addr_list[0], 4);
+					res->state.store(1);
+				} else {
+					res->state.store(2);
+				}
+			}).detach();
+		}
 		openUdp(0);
-		NetEvent ev = {};
-		ev.type = NetEvent::Connect;
-		ev.peer = id;
-		events_.push_back(ev);
 		port_ = port;
 		return true;
 	}
 
 	void poll() {
+		pollConnect();
 		if (listener_ != INVALID_SOCKET) {
 			for (;;) {
 				SOCKET s = ::accept(listener_, 0, 0);
 				if (s == INVALID_SOCKET) break;
+				if (maxPeers_ > 0 && (int)peers_.size() >= maxPeers_) {
+					::closesocket(s);
+					continue;
+				}
 				setNonBlocking(s);
 				NetPeerId id = addPeer(s);
 				Peer& p = peers_[id];
@@ -105,22 +128,24 @@ public:
 		}
 		for (auto it = peers_.begin(); it != peers_.end();) {
 			SOCKET s = it->second.sock;
-			bool dead = false;
-			fd_set fd;
-			FD_ZERO(&fd);
-			FD_SET(s, &fd);
-			timeval tv = { 0, 0 };
-			int r = ::select(0, &fd, 0, 0, &tv);
-			if (r > 0 && FD_ISSET(s, &fd)) {
-				char buf[4096];
-				int n = ::recv(s, buf, sizeof(buf), 0);
-				if (n > 0) {
-					it->second.in.insert(it->second.in.end(), buf, buf + n);
-					if (!parse(it->first, it->second)) dead = true;
-				} else if (n == 0) {
-					dead = true;
-				} else if (::WSAGetLastError() != WSAEWOULDBLOCK) {
-					dead = true;
+			bool dead = it->second.dead;
+			if (!dead) {
+				fd_set fd;
+				FD_ZERO(&fd);
+				FD_SET(s, &fd);
+				timeval tv = { 0, 0 };
+				int r = ::select(0, &fd, 0, 0, &tv);
+				if (r > 0 && FD_ISSET(s, &fd)) {
+					char buf[4096];
+					int n = ::recv(s, buf, sizeof(buf), 0);
+					if (n > 0) {
+						it->second.in.insert(it->second.in.end(), buf, buf + n);
+						if (!parse(it->first, it->second)) dead = true;
+					} else if (n == 0) {
+						dead = true;
+					} else if (::WSAGetLastError() != WSAEWOULDBLOCK) {
+						dead = true;
+					}
 				}
 			}
 			if (dead) {
@@ -128,7 +153,7 @@ public:
 				ev.type = NetEvent::Disconnect;
 				ev.peer = it->first;
 				events_.push_back(ev);
-				::closesocket(s);
+				if (s != INVALID_SOCKET) ::closesocket(s);
 				if (it->second.token) tokenToPeer_.erase(it->second.token);
 				it = peers_.erase(it);
 			} else {
@@ -142,6 +167,7 @@ public:
 		auto it = peers_.find(to);
 		if (it == peers_.end()) return;
 		Peer& p = it->second;
+		if (p.dead) return;
 		if (reliability == NetReliability::Unreliable && p.hasUdp && p.token && size <= DIRECT_MAX_UDP) {
 			sendUdp(p, data, size);
 		} else {
@@ -156,13 +182,24 @@ public:
 	void closePeer(NetPeerId id) {
 		auto it = peers_.find(id);
 		if (it == peers_.end()) return;
-		::closesocket(it->second.sock);
+		if (it->second.sock != INVALID_SOCKET) ::closesocket(it->second.sock);
 		if (it->second.token) tokenToPeer_.erase(it->second.token);
 		peers_.erase(it);
 	}
 
+	void setMaxPeers(int max) {
+		maxPeers_ = max > 0 ? max : 0;
+	}
+
 	void close() {
-		for (auto& kv : peers_) ::closesocket(kv.second.sock);
+		if (connectSock_ != INVALID_SOCKET) {
+			::closesocket(connectSock_);
+			connectSock_ = INVALID_SOCKET;
+		}
+		resolve_.reset();
+		for (auto& kv : peers_) {
+			if (kv.second.sock != INVALID_SOCKET) ::closesocket(kv.second.sock);
+		}
 		peers_.clear();
 		tokenToPeer_.clear();
 		if (listener_ != INVALID_SOCKET) {
@@ -188,9 +225,82 @@ private:
 		SOCKET sock = INVALID_SOCKET;
 		sockaddr_in udpAddr = {};
 		bool hasUdp = false;
+		bool dead = false;
 		unsigned long long token = 0;
 		std::vector<char> in;
 	};
+
+	struct Resolve {
+		std::atomic<int> state{ 0 }; // 0 pending, 1 resolved, 2 failed
+		sockaddr_in addr = {};
+		u_short port = 0;
+	};
+
+	void beginConnect() {
+		connecting_ = true;
+		if (::connect(connectSock_, (sockaddr*)&connectAddr_, sizeof(connectAddr_)) == 0) {
+			finishConnect();
+		} else if (::WSAGetLastError() != WSAEWOULDBLOCK) {
+			failConnect();
+		}
+	}
+
+	void finishConnect() {
+		connecting_ = false;
+		NetPeerId id = addPeer(connectSock_);
+		Peer& p = peers_[id];
+		p.udpAddr = connectAddr_;
+		p.hasUdp = true;
+		connectSock_ = INVALID_SOCKET;
+		NetEvent ev = {};
+		ev.type = NetEvent::Connect;
+		ev.peer = id;
+		events_.push_back(ev);
+	}
+
+	void failConnect() {
+		connecting_ = false;
+		resolve_.reset();
+		if (connectSock_ != INVALID_SOCKET) {
+			::closesocket(connectSock_);
+			connectSock_ = INVALID_SOCKET;
+		}
+		NetEvent ev = {};
+		ev.type = NetEvent::Disconnect;
+		ev.peer = 0;
+		events_.push_back(ev);
+	}
+
+	void pollConnect() {
+		if (connectSock_ == INVALID_SOCKET) return;
+		unsigned long long now = GetTickCount64();
+		if (resolve_) {
+			int st = resolve_->state.load();
+			if (st == 1) {
+				connectAddr_ = resolve_->addr;
+				resolve_.reset();
+				beginConnect();
+			} else if (st == 2 || now - connectStartMs_ > DIRECT_CONNECT_TIMEOUT_MS) {
+				failConnect();
+			}
+			return;
+		}
+		if (!connecting_) return;
+		fd_set wf;
+		FD_ZERO(&wf);
+		FD_SET(connectSock_, &wf);
+		timeval tv = { 0, 0 };
+		int r = ::select(0, 0, &wf, 0, &tv);
+		if (r > 0 && FD_ISSET(connectSock_, &wf)) {
+			int err = 0;
+			int len = sizeof(err);
+			::getsockopt(connectSock_, SOL_SOCKET, SO_ERROR, (char*)&err, &len);
+			if (err) failConnect();
+			else finishConnect();
+		} else if (now - connectStartMs_ > DIRECT_CONNECT_TIMEOUT_MS) {
+			failConnect();
+		}
+	}
 
 	void setNonBlocking(SOCKET s) {
 		u_long nb = 1;
@@ -250,7 +360,17 @@ private:
 		}
 	}
 
+	void killPeer(Peer& p) {
+		if (p.dead) return;
+		p.dead = true;
+		if (p.sock != INVALID_SOCKET) {
+			::closesocket(p.sock);
+			p.sock = INVALID_SOCKET;
+		}
+	}
+
 	void sendTcp(Peer& p, unsigned char kind, const void* data, int size) {
+		if (p.dead) return;
 		std::vector<char> f;
 		appendFrame(f, kind, data, size);
 		SOCKET s = p.sock;
@@ -261,11 +381,16 @@ private:
 			FD_ZERO(&wf);
 			FD_SET(s, &wf);
 			timeval tv = { 5, 0 };
-			if (::select(0, 0, &wf, 0, &tv) <= 0) break;
+			if (::select(0, 0, &wf, 0, &tv) <= 0) {
+				// cut off the oxygen to stalled peers
+				killPeer(p);
+				return;
+			}
 			int n = ::send(s, ptr, rem, 0);
-			if (n == SOCKET_ERROR) {
-				if (::WSAGetLastError() == WSAEWOULDBLOCK) continue;
-				break;
+			if (n == SOCKET_ERROR && ::WSAGetLastError() == WSAEWOULDBLOCK) continue;
+			if (n <= 0) {
+				killPeer(p);
+				return;
 			}
 			ptr += n;
 			rem -= n;
@@ -322,6 +447,12 @@ private:
 
 	SOCKET listener_;
 	SOCKET udp_;
+	SOCKET connectSock_ = INVALID_SOCKET;
+	sockaddr_in connectAddr_ = {};
+	std::shared_ptr<Resolve> resolve_;
+	bool connecting_ = false;
+	unsigned long long connectStartMs_ = 0;
+	int maxPeers_ = 0;
 	bool isServer_;
 	std::map<NetPeerId, Peer> peers_;
 	std::map<unsigned long long, NetPeerId> tokenToPeer_;

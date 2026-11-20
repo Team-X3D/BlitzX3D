@@ -179,7 +179,7 @@ static const DWORD QUAD_FVF = D3DFVF_XYZRHW | D3DFVF_TEX1;
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
     graphics(g), plain_surf(s), tex(nullptr), cube_tex(nullptr), surf(s), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
@@ -205,7 +205,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
     graphics(g), plain_surf(nullptr), tex(t), cube_tex(nullptr), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
@@ -235,7 +235,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     graphics(g), plain_surf(nullptr), tex(nullptr), cube_tex(ct), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
 
@@ -402,7 +402,10 @@ void gxCanvas::updateBitMask(const RECT& r) const {
     int w = r.right - r.left; if (w <= 0) return;
     int h = r.bottom - r.top; if (h <= 0) return;
 
-    lock();
+    if (!lock()) {
+        memset(cm_mask, 0, sizeof(unsigned) * cm_pitch * clip_rect.bottom);
+        return;
+    }
     RECT t = r;
     t.left &= ~31;
     t.right = (t.right + 31) & ~31;
@@ -489,6 +492,27 @@ void gxCanvas::plot(int x, int y) {
     damage(dest);
 }
 
+static void drawLineD3D(IDirect3DDevice9* dev, int x0, int y0, int x1, int y1, unsigned argb) {
+    struct LineVertex { float x, y, z, rhw; DWORD color; };
+    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+    dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+    dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    dev->SetTexture(0, nullptr);
+    dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+    LineVertex v[2] = {
+        { (float)x0 - 0.5f, (float)y0 - 0.5f, 0.0f, 1.0f, (DWORD)argb },
+        { (float)x1 - 0.5f, (float)y1 - 0.5f, 0.0f, 1.0f, (DWORD)argb }
+    };
+    dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+    dev->DrawPrimitiveUP(D3DPT_LINELIST, 1, v, sizeof(LineVertex));
+}
+
 void gxCanvas::line(int x0, int y0, int x1, int y1) {
     int ddf, padj, sadj;
     int dx, dy, sx, sy, ax, ay;
@@ -532,7 +556,18 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
     else { sx = -1; ax = -dx; }
     if (dy >= 0) { sy = 1; ay = dy; }
     else { sy = -1; ay = -dy; }
-    lock();
+    D3DSURFACE_DESC surfDesc;
+    bool msaaTarget = surf && SUCCEEDED(surf->GetDesc(&surfDesc)) && (surfDesc.Usage & D3DUSAGE_RENDERTARGET) && surfDesc.MultiSampleType != D3DMULTISAMPLE_NONE;
+    if (msaaTarget || !lock()) {
+        IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
+        if (!dev) return;
+        bool ownBatch = !blit_batch_active;
+        if (ownBatch) beginBlitBatch();
+        if (!blit_batch_active) { if (ownBatch) endBlitBatch(); return; }
+        drawLineD3D(dev, x0, y0, x1, y1, color_argb);
+        if (ownBatch) endBlitBatch();
+        return;
+    }
     if (ax > ay) {
         ddf = -ax; sadj = ax + ax; padj = ay + ay;
         while (ax-- >= 0) { setPixelFast(x0, y0, color_argb); x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; } }
@@ -1620,7 +1655,7 @@ void gxCanvas::unlock() const {
 void gxCanvas::setPixel(int x, int y, unsigned argb) {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return;
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
-    lock();
+    if (!lock()) return;
     setPixelFast(x, y, argb);
     unlock();
 }
@@ -1628,7 +1663,7 @@ void gxCanvas::setPixel(int x, int y, unsigned argb) {
 unsigned gxCanvas::getPixel(int x, int y) const {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return format.toARGB(mask_surf);
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return format.toARGB(mask_surf);
-    lock();
+    if (!lock()) return format.toARGB(mask_surf);
     unsigned p = getPixelFast(x, y);
     unlock();
     return p;
@@ -1656,7 +1691,8 @@ void gxCanvas::copyPixel(int x, int y, gxCanvas* src, int src_x, int src_y) {
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
     src_x += src->origin_x; if (src_x < src->viewport.left || src_x >= src->viewport.right) return;
     src_y += src->origin_y; if (src_y < src->viewport.top || src_y >= src->viewport.bottom) return;
-    lock(); src->lock();
+    if (!lock()) return;
+    if (!src->lock()) { unlock(); return; }
     copyPixelFast(x, y, src, src_x, src_y);
     src->unlock(); unlock();
 }

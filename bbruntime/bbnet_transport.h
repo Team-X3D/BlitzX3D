@@ -27,6 +27,7 @@ public:
 	virtual void send(NetPeerId to, const void* data, int size, NetReliability reliability) = 0;
 	virtual void broadcast(const void* data, int size, NetReliability reliability) = 0;
 	virtual void closePeer(NetPeerId id) = 0;
+	virtual void setMaxPeers(int max) = 0;
 	virtual void close() = 0;
 
 	virtual std::vector<NetEvent> drain() = 0;

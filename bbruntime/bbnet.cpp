@@ -174,6 +174,15 @@ namespace {
 		s->transport->send(peer, b.data(), (int)b.size(), NetReliability::Reliable);
 	}
 
+	void dropSessionPeer(NetSession* s, int sid) {
+		s->sessionToTransport.erase(sid);
+		s->roster.erase(std::remove(s->roster.begin(), s->roster.end(), sid), s->roster.end());
+		std::vector<char> rp = buildRoster(s);
+		for (auto& kv : s->sessionToTransport)
+			sendEnvelope(s, kv.second, NET_MSG_ROSTER, s->localId, rp);
+		s->events.push_back("peer_leave");
+	}
+
 	void sendUser(NetSession* s, NetPeerId peer, int sender, unsigned target, const std::string& data, bool reliable) {
 		std::vector<char> b;
 		put8(b, NET_MSG_USER);
@@ -189,9 +198,9 @@ namespace {
 		if (target == NET_TARGET_BROADCAST) {
 			for (auto& kv : s->sessionToTransport)
 				if (kv.first != sender) sendUser(s, kv.second, sender, target, data, reliable);
-			if (echo) s->messages.push_back(std::make_pair(sender, data));
+			if (echo && !s->dedicated) s->messages.push_back(std::make_pair(sender, data));
 		} else if (target == (unsigned)s->localId) {
-			s->messages.push_back(std::make_pair(sender, data));
+			if (!s->dedicated) s->messages.push_back(std::make_pair(sender, data));
 		} else {
 			auto it = s->sessionToTransport.find((int)target);
 			if (it != s->sessionToTransport.end()) sendUser(s, it->second, sender, target, data, reliable);
@@ -367,12 +376,7 @@ namespace {
 					if (it != s->transportToSession.end()) {
 						int sid = it->second;
 						s->transportToSession.erase(it);
-						s->sessionToTransport.erase(sid);
-						s->roster.erase(std::remove(s->roster.begin(), s->roster.end(), sid), s->roster.end());
-						std::vector<char> rp = buildRoster(s);
-						for (auto& kv : s->sessionToTransport)
-							sendEnvelope(s, kv.second, NET_MSG_ROSTER, s->localId, rp);
-						s->events.push_back("peer_leave");
+						dropSessionPeer(s, sid);
 					}
 				} else {
 					s->connected = false;
@@ -451,11 +455,11 @@ namespace {
 }
 
 static NetSession* bbNetCreateSession(int port, int dedicated) {
-	if (port < 0 || port > 65535) RTEX("Invalid network port");
+	if (port < 0 || port > 65535) return 0;
 	INetTransport* t = createDirectTransport();
 	if (!t->listen(port)) {
 		delete t;
-		RTEX("Failed to create listen session");
+		return 0;
 	}
 	NetSession* s = new NetSession();
 	s->transport = t;
@@ -471,18 +475,16 @@ static NetSession* bbNetCreateSession(int port, int dedicated) {
 static NetSession* bbNetJoinSession(BBStr* host, int port) {
 	std::string h = *host;
 	delete host;
-	if (port < 0 || port > 65535) RTEX("Invalid network port");
+	if (port < 0 || port > 65535) return 0;
 	INetTransport* t = createDirectTransport();
 	if (!t->connect(h.c_str(), port)) {
 		delete t;
-		RTEX("Failed to connect to session");
+		return 0;
 	}
 	NetSession* s = new NetSession();
 	s->transport = t;
 	s->authorityId = 0;
 	net_set.insert(s);
-	t->poll();
-	processEvents(s);
 	return s;
 }
 
@@ -529,6 +531,24 @@ static int bbNetPeerId(NetSession* s, int index) {
 	debugNet(s, "NetPeerId");
 	if (index < 1 || index >(int)s->roster.size()) RTEX("Net peer index out of range");
 	return s->roster[index - 1];
+}
+
+static int bbNetSetMaxPeers(NetSession* s, int max) {
+	debugNet(s, "SetNetMaxPeers");
+	s->transport->setMaxPeers(max);
+	return max;
+}
+
+static int bbNetKick(NetSession* s, int peer) {
+	debugNet(s, "NetKick");
+	if (!s->isHost) return 0;
+	auto it = s->sessionToTransport.find(peer);
+	if (it == s->sessionToTransport.end()) return 0;
+	NetPeerId transport = it->second;
+	s->transport->closePeer(transport);
+	s->transportToSession.erase(transport);
+	dropSessionPeer(s, peer);
+	return 1;
 }
 
 static void bbNetSend(NetSession* s, int peer, BBStr* data, int reliable) {
@@ -738,6 +758,8 @@ void net_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("%NetConnected%session", bbNetConnected);
 	rtSym("%NetPeerCount%session", bbNetPeerCount);
 	rtSym("%NetPeerId%session%index", bbNetPeerId);
+	rtSym("%NetSetMaxPeers%session%max", bbNetSetMaxPeers);
+	rtSym("%NetKick%session%peer", bbNetKick);
 	rtSym("NetSend%session%peer$data%reliable=1", bbNetSend);
 	rtSym("NetBroadcast%session$data%reliable=1", bbNetBroadcast);
 	rtSym("$NetRecv%session", bbNetRecv);
