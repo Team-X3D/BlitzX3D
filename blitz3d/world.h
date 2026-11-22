@@ -40,6 +40,7 @@ public:
 	bool checkLOS(Object* src, Object* dest);
 	bool hitTest(const Line& line, float radius, Object* obj, const Transform& tf, int method, Collision* curr_coll);
 	Object* traceRay(const Line& line, float radius, ObjCollision* curr_coll);
+	void enabledObjects(std::vector<Object*>& out);
 
 private:
 	std::vector<Model*> transparents;

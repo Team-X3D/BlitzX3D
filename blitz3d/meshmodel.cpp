@@ -171,6 +171,7 @@ MeshModel::MeshModel(const MeshModel& t) : Model(t),
 rep(t.rep), brush_changes(rep->brush_changes - 1) {
 	++rep->ref_cnt;
 	surf_bones.resize(t.surf_bones.size());
+	bone_objs = t.bone_objs;
 }
 
 MeshModel::~MeshModel() {
@@ -179,6 +180,21 @@ MeshModel::~MeshModel() {
 
 void MeshModel::updateNormals() {
 	rep->updateNormals();
+}
+
+bool MeshModel::supportsInstancing()const {
+	if(!gx_graphics || !gx_graphics->ensureInstancingShader()) return false;
+	if(getRenderSpace() != RENDER_SPACE_LOCAL) return false;
+	if(!surf_bones.empty()) return false;
+	if(getEffect() || getBrush().getEffect()) return false;
+	if(rep->surfaces.empty()) return false;
+
+	for(int k = 0; k < rep->surfaces.size(); ++k) {
+		Surface* s = rep->surfaces[k];
+		Brush b(s->getBrush(), render_brush);
+		if(!brushSupportsInstancing(b)) return false;
+	}
+	return true;
 }
 
 void MeshModel::setCullBox(const Box& box) {
@@ -191,8 +207,13 @@ void MeshModel::setRenderBrush(const Brush& b) {
 }
 
 void MeshModel::createBones() {
-	setRenderSpace(RENDER_SPACE_WORLD);
 	const std::vector<Object*>& bones = getAnimator()->getObjects();
+	createBones(bones);
+}
+
+void MeshModel::createBones(const std::vector<Object*>& bones) {
+	setRenderSpace(RENDER_SPACE_WORLD);
+	bone_objs = bones;
 
 	surf_bones.resize(bones.size());
 
@@ -257,7 +278,7 @@ bool MeshModel::render(const RenderContext& rc) {
 	}
 
 	//OK, its boned!
-	const std::vector<Object*>& bones = getAnimator()->getObjects();
+	const std::vector<Object*>& bones = getAnimator() ? getAnimator()->getObjects() : bone_objs;
 
 	int k;
 	for(k = 0; k < bones.size(); ++k) {
@@ -282,7 +303,7 @@ bool MeshModel::render(const RenderContext& rc) {
 				}
 			}
 			if(gxMesh* mesh = s->getMesh(surf_bones)) {
-				enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k]);
+				enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k], false);
 			}
 		}
 		else {
@@ -308,7 +329,7 @@ void MeshModel::renderQueue(int type) {
 					}
 				}
 				if(gxMesh* mesh = s->getMesh(surf_bones)) {
-					enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k]);
+					enqueue(mesh, 0, s->numVertices(), 0, s->numTriangles(), brushes[k], false);
 				}
 			}
 		}

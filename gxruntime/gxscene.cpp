@@ -548,6 +548,7 @@ void gxScene::setFogColor(const float rgb[3]) {
 }
 
 void gxScene::setFogRange(float nr, float fr) {
+	nr = std::max(0.0f, nr); fr = std::max(0.0f, fr);
 	if(nr == fogrange_nr && fr == fogrange_fr) return;
 	fogrange_nr = nr; fogrange_fr = fr;
 	setRS(D3DRS_FOGSTART, *(DWORD*)&fogrange_nr);
@@ -851,6 +852,12 @@ void gxScene::clear(const float rgb[3], float alpha, float z, bool clear_argb, b
 
 void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt) {
 	if (currentEffect) {
+		bool effectBlend = blend == BLEND_REPLACE;
+		if (effectBlend) {
+			setRS(D3DRS_ALPHABLENDENABLE, true);
+			setRS(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+			setRS(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+		}
 		UINT passes;
 		if (currentEffect->begin(&passes)) {
 			currentEffect->setAutoMatrices(currentWorld, currentView, currentProj);
@@ -862,6 +869,7 @@ void gxScene::render(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, 
 			}
 			currentEffect->end();
 		}
+		if (effectBlend) setRS(D3DRS_ALPHABLENDENABLE, false);
 		tris_drawn += tri_cnt;
 		return;
 	}
@@ -973,6 +981,7 @@ void gxScene::setSkinShaderConstants() {
 	float flags = 0;
 	if (fx & FX_VERTEXCOLOR) flags += 1.0f;
 	if (shininess > 0) flags += 2.0f;
+	if (fx & FX_VERTEXALPHA) flags += 4.0f;
 	float eye[4] = { eyePos[0], eyePos[1], eyePos[2], flags };
 	dev->SetVertexShaderConstantF(231, eye, 1);
 }
@@ -981,6 +990,18 @@ void gxScene::renderSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int firs
 	setSkinShaderConstants();
 	mesh->renderSkinned(first_vert, vert_cnt, first_tri, tri_cnt, bone_data, bone_cnt);
 	tris_drawn += tri_cnt;
+}
+
+bool gxScene::renderInstanced(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const float* instance_data, int instance_count) {
+	if (currentEffect) return false;
+	if (n_texs > tex_stages) return false;
+	if (!graphics->ensureInstancingShader()) return false;
+
+	setSkinShaderConstants();
+	if (!mesh->renderInstanced(first_vert, vert_cnt, first_tri, tri_cnt, instance_data, instance_count)) return false;
+
+	tris_drawn += tri_cnt * instance_count;
+	return true;
 }
 
 void gxScene::end() {

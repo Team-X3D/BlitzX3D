@@ -154,6 +154,12 @@ public:
 	bool ensureSkinningShader();
 	IDirect3DVertexShader9* getSkinningShader()const { return skin_vshader; }
 
+	//MESH INSTANCING
+	bool instancingSupported();
+	bool ensureInstancingShader();
+	IDirect3DVertexShader9* getInstancingShader()const { return inst_vshader; }
+	IDirect3DVertexDeclaration9* getInstancingDecl()const { return inst_decl; }
+
 	bool ensureCopyScratch(int w, int h, D3DFORMAT fmt);
 	void releaseCopyScratchCanvas();
 
@@ -162,6 +168,11 @@ private:
 	IDirect3DVertexDeclaration9* skin_decl;
 	bool skin_shader_load_failed;
 	int skin_caps_checked;   //-1 unknown, 0 unsupported, 1 supported
+
+	IDirect3DVertexShader9* inst_vshader;
+	IDirect3DVertexDeclaration9* inst_decl;
+	bool inst_shader_load_failed;
+	int inst_caps_checked;   //-1 unknown, 0 unsupported, 1 supported
 
 	gxCanvas* copy_scratch;
 	int copy_scratch_w, copy_scratch_h;

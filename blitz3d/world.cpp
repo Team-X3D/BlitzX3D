@@ -179,6 +179,11 @@ bool World::checkLOS(Object* src, Object* dest) {
 	return true;
 }
 
+void World::enabledObjects(std::vector<Object*>& out) {
+	enumEnabled();
+	out = _enabled;
+}
+
 Object* World::traceRay(const Line& line, float radius, ObjCollision* curr_coll) {
 
 	enumEnabled();
@@ -490,10 +495,12 @@ void World::render(Camera* cam, Mirror* mirror) {
 	}
 
 	gx_scene->setZMode(gxScene::ZMODE_NORMAL);
+	Model::beginOpaqueBatch();
 	for (Model* mod : unord_mods) {
 		if (!mod->doAutoFade(cam_tform.v)) continue;
 		render(mod, rc);
 	}
+	Model::flushOpaqueBatch();
 	gx_scene->setZMode(gxScene::ZMODE_CMPONLY);
 	flushTransparent();
 

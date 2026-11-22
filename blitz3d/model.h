@@ -66,18 +66,32 @@ public:
 	void setRenderSpace(int n) { space = n; }
 	int getRenderSpace()const { return space; }
 
+	void setInstancingOptIn(bool enable) { instancing_opt_in = enable; if(enable) any_instancing_opt_in = true; }
+	bool getInstancingOptIn()const { return instancing_opt_in; }
+	virtual bool supportsInstancing()const { return false; }
+	static bool brushSupportsInstancing(const Brush& brush);
+
 	void setAutoFade(float nr, float fr) { auto_fade_nr = nr; auto_fade_fr = fr; auto_fade = true; }
 
 	bool doAutoFade(const Vector& eye);
 
 	void enqueue(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt);
-	void enqueue(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const Brush& b);
+	void enqueue(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const Brush& b, bool allow_instance = true);
 	void enqueueSkinned(gxMesh* mesh, int first_vert, int vert_cnt, int first_tri, int tri_cnt, const Brush& b, const float* bone_data, int bone_cnt);
+
+	static void beginOpaqueBatch();
+	static void flushOpaqueBatch();
+	static void setInstancingEnabled(bool enable) { instancing_enabled = enable; }
+	static bool getInstancingEnabled() { return instancing_enabled; }
 
 	int queueSize(int type)const { return queues[type].size(); }
 
 private:
 	class MeshQueue;
+
+	static bool batch_opaque;
+	static bool instancing_enabled;
+	static std::vector<MeshQueue*> pending_opaque;
 
 	int space;
 	Brush brush, render_brush;
@@ -94,6 +108,8 @@ private:
 
 	gxEffect* entityEffect = nullptr;
 	gxEffect* renderEffect = nullptr;
+	bool instancing_opt_in = false;
+	static bool any_instancing_opt_in;
 };
 
 #endif

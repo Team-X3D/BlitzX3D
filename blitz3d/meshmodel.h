@@ -26,9 +26,11 @@ public:
 	virtual void setRenderBrush(const Brush& b);
 	virtual bool render(const RenderContext& rc);
 	virtual void renderQueue(int type);
+	virtual bool supportsInstancing()const;
 
 	//boned mesh!
 	void createBones();
+	void createBones(const std::vector<Object*>& bones);
 
 	//MeshModel interface
 	Surface* createSurface(const Brush& b);
@@ -59,6 +61,7 @@ private:
 	std::vector<Brush> brushes;
 
 	std::vector<Surface::Bone> surf_bones;
+	std::vector<Object*> bone_objs;
 
 	void packBones(std::vector<float>& out)const;
 	bool wantGpuSkinning();

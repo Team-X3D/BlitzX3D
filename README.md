@@ -47,6 +47,7 @@ Need help, have a question, or found a problem?
 ### Verified & total support for
 * [**Stranded II**](https://www.unrealsoftware.de/game_stranded2.php)
 * [**Hard Time**](https://www.mdickie.com/prev_hardtime.htm)
+* [**SCP – Containment Breach 1.3.12 (Community Preservation Project)**](https://github.com/SCP-CB-CPP/scpcb/tree/bx3d)
 
 ---
 

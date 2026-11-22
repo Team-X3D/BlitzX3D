@@ -13,6 +13,7 @@
 #include "../blitz3d/loader_x.h"
 #include "../blitz3d/loader_3ds.h"
 #include "../blitz3d/loader_b3d.h"
+#include "../blitz3d/loader_fbx.h"
 #include "../blitz3d/md2model.h"
 #include "../blitz3d/q3bspmodel.h"
 #include "../blitz3d/meshutil.h"
@@ -32,6 +33,10 @@ extern gxFileSystem* gx_filesys;
 
 static int tri_count;
 static World* world;
+
+World* bbGetWorld() {
+	return world;
+}
 
 static std::unordered_set<Brush*> brush_set;
 std::unordered_set<Texture*> texture_set;
@@ -58,6 +63,7 @@ extern float stats3d[10];
 static Loader_X loader_x;
 static Loader_3DS loader_3ds;
 static Loader_B3D loader_b3d;
+static Loader_FBX loader_fbx;
 
 static std::map<std::string, Transform> loader_mat_map;
 
@@ -185,6 +191,7 @@ static Entity* loadEntity(std::string t, int hint) {
 	if (ext == "x") l = &loader_x;
 	else if (ext == "3ds") l = &loader_3ds;
 	else if (ext == "b3d") l = &loader_b3d;
+	else if (ext == "fbx") l = &loader_fbx;
 	else return 0;
 
 	const Transform& conv = loader_mat_map[ext];
@@ -286,6 +293,11 @@ void bbGpuSkinning(int enable) {
 	MeshModel::setGpuSkinningEnabled(!!enable);
 	if (enable && gx_graphics) gx_graphics->ensureSkinningShader();
 	*/
+}
+
+void bbMeshInstancing(int enable) {
+	debug3d("MeshInstancing");
+	Model::setInstancingEnabled(!!enable);
 }
 
 void bbWBuffer(int enable) {
@@ -2069,6 +2081,12 @@ void  bbEntityFX(Model* m, int fx) {
 	m->setFX(fx);
 }
 
+int bbEntityInstancing(Model* m, int enable) {
+	debugModel(m, "EntityInstancing");
+	m->setInstancingOptIn(!!enable);
+	return m->supportsInstancing() ? 1 : 0;
+}
+
 int bbEntityColorR(Model* m) {
 	debugModel(m, "EntityColorR");
 	return (int)(m->getBrush().getColor().x * 255.0f);
@@ -2622,6 +2640,7 @@ void blitz3d_open() {
 	loader_mat_map.clear();
 	loader_mat_map["x"] = Transform();
 	loader_mat_map["3ds"] = Transform(Matrix(Vector(1, 0, 0), Vector(0, 0, 1), Vector(0, 1, 0)));
+	loader_mat_map["fbx"] = Transform();
 	listener = 0;
 	stats_mode = false;
 }
@@ -2641,6 +2660,7 @@ void blitz3d_close() {
 bool blitz3d_create() {
 	tri_count = 0;
 	gx_scene = 0; world = 0;
+	Model::setInstancingEnabled(false);
 	return true;
 }
 
@@ -2653,6 +2673,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("LoaderMatrix$file_ext#xx#xy#xz#yx#yy#yz#zx#zy#zz", bbLoaderMatrix);
 	rtSym("HWMultiTex%enable", bbHWMultiTex);
 	rtSym("GpuSkinning%enable", bbGpuSkinning);
+	rtSym("MeshInstancing%enable", bbMeshInstancing);
 	rtSym("%HWTexUnits", bbHWTexUnits);
 	rtSym("%GfxDriverCaps3D", bbGfxDriverCaps3D);
 	rtSym("WBuffer%enable", bbWBuffer);
@@ -2979,6 +3000,7 @@ void blitz3d_link(void (*rtSym)(const char* sym, void* pc)) {
 	rtSym("#GetEntityAlpha%entity", bbGetEntityAlpha);
 	rtSym("%GetEntityBlend%entity", bbGetEntityBlend);
 	rtSym("EntityFX%entity%fx", bbEntityFX);
+	rtSym("%EntityInstancing%entity%enable", bbEntityInstancing);
 	rtSym("EntityAutoFade%entity#near#far", bbEntityAutoFade);
 	rtSym("EntityOrder%entity%order", bbEntityOrder);
 	rtSym("HideEntity%entity", bbHideEntity);

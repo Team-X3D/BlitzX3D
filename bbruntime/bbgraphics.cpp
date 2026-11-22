@@ -1046,12 +1046,16 @@ void bbWritePixel(int x, int y, int argb, gxCanvas* buff)
 
 int bbReadPixelFast(int x, int y, gxCanvas* buff)
 {
-    return (buff ? buff : gx_canvas)->getPixelFast(x, y);
+    gxCanvas* c = buff ? buff : gx_canvas;
+    if (!c->isLocked()) return 0;
+    return c->getPixelFast(x, y);
 }
 
 void bbWritePixelFast(int x, int y, int argb, gxCanvas* buff)
 {
-    (buff ? buff : gx_canvas)->setPixelFast(x, y, argb);
+    gxCanvas* c = buff ? buff : gx_canvas;
+    if (!c->isLocked()) return;
+    c->setPixelFast(x, y, argb);
 }
 
 void bbCopyPixel(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gxCanvas* buff)
@@ -1061,7 +1065,10 @@ void bbCopyPixel(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gx
 
 void bbCopyPixelFast(int src_x, int src_y, gxCanvas* src, int dest_x, int dest_y, gxCanvas* buff)
 {
-    (buff ? buff : gx_canvas)->copyPixelFast(dest_x, dest_y, src ? src : gx_canvas, src_x, src_y);
+    gxCanvas* dest = buff ? buff : gx_canvas;
+    gxCanvas* from = src ? src : gx_canvas;
+    if (!dest->isLocked() || !from->isLocked()) return;
+    dest->copyPixelFast(dest_x, dest_y, from, src_x, src_y);
 }
 
 int bbScanLine()
@@ -1329,11 +1336,11 @@ void bbCopyRect(int sx, int sy, int w, int h, int dx, int dy, gxCanvas* src, gxC
     if (dest) debugCanvas(dest, "CopyRect");
     else dest = gx_canvas;
 
-    if (dest->getFlags() & gxCanvas::CANVAS_TEXTURE) {
-        gx_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
+    if (dest->isLocked() || src->isLocked() || !(dest->getFlags() & gxCanvas::CANVAS_TEXTURE)) {
+        dest->blit(dx, dy, src, sx, sy, w, h, true);
     }
     else {
-        dest->blit(dx, dy, src, sx, sy, w, h, true);
+        gx_graphics->copy(dest, dx, dy, w, h, src, sx, sy, w, h);
     }
 }
 
@@ -1866,7 +1873,7 @@ void bbDrawImageRectStretch(bbImage* i, int dx, int dy, int dw, int dh, int sx, 
 {
     debugImage(i, "DrawImageRectStretch", 0);
     gxCanvas* c = i->getFrames()[0];
-    gx_canvas->blitstretch(dx, dy, dw, dh, c, sx, sy, sw, sh, true);
+    gx_canvas->blitstretch(dx, dy, dw, dh, c, sx, sy, sw, sh, !c->hasMask() && !((c->getFlags() & gxCanvas::CANVAS_TEX_ALPHA) || c->format.hasAlphaMask()));
 }
 
 void bbDrawBlockRect(bbImage* i, int x, int y, int r_x, int r_y, int r_w, int r_h, int frame)

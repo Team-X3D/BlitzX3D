@@ -6,6 +6,7 @@
 #include "gxutf8.h"
 
 #include <cmath>
+#include <vector>
 
 static int canvas_cnt;
 
@@ -179,7 +180,7 @@ static const DWORD QUAD_FVF = D3DFVF_XYZRHW | D3DFVF_TEX1;
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
     graphics(g), plain_surf(s), tex(nullptr), cube_tex(nullptr), surf(s), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
@@ -205,7 +206,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DSurface9* s, int f) :
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
     graphics(g), plain_surf(nullptr), tex(t), cube_tex(nullptr), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
     memset(cube_surfs, 0, sizeof(cube_surfs));
@@ -235,7 +236,7 @@ gxCanvas::gxCanvas(gxGraphics* g, IDirect3DTexture9* t, int f) :
 gxCanvas::gxCanvas(gxGraphics* g, IDirect3DCubeTexture9* ct, int f) :
     graphics(g), plain_surf(nullptr), tex(nullptr), cube_tex(ct), surf(nullptr), z_surf(nullptr),
     flags(f), cube_mode(CUBEMODE_REFLECTION | CUBESPACE_WORLD),
-    t_surf(nullptr), cm_mask(nullptr), locked_cnt(0), mod_cnt(0), remip_cnt(0),
+    t_surf(nullptr), cm_mask(nullptr), locked_surf(nullptr), locked_pitch(0), locked_cnt(0), mod_cnt(0), remip_cnt(0),
     blit_tex(nullptr), blit_tex_mod_cnt(-1), blit_tex_mask(~0u), lock_is_rt(false), effect2D(nullptr), has_mask(false),
     blit_batch_depth(0), blit_batch_active(false), blit_batch_saved(nullptr) {
 
@@ -402,7 +403,10 @@ void gxCanvas::updateBitMask(const RECT& r) const {
     int w = r.right - r.left; if (w <= 0) return;
     int h = r.bottom - r.top; if (h <= 0) return;
 
-    lock();
+    if (!lock()) {
+        memset(cm_mask, 0, sizeof(unsigned) * cm_pitch * clip_rect.bottom);
+        return;
+    }
     RECT t = r;
     t.left &= ~31;
     t.right = (t.right + 31) & ~31;
@@ -484,9 +488,32 @@ void gxCanvas::cls() {
 void gxCanvas::plot(int x, int y) {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return;
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
+    if ((color_argb >> 24) != 255) { rectBlend(x - origin_x, y - origin_y, 1, 1, color_argb); return; }
     Rect dest(x, y, 1, 1);
     fillRect(dest, format.toARGB(color_surf));
     damage(dest);
+}
+static bool isRenderTarget(IDirect3DSurface9* s);
+
+static void drawLineD3D(IDirect3DDevice9* dev, int x0, int y0, int x1, int y1, unsigned argb) {
+    struct LineVertex { float x, y, z, rhw; DWORD color; };
+    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+    dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+    dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+    dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+    dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+    dev->SetTexture(0, nullptr);
+    dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+    dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_DIFFUSE);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAOP, D3DTOP_SELECTARG1);
+    dev->SetTextureStageState(0, D3DTSS_ALPHAARG1, D3DTA_DIFFUSE);
+    LineVertex v[2] = {
+        { (float)x0 - 0.5f, (float)y0 - 0.5f, 0.0f, 1.0f, (DWORD)argb },
+        { (float)x1 - 0.5f, (float)y1 - 0.5f, 0.0f, 1.0f, (DWORD)argb }
+    };
+    dev->SetFVF(D3DFVF_XYZRHW | D3DFVF_DIFFUSE);
+    dev->DrawPrimitiveUP(D3DPT_LINELIST, 1, v, sizeof(LineVertex));
 }
 
 void gxCanvas::line(int x0, int y0, int x1, int y1) {
@@ -527,29 +554,74 @@ void gxCanvas::line(int x0, int y0, int x1, int y1) {
     x1 = (int)std::lround((double)sx0 + t1 * fdx);
     y1 = (int)std::lround((double)sy0 + t1 * fdy);
     dx = x1 - x0; dy = y1 - y0;
-    if ((dx | dy) == 0) { setPixel(x0, y0, color_argb); return; }
+    if ((dx | dy) == 0) { plot(x0 - origin_x, y0 - origin_y); return; }
     if (dx >= 0) { sx = 1; ax = dx; }
     else { sx = -1; ax = -dx; }
     if (dy >= 0) { sy = 1; ay = dy; }
     else { sy = -1; ay = -dy; }
-    lock();
+    if ((color_argb >> 24) == 0) return;
+
+    D3DSURFACE_DESC surfDesc;
+    bool isTarget = surf && SUCCEEDED(surf->GetDesc(&surfDesc)) && (surfDesc.Usage & D3DUSAGE_RENDERTARGET);
+    bool msaaTarget = isTarget && surfDesc.MultiSampleType != D3DMULTISAMPLE_NONE;
+    IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
+    bool alphaTarget = (color_argb >> 24) != 255 && isTarget && dev;
+
+    if ((!isLocked() && (msaaTarget || alphaTarget)) || !lock()) {
+        if (!dev) return;
+        bool ownBatch = !blit_batch_active;
+        if (ownBatch) beginBlitBatch();
+        if (!blit_batch_active) { if (ownBatch) endBlitBatch(); return; }
+        drawLineD3D(dev, x0, y0, x1, y1, color_argb);
+        if (ownBatch) endBlitBatch();
+        return;
+    }
+
     if (ax > ay) {
         ddf = -ax; sadj = ax + ax; padj = ay + ay;
-        while (ax-- >= 0) { setPixelFast(x0, y0, color_argb); x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; } }
+        while (ax-- >= 0) {
+            if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb);
+            else setPixelFast(x0, y0, color_argb);
+            x0 += sx; ddf += padj; if (ddf >= 0) { y0 += sy; ddf -= sadj; }
+        }
     }
     else {
         ddf = -ay; sadj = ay + ay; padj = ax + ax;
-        while (ay-- >= 0) { setPixelFast(x0, y0, color_argb); y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; } }
+        while (ay-- >= 0) {
+            if ((color_argb >> 24) != 255) rectBlend(x0 - origin_x, y0 - origin_y, 1, 1, color_argb);
+            else setPixelFast(x0, y0, color_argb);
+            y0 += sy; ddf += padj; if (ddf >= 0) { x0 += sx; ddf -= sadj; }
+        }
     }
     unlock();
 }
-
-static bool isRenderTarget(IDirect3DSurface9* s);
 
 void gxCanvas::rect(int x, int y, int w, int h, bool solid) {    
     x += origin_x; y += origin_y;
     Rect dest(x, y, w, h);
     if (!clip(&dest)) return;
+    unsigned alpha = color_argb >> 24;
+    if (alpha == 0) return;
+    if (alpha != 255) {
+        if (solid) {
+            rectBlend(x - origin_x, y - origin_y, w, h, color_argb);
+        }
+        else {
+            bool ownBatch = !blit_batch_active && !isLocked() && isRenderTarget(surf) && graphics && graphics->dir3dDev;
+            if (ownBatch) beginBlitBatch();
+            bool ownLock = !blit_batch_active && !isLocked();
+            if (ownLock && !lock()) { if (ownBatch) endBlitBatch(); return; }
+            rectBlend(x - origin_x, y - origin_y, w, 1, color_argb);
+            if (h > 1) rectBlend(x - origin_x, y + h - 1 - origin_y, w, 1, color_argb);
+            if (h > 2) {
+                rectBlend(x - origin_x, y + 1 - origin_y, 1, h - 2, color_argb);
+                if (w > 1) rectBlend(x + w - 1 - origin_x, y + 1 - origin_y, 1, h - 2, color_argb);
+            }
+            if (ownLock) unlock();
+            if (ownBatch) endBlitBatch();
+        }
+        return;
+    }
     unsigned argb = format.toARGB(color_surf);
     if (solid) {
         fillRect(dest, argb);
@@ -565,14 +637,18 @@ void gxCanvas::rect(int x, int y, int w, int h, bool solid) {
 
 void gxCanvas::rectBlend(int x, int y, int w, int h, unsigned argb) {
     unsigned tintA = (argb >> 24) & 0xff;
-    if (tintA == 255) { rect(x, y, w, h, true); return; }
     if (tintA == 0 || w <= 0 || h <= 0) return;
     x += origin_x; y += origin_y;
     Rect dest_r(x, y, w, h);
     if (!clip(&dest_r)) return;
+    if (tintA == 255) { fillRect(dest_r, argb); damage(dest_r); return; }
 
     IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
-    if (!isRenderTarget(surf) || !dev) {
+    bool ownBatch = !blit_batch_active;
+    bool blendOnCpu = isLocked() || !isRenderTarget(surf) || !dev;
+    if (!blendOnCpu && ownBatch) beginBlitBatch();
+    if (!blendOnCpu && !blit_batch_active) { if (ownBatch) endBlitBatch(); blendOnCpu = true; }
+    if (blendOnCpu) {
         if (!lock()) return;
         unsigned sR = (argb >> 16) & 0xff, sG = (argb >> 8) & 0xff, sB = argb & 0xff;
         unsigned invA = 255 - tintA;
@@ -592,14 +668,7 @@ void gxCanvas::rectBlend(int x, int y, int w, int h, unsigned argb) {
         return;
     }
 
-    bool ownBatch = !blit_batch_active;
-    if (ownBatch) beginBlitBatch();
-    if (!blit_batch_active) {
-        if (ownBatch) endBlitBatch();
-        rect(x - origin_x, y - origin_y, w, h, true);
-        return;
-    }
-
+    FillModeGuard guard(dev);
     IDirect3DBaseTexture9* oldTex = nullptr;
     DWORD oldFVF = 0, oldCOp, oldCArg1, oldAOp, oldAArg1;
     DWORD oldAB, oldSB, oldDB, oldAT, oldLight, oldZ;
@@ -665,6 +734,12 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     float xr = w * .5f, yr = h * .5f, ar = (float)w / (float)h;
     float cx = x1 + xr + .5f, cy = y1 + yr - .5f, rsq = yr * yr, y;
     unsigned argb = format.toARGB(color_surf);
+    unsigned alpha = color_argb >> 24;
+    if (alpha == 0) return;
+    bool ownBatch = alpha != 255 && !blit_batch_active && !isLocked() && isRenderTarget(surf) && graphics && graphics->dir3dDev;
+    if (ownBatch) beginBlitBatch();
+    bool ownLock = alpha != 255 && !blit_batch_active && !isLocked();
+    if (ownLock && !lock()) { if (ownBatch) endBlitBatch(); return; }
     if (solid) {
         y = dest.top - cy;
         for (int t = dest.top; t < dest.bottom; ++y, ++t) {
@@ -674,9 +749,12 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
             Rect dr; dr.top = t; dr.bottom = t + 1;
             dr.left = xa < viewport.left ? viewport.left : xa;
             dr.right = xb > viewport.right ? viewport.right : xb;
-            fillRect(dr, argb);
+            if (alpha != 255) rectBlend(dr.left - origin_x, dr.top - origin_y, dr.right - dr.left, 1, color_argb);
+            else fillRect(dr, argb);
         }
         damage(dest);
+        if (ownLock) unlock();
+        if (ownBatch) endBlitBatch();
         return;
     }
     int p_xa, p_xb, t, hh = (int)floor(cy);
@@ -686,8 +764,12 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     for (; t <= hh; ++y, ++t) {
         float x = sqrtf(rsq - y * y) * ar;
         int xa = (int)floor(cx - x), xb = (int)floor(cx + x);
-        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1; if (clip(&r1)) fillRect(r1, argb);
-        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1; if (clip(&r2)) fillRect(r2, argb);
+        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1;
+        bool drawR1 = clip(&r1);
+        if (drawR1) { if (alpha != 255) rectBlend(r1.left - origin_x, r1.top - origin_y, r1.right - r1.left, 1, color_argb); else fillRect(r1, argb); }
+        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1;
+        if (alpha != 255 && drawR1 && r2.left < r1.right) r2.left = r1.right;
+        if (clip(&r2)) { if (alpha != 255) rectBlend(r2.left - origin_x, r2.top - origin_y, r2.right - r2.left, 1, color_argb); else fillRect(r2, argb); }
         p_xa = xa; p_xb = xb;
     }
     p_xa = p_xb = (int)cx;
@@ -696,14 +778,20 @@ void gxCanvas::oval(int x1, int y1, int w, int h, bool solid) {
     for (; t > hh; --y, --t) {
         float x = sqrtf(rsq - y * y) * ar;
         int xa = (int)floor(cx - x), xb = (int)floor(cx + x);
-        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1; if (clip(&r1)) fillRect(r1, argb);
-        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1; if (clip(&r2)) fillRect(r2, argb);
+        Rect r1(xa, t, p_xa - xa, 1); if (r1.right <= r1.left)r1.right = r1.left + 1;
+        bool drawR1 = clip(&r1);
+        if (drawR1) { if (alpha != 255) rectBlend(r1.left - origin_x, r1.top - origin_y, r1.right - r1.left, 1, color_argb); else fillRect(r1, argb); }
+        Rect r2(p_xb, t, xb - p_xb, 1); if (r2.left >= r2.right)r2.left = r2.right - 1;
+        if (alpha != 255 && drawR1 && r2.left < r1.right) r2.left = r1.right;
+        if (clip(&r2)) { if (alpha != 255) rectBlend(r2.left - origin_x, r2.top - origin_y, r2.right - r2.left, 1, color_argb); else fillRect(r2, argb); }
         p_xa = xa; p_xb = xb;
     }
     damage(dest);
+    if (ownLock) unlock();
+    if (ownBatch) endBlitBatch();
 }
 
-static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3DTexture9* tex, const RECT& dst, const RECT& src, int texW, int texH, bool useAlpha = false, unsigned color_argb = 0xFFFFFFFF) {
+static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3DTexture9* tex, const RECT& dst, const RECT& src, int texW, int texH, bool useAlpha, bool solid, unsigned color_argb = 0xFFFFFFFF) {
     D3DXMATRIX proj, view, world;
     D3DXMatrixIdentity(&world);
     D3DXMatrixIdentity(&view);
@@ -726,6 +814,23 @@ static void drawQuadWithEffect(IDirect3DDevice9* dev, gxEffect* effect, IDirect3
             ((color_argb >> 24) & 0xFF) / 255.0f
         };
         effect->setVector("color", color);
+    }
+
+    dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+    dev->SetRenderState(D3DRS_ZENABLE, FALSE);
+    if (useAlpha) {
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+        dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    }
+    else {
+        dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        dev->SetRenderState(D3DRS_ALPHATESTENABLE, solid ? FALSE : TRUE);
+        if (!solid) {
+            dev->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATER);
+            dev->SetRenderState(D3DRS_ALPHAREF, 0);
+        }
     }
 
     UINT passes;
@@ -1011,7 +1116,7 @@ void gxCanvas::beginBlitBatch() const {
     if (blit_batch_depth++ > 0) return;
 
     IDirect3DDevice9* dev = graphics ? graphics->dir3dDev : nullptr;
-    if (!dev || !isRenderTarget(surf)) {
+    if (!dev || isLocked() || !isRenderTarget(surf)) {
         blit_batch_active = false;
         return;
     }
@@ -1047,11 +1152,23 @@ void gxCanvas::endBlitBatch() const {
     }
 }
 
+static unsigned blendARGB(unsigned srcArgb, unsigned dstArgb) {
+    unsigned alpha = srcArgb >> 24;
+    if (alpha == 0) return dstArgb;
+    if (alpha == 255) return srcArgb;
+    unsigned invAlpha = 255 - alpha;
+    unsigned outA = alpha + ((dstArgb >> 24) * invAlpha) / 255;
+    unsigned outR = (((srcArgb >> 16) & 0xff) * alpha + ((dstArgb >> 16) & 0xff) * invAlpha) / 255;
+    unsigned outG = (((srcArgb >> 8) & 0xff) * alpha + ((dstArgb >> 8) & 0xff) * invAlpha) / 255;
+    unsigned outB = ((srcArgb & 0xff) * alpha + (dstArgb & 0xff) * invAlpha) / 255;
+    return (outA << 24) | (outR << 16) | (outG << 8) | outB;
+}
+
 static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const RECT& src_r, bool solid) {
     D3DSURFACE_DESC destDesc;
     bool destIsSysMem = SUCCEEDED(dest->surf->GetDesc(&destDesc)) && destDesc.Pool == D3DPOOL_SYSTEMMEM;
 
-    if (!destIsSysMem) {
+    if (!destIsSysMem && !dest->isLocked() && !src->isLocked()) {
         IDirect3DDevice9* dev = dest->graphics->dir3dDev;
         if (dev) {
             RECT srcRect = { src_r.left, src_r.top, src_r.right, src_r.bottom };
@@ -1103,6 +1220,15 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
     const PixelFormat& sf = src->format;
     const PixelFormat& df = dest->format;
     int sp = sf.getPitch(), dp = df.getPitch();
+    int srcLeft = src_r.left, srcTop = src_r.top;
+    std::vector<unsigned char> srcCopy;
+    if (src == dest && dest_r.left < src_r.right && dest_r.right > src_r.left && dest_r.top < src_r.bottom && dest_r.bottom > src_r.top) {
+        srcCopy.resize(sw * sh * sp);
+        for (int y = 0; y < sh; ++y) memcpy(srcCopy.data() + y * sw * sp, srcBits + (src_r.top + y) * srcPitchBytes + src_r.left * sp, sw * sp);
+        srcBits = srcCopy.data();
+        srcPitchBytes = sw * sp;
+        srcLeft = srcTop = 0;
+    }
 
     unsigned maskRGB = solid ? ~0u : (sf.toARGB(src->mask_surf) & 0x00ffffffu);
     bool doMask = (maskRGB != ~0u);
@@ -1111,7 +1237,7 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
     if (!stretch && !doMask && !doAlpha && sp == dp && sf.getDepth() == df.getDepth()) {
         int rowBytes = dw * sp;
         for (int y = 0; y < dh; ++y) {
-            const unsigned char* srow = srcBits + (src_r.top + y) * srcPitchBytes + src_r.left * sp;
+            const unsigned char* srow = srcBits + (srcTop + y) * srcPitchBytes + srcLeft * sp;
             unsigned char* drow = dstBits + (dest_r.top + y) * dstPitchBytes + dest_r.left * dp;
             memcpy(drow, srow, rowBytes);
         }
@@ -1119,13 +1245,17 @@ static void cpuBlit(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, const REC
     else {
         for (int y = 0; y < dh; ++y) {
             int sy = stretch ? (y * sh / dh) : y;
-            const unsigned char* srow = srcBits + (src_r.top + sy) * srcPitchBytes + src_r.left * sp;
+            const unsigned char* srow = srcBits + (srcTop + sy) * srcPitchBytes + srcLeft * sp;
             unsigned char* drow = dstBits + (dest_r.top + y) * dstPitchBytes + dest_r.left * dp;
             for (int x = 0; x < dw; ++x) {
                 int sx = stretch ? (x * sw / dw) : x;
                 unsigned argb = sf.toARGB(sf.getPixel((void*)(srow + sx * sp)));
                     if (doMask && maskMatch(argb, maskRGB, src->graphics->mask565)) continue;
                 if (!doAlpha) argb |= 0xff000000u;
+                if (!solid && doAlpha && (argb >> 24) != 255) {
+                    if ((argb >> 24) == 0) continue;
+                    argb = blendARGB(argb, df.toARGB(df.getPixel(drow + x * dp)));
+                }
                 df.setPixel(drow + x * dp, df.fromARGB(argb));
             }
         }
@@ -1147,6 +1277,7 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
 
     if (!clip(&dest_r, &src_r)) return;
     if (!::clip(src->clip_rect, &src_r, &dest_r)) return;
+    if (isLocked() || src->isLocked()) { cpuBlit(this, dest_r, src, src_r, solid); return; }
 
     if (solid) {
         D3DSURFACE_DESC srcDesc, dstDesc;
@@ -1160,9 +1291,8 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
         }
     }
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         cpuBlit(this, dest_r, src, src_r, solid);
-        damage(dest_r);
         return;
     }
 
@@ -1193,7 +1323,7 @@ void gxCanvas::blit(int x, int y, gxCanvas* src, int src_x, int src_y,
     FillModeGuard guard(dev);
 
     if (effect2D) {
-        drawQuadWithEffect(dev, effect2D, blitTex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, false, 0);
+        drawQuadWithEffect(dev, effect2D, blitTex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, false, solid);
     }
     else {
         setupBlitRenderState(dev, solid);
@@ -1228,9 +1358,8 @@ void gxCanvas::blitstretch(int x, int y, int w, int h,
 
     if (!::clip(src->clip_rect, &src_r)) return;
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         cpuBlit(this, dest_r, src, src_r, solid);
-        damage(dest_r);
         return;
     }
 
@@ -1346,9 +1475,9 @@ static void cpuBlitAlpha(gxCanvas* dest, const RECT& dest_r, gxCanvas* src, cons
             unsigned srcR = (srcArgb >> 16) & 0xff, srcG = (srcArgb >> 8) & 0xff, srcB = srcArgb & 0xff;
             unsigned dstR = (dstArgb >> 16) & 0xff, dstG = (dstArgb >> 8) & 0xff, dstB = dstArgb & 0xff;
             unsigned invA = 255 - srcA;
-            unsigned outR = (tintR * srcA + dstR * invA) / 255;
-            unsigned outG = (tintG * srcA + dstG * invA) / 255;
-            unsigned outB = (tintB * srcA + dstB * invA) / 255;
+            unsigned outR = ((srcR * tintR / 255) * srcA + dstR * invA) / 255;
+            unsigned outG = ((srcG * tintG / 255) * srcA + dstG * invA) / 255;
+            unsigned outB = ((srcB * tintB / 255) * srcA + dstB * invA) / 255;
             dest->setPixelFast(dx, dy, df.fromARGB((outA << 24) | (outR << 16) | (outG << 8) | outB));
         }
     }
@@ -1370,7 +1499,7 @@ void gxCanvas::blitAlpha(int x, int y, gxCanvas* src,
     if (!clip(&dest_r, &src_r)) return;
     if (!::clip(src->clip_rect, &src_r, &dest_r)) return;
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         cpuBlitAlpha(this, dest_r, src, src_r, color_argb);
         return;
     }
@@ -1397,7 +1526,7 @@ void gxCanvas::blitAlpha(int x, int y, gxCanvas* src,
     FillModeGuard guard(dev);
 
     if (effect2D) {
-        drawQuadWithEffect(dev, effect2D, (IDirect3DTexture9*)tex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, true, color_argb);
+        drawQuadWithEffect(dev, effect2D, (IDirect3DTexture9*)tex, dest_r, src_r, src->clip_rect.right, src->clip_rect.bottom, true, true, color_argb);
     }
     else {
         dev->SetRenderState(D3DRS_LIGHTING, FALSE);
@@ -1603,7 +1732,7 @@ void gxCanvas::unlock() const {
 void gxCanvas::setPixel(int x, int y, unsigned argb) {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return;
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
-    lock();
+    if (!lock()) return;
     setPixelFast(x, y, argb);
     unlock();
 }
@@ -1611,7 +1740,7 @@ void gxCanvas::setPixel(int x, int y, unsigned argb) {
 unsigned gxCanvas::getPixel(int x, int y) const {
     x += origin_x; if (x < viewport.left || x >= viewport.right)  return format.toARGB(mask_surf);
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return format.toARGB(mask_surf);
-    lock();
+    if (!lock()) return format.toARGB(mask_surf);
     unsigned p = getPixelFast(x, y);
     unlock();
     return p;
@@ -1639,7 +1768,8 @@ void gxCanvas::copyPixel(int x, int y, gxCanvas* src, int src_x, int src_y) {
     y += origin_y; if (y < viewport.top || y >= viewport.bottom) return;
     src_x += src->origin_x; if (src_x < src->viewport.left || src_x >= src->viewport.right) return;
     src_y += src->origin_y; if (src_y < src->viewport.top || src_y >= src->viewport.bottom) return;
-    lock(); src->lock();
+    if (!lock()) return;
+    if (!src->lock()) { unlock(); return; }
     copyPixelFast(x, y, src, src_x, src_y);
     src->unlock(); unlock();
 }
@@ -1656,7 +1786,7 @@ void gxCanvas::blitTForm(int x, int y, gxCanvas* src, int src_x, int src_y, int 
     float sx = mat[0][1] * src_h;
     float sy = mat[1][1] * src_h;
 
-    if (!isRenderTarget(surf)) {
+    if (isLocked() || src->isLocked() || !isRenderTarget(surf)) {
         float det = mat[0][0] * mat[1][1] - mat[0][1] * mat[1][0];
         if (fabsf(det) < 1e-6f) return;
         float inv00 = mat[1][1] / det;
@@ -1727,7 +1857,12 @@ void gxCanvas::blitTForm(int x, int y, gxCanvas* src, int src_x, int src_y, int 
                     if (a==0 && doMask) continue;
                     argb = (a<<24)|(r<<16)|(g<<8)|b;
                 }
-                format.setPixel(locked_surf + dy*locked_pitch + dx*format.getPitch(), format.fromARGB(argb));
+                unsigned char* dstPixel = locked_surf + dy * locked_pitch + dx * format.getPitch();
+                if ((doAlpha || doMask) && (argb >> 24) != 255) {
+                    if ((argb >> 24) == 0) continue;
+                    argb = blendARGB(argb, format.toARGB(format.getPixel(dstPixel)));
+                }
+                format.setPixel(dstPixel, format.fromARGB(argb));
             }
         }
         src->unlock(); unlock();
