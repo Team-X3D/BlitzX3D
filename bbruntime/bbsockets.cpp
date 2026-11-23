@@ -15,6 +15,14 @@ static int recv_timeout;
 static int read_timeout;
 static int accept_timeout;
 
+static bool socketUnusable(int error) {
+	return error == WSAENOTSOCK || error == WSAESHUTDOWN;
+}
+
+static bool tcpConnectionLost(int error) {
+	return socketUnusable(error) || error == WSAECONNRESET || error == WSAECONNABORTED || error == WSAENOTCONN || error == WSAENETRESET || error == WSAETIMEDOUT;
+}
+
 static void close(SOCKET sock, int e) {
 	if (e < 0) {
 		int opt = 1;
@@ -47,26 +55,26 @@ public:
 	int getPort();
 	int getMsgIP();
 	int getMsgPort();
+	int getError();
 
 private:
 	SOCKET sock;
 	std::vector<char> in_buf, out_buf;
 	sockaddr_in addr, in_addr, out_addr;
-	int in_get, e;
+	int in_get, e, last_error;
 };
 
-UDPStream::UDPStream(SOCKET s) :sock(s), in_get(0), e(0) {
+UDPStream::UDPStream(SOCKET s) :sock(s), in_get(0), e(0), last_error(0) {
 	int len = sizeof(addr);
 	getsockname(s, (sockaddr*)&addr, &len);
 	in_addr = out_addr = addr;
 }
 
 UDPStream::~UDPStream() {
-	close(sock, e);
+	::closesocket(sock);
 }
 
 int UDPStream::read(char* buff, int size) {
-	if (e) return 0;
 	int n = (int)in_buf.size() - in_get;
 	if (n <= 0 || size <= 0) return 0;
 	if (size > n) size = n;
@@ -82,51 +90,66 @@ int UDPStream::write(const char* buff, int size) {
 }
 
 int UDPStream::avail() {
-	if (e) return 0;
 	return in_buf.size() - in_get;
 }
 
 int UDPStream::eof() {
-	return e ? e : in_get == in_buf.size();
+	return in_get < in_buf.size() ? 0 : e ? e : 1;
 }
 
 //fill buffer, return sender
 int UDPStream::recv() {
 	if (e) return 0;
-	int tout;
-	if (recv_timeout) tout = gx_runtime->getMilliSecs() + recv_timeout;
-	for (;;) {
-		int dt = 0;
-		if (recv_timeout) {
-			dt = tout - gx_runtime->getMilliSecs();
-			if (dt < 0) dt = 0;
-		}
-		fd_set fd = { 1,sock };
-		timeval tv = { dt / 1000,(dt % 1000) * 1000 };
-		int n = ::select(0, &fd, 0, 0, &tv);
-		if (!n) return 0;
-		if (n != 1) { e = -1; return 0; }
-		unsigned long sz = 0;
-		if (ioctlsocket(sock, FIONREAD, &sz)) { e = -1; return 0; }
-		if (sz > 65535) sz = 65535;
-		in_buf.resize(sz); in_get = 0;
-		int len = sizeof(in_addr);
-		n = ::recvfrom(sock, (char*)in_buf.data(), sz, 0, (sockaddr*)&in_addr, &len);
-		if (n == SOCKET_ERROR) continue;	//{ e=-1;return 0; }
-		in_buf.resize(n);
-		return getMsgIP();
+	last_error = 0;
+	int dt = recv_timeout > 0 ? recv_timeout : 0;
+	fd_set fd = { 1,sock };
+	timeval tv = { dt / 1000,(dt % 1000) * 1000 };
+	int n = ::select(0, &fd, 0, 0, &tv);
+	if (!n) return 0;
+	if (n == SOCKET_ERROR) {
+		last_error = WSAGetLastError();
+		if (socketUnusable(last_error)) e = -1;
+		return 0;
 	}
-	return 0;
+	unsigned long sz = 0;
+	if (ioctlsocket(sock, FIONREAD, &sz) == SOCKET_ERROR) {
+		last_error = WSAGetLastError();
+		if (socketUnusable(last_error)) e = -1;
+		return 0;
+	}
+	if (sz > 65535) sz = 65535;
+	std::vector<char> message(sz ? sz : 1);
+	sockaddr_in sender = {};
+	int len = sizeof(sender);
+	n = ::recvfrom(sock, message.data(), (int)message.size(), 0, (sockaddr*)&sender, &len);
+	if (n == SOCKET_ERROR) {
+		last_error = WSAGetLastError();
+		if (socketUnusable(last_error)) e = -1;
+		return 0;
+	}
+	message.resize(n);
+	in_buf.swap(message);
+	in_get = 0;
+	in_addr = sender;
+	return getMsgIP();
 }
 
 //send, empty buffer
 int UDPStream::send(int ip, int port) {
 	if (e) return 0;
+	last_error = 0;
 	int sz = out_buf.size();
 	out_addr.sin_addr.S_un.S_addr = htonl(ip);
-	out_addr.sin_port = htons(port ? port : addr.sin_port);
+	out_addr.sin_port = port ? htons(port) : addr.sin_port;
 	int n = ::sendto(sock, (char*)out_buf.data(), sz, 0, (sockaddr*)&out_addr, sizeof(out_addr));
-	if (n != sz) return e = -1;
+	if (n != sz) {
+		if (n == SOCKET_ERROR) {
+			last_error = WSAGetLastError();
+			if (socketUnusable(last_error)) e = -1;
+		}
+		out_buf.clear();
+		return -1;
+	}
 	out_buf.clear();
 	return sz;
 }
@@ -147,6 +170,10 @@ int UDPStream::getMsgPort() {
 	return ntohs(in_addr.sin_port);
 }
 
+int UDPStream::getError() {
+	return last_error;
+}
+
 class TCPStream : public bbStream {
 public:
 	TCPStream(SOCKET s, TCPServer* t);
@@ -159,11 +186,12 @@ public:
 
 	int getIP();
 	int getPort();
+	int getError();
 
 private:
 	SOCKET sock;
 	TCPServer* server;
-	int e, ip, port;
+	int e, ip, port, last_error;
 };
 
 class TCPServer {
@@ -181,7 +209,7 @@ private:
 	std::set<TCPStream*> accepted_set;
 };
 
-TCPStream::TCPStream(SOCKET s, TCPServer* t) :sock(s), server(t), e(0) {
+TCPStream::TCPStream(SOCKET s, TCPServer* t) :sock(s), server(t), e(0), last_error(0) {
 	sockaddr_in addr;
 	int len = sizeof(addr);
 	if (getpeername(s, (sockaddr*)&addr, &len)) {
@@ -199,6 +227,7 @@ TCPStream::~TCPStream() {
 
 int TCPStream::read(char* buff, int size) {
 	if (e) return 0;
+	last_error = 0;
 	char* b = buff, * l = buff + size;
 	int tout;
 	if (read_timeout) tout = gx_runtime->getMilliSecs() + read_timeout;
@@ -211,10 +240,19 @@ int TCPStream::read(char* buff, int size) {
 		fd_set fd = { 1,sock };
 		timeval tv = { dt / 1000,(dt % 1000) * 1000 };
 		int n = ::select(0, &fd, 0, 0, &tv);
-		if (n != 1) { e = -1; break; }
+		if (n == 0) break;
+		if (n == SOCKET_ERROR) {
+			last_error = WSAGetLastError();
+			if (tcpConnectionLost(last_error)) e = -1;
+			break;
+		}
 		n = ::recv(sock, b, l - b, 0);
 		if (n == 0) { e = 1; break; }
-		if (n == SOCKET_ERROR) { e = -1; break; }
+		if (n == SOCKET_ERROR) {
+			last_error = WSAGetLastError();
+			if (tcpConnectionLost(last_error)) e = -1;
+			break;
+		}
 		b += n;
 	}
 	return b - buff;
@@ -222,26 +260,46 @@ int TCPStream::read(char* buff, int size) {
 
 int TCPStream::write(const char* buff, int size) {
 	if (e) return 0;
+	last_error = 0;
 	int n = ::send(sock, buff, size, 0);
-	if (n == SOCKET_ERROR) { e = -1; return 0; }
+	if (n == SOCKET_ERROR) {
+		last_error = WSAGetLastError();
+		if (tcpConnectionLost(last_error)) e = -1;
+		return 0;
+	}
 	return n;
 }
 
 int TCPStream::avail() {
+	if (e) return 0;
+	last_error = 0;
 	unsigned long t = 0;
 	int n = ::ioctlsocket(sock, FIONREAD, &t);
-	if (n == SOCKET_ERROR) { e = -1; return 0; }
+	if (n == SOCKET_ERROR) {
+		last_error = WSAGetLastError();
+		if (tcpConnectionLost(last_error)) e = -1;
+		return 0;
+	}
 	return (int)t;
 }
 
 int TCPStream::eof() {
 	if (e) return e;
+	last_error = 0;
 	fd_set fd = { 1,sock };
 	timeval tv = { 0,0 };
-	switch (::select(0, &fd, 0, 0, &tv)) {
-	case 0:break;
-	case 1:if (!avail()) e = 1; break;
-	default:e = -1;
+	int n = ::select(0, &fd, 0, 0, &tv);
+	if (n == SOCKET_ERROR) {
+		last_error = WSAGetLastError();
+		if (tcpConnectionLost(last_error)) e = -1;
+	} else if (n == 1) {
+		char byte;
+		n = ::recv(sock, &byte, 1, MSG_PEEK);
+		if (n == 0) e = 1;
+		else if (n == SOCKET_ERROR) {
+			last_error = WSAGetLastError();
+			if (tcpConnectionLost(last_error)) e = -1;
+		}
 	}
 	return e;
 }
@@ -252,6 +310,10 @@ int TCPStream::getIP() {
 
 int TCPStream::getPort() {
 	return port;
+}
+
+int TCPStream::getError() {
+	return last_error;
 }
 
 TCPServer::TCPServer(SOCKET s) :sock(s), e(0) {
@@ -268,9 +330,15 @@ TCPStream* TCPServer::accept() {
 	timeval tv = { accept_timeout / 1000,(accept_timeout % 1000) * 1000 };
 	int n = ::select(0, &fd, 0, 0, &tv);
 	if (n == 0) return 0;
-	if (n != 1) { e = -1; return 0; }
+	if (n == SOCKET_ERROR) {
+		if (socketUnusable(WSAGetLastError())) e = -1;
+		return 0;
+	}
 	SOCKET t = ::accept(sock, 0, 0);
-	if (t == INVALID_SOCKET) { e = -1; return 0; }
+	if (t == INVALID_SOCKET) {
+		if (socketUnusable(WSAGetLastError())) e = -1;
+		return 0;
+	}
 	TCPStream* s = new TCPStream(t, this);
 	accepted_set.insert(s);
 	return s;
@@ -367,6 +435,11 @@ int bbUDPMsgIP(UDPStream* p) {
 int bbUDPMsgPort(UDPStream* p) {
 	debugUDPStream(p, "UDPMsgPort");
 	return p->getMsgPort();
+}
+
+int bbUDPStreamError(UDPStream* p) {
+	debugUDPStream(p, "UDPStreamError");
+	return p->getError();
 }
 
 void bbUDPTimeouts(int rt) {
@@ -466,6 +539,11 @@ int bbTCPStreamIP(TCPStream* p) {
 int bbTCPStreamPort(TCPStream* p) {
 	debugTCPStream(p, "TCPStreamPort");
 	return p->getPort();
+}
+
+int bbTCPStreamError(TCPStream* p) {
+	debugTCPStream(p, "TCPStreamError");
+	return p->getError();
 }
 
 void bbTCPTimeouts(int rt, int at) {
@@ -729,6 +807,7 @@ void sockets_link(void(*rtSym)(const char*, void*)) {
 	rtSym("%UDPStreamPort%udp_stream", bbUDPStreamPort);
 	rtSym("%UDPMsgIP%udp_stream", bbUDPMsgIP);
 	rtSym("%UDPMsgPort%udp_stream", bbUDPMsgPort);
+	rtSym("%UDPStreamError%udp_stream", bbUDPStreamError);
 	rtSym("UDPTimeouts%recv_timeout", bbUDPTimeouts);
 
 	rtSym("%OpenTCPStream$server%server_port%local_port=0", bbOpenTCPStream);
@@ -738,6 +817,7 @@ void sockets_link(void(*rtSym)(const char*, void*)) {
 	rtSym("%AcceptTCPStream%tcp_server", bbAcceptTCPStream);
 	rtSym("%TCPStreamIP%tcp_stream", bbTCPStreamIP);
 	rtSym("%TCPStreamPort%tcp_stream", bbTCPStreamPort);
+	rtSym("%TCPStreamError%tcp_stream", bbTCPStreamError);
 	rtSym("TCPTimeouts%read_millis%accept_millis", bbTCPTimeouts);
 
 	rtSym("$GetDomainTXT$domain", bbGetDomainTXT);
