@@ -675,7 +675,7 @@ static void findLeftMostVertex(rcContour* contour, int* minx, int* minz, int* le
 	}
 }
 
-static int compareHoles(const void* va, const void* vb)
+static int __cdecl compareHoles(const void* va, const void* vb)
 {
 	const rcContourHole* a = (const rcContourHole*)va;
 	const rcContourHole* b = (const rcContourHole*)vb;
@@ -697,7 +697,7 @@ static int compareHoles(const void* va, const void* vb)
 }
 
 
-static int compareDiagDist(const void* va, const void* vb)
+static int __cdecl compareDiagDist(const void* va, const void* vb)
 {
 	const rcPotentialDiagonal* a = (const rcPotentialDiagonal*)va;
 	const rcPotentialDiagonal* b = (const rcPotentialDiagonal*)vb;

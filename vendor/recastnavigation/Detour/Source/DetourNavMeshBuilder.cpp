@@ -37,7 +37,7 @@ struct BVItem
 	int i;
 };
 
-static int compareItemX(const void* va, const void* vb)
+static int __cdecl compareItemX(const void* va, const void* vb)
 {
 	const BVItem* a = (const BVItem*)va;
 	const BVItem* b = (const BVItem*)vb;
@@ -48,7 +48,7 @@ static int compareItemX(const void* va, const void* vb)
 	return 0;
 }
 
-static int compareItemY(const void* va, const void* vb)
+static int __cdecl compareItemY(const void* va, const void* vb)
 {
 	const BVItem* a = (const BVItem*)va;
 	const BVItem* b = (const BVItem*)vb;
@@ -59,7 +59,7 @@ static int compareItemY(const void* va, const void* vb)
 	return 0;
 }
 
-static int compareItemZ(const void* va, const void* vb)
+static int __cdecl compareItemZ(const void* va, const void* vb)
 {
 	const BVItem* a = (const BVItem*)va;
 	const BVItem* b = (const BVItem*)vb;
