@@ -1581,12 +1581,12 @@ bbImage* bbLoadAnimImage(BBStr* s, int w, int h, int first, int cnt) {
     return image;
 }
 
-Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int fw, int fh, int first, int cnt) {
+Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int columns, int rows, int first, int cnt) {
     std::string path = *file;
     delete file;
 
-    if (fw <= 0 || fh <= 0) {
-        ErrorLog("LoadAnimTextureGrid", "Frame width and height must be positive");
+    if (columns <= 0 || rows <= 0) {
+        ErrorLog("LoadAnimTextureGrid", "Columns and rows must be positive");
         return nullptr;
     }
     if (first < 0 || cnt <= 0) {
@@ -1602,15 +1602,13 @@ Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int fw, int fh, int first
     }
     picTex->Release();
 
-    int frameW = fw;
-    int frameH = fh;
-    int gridCols = imgW / frameW;
-    int gridRows = imgH / frameH;
-    if (gridCols <= 0 || gridRows <= 0) {
-        ErrorLog("LoadAnimTextureGrid", "Frame size larger than image");
+    int frameW = imgW / columns;
+    int frameH = imgH / rows;
+    if (frameW <= 0 || frameH <= 0) {
+        ErrorLog("LoadAnimTextureGrid", "Invalid grid dimensions");
         return nullptr;
     }
-    if (first + cnt > gridCols * gridRows) {
+    if (first + cnt > columns * rows) {
         ErrorLog("LoadAnimTextureGrid", "Frame range out of bounds");
         return nullptr;
     }

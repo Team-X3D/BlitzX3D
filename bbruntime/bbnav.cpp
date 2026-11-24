@@ -498,13 +498,13 @@ namespace {
 		rcPolyMeshDetail* dmesh = 0;
 		bool ok = false;
 
-		if (hf && rcCreateHeightfield(ctx, *hf, cfg.width, cfg.height, cfg.bmin, cfg.bmax, cfg.cs, cfg.ch)) {
+		if (hf && rcCreateHeightfield(&ctx, *hf, cfg.width, cfg.height, cfg.bmin, cfg.bmax, cfg.cs, cfg.ch)) {
 			std::vector<unsigned char> triAreas(ntris, RC_NULL_AREA);
-			rcMarkWalkableTriangles(ctx, cfg.walkableSlopeAngle, verts.data(), nverts, tris.data(), ntris, triAreas.data());
-			if (rcRasterizeTriangles(ctx, verts.data(), nverts, tris.data(), triAreas.data(), ntris, *hf, cfg.walkableClimb)) {
-				rcFilterLowHangingWalkableObstacles(ctx, cfg.walkableClimb, *hf);
-				rcFilterLedgeSpans(ctx, cfg.walkableHeight, cfg.walkableClimb, *hf);
-				rcFilterWalkableLowHeightSpans(ctx, cfg.walkableHeight, *hf);
+			rcMarkWalkableTriangles(&ctx, cfg.walkableSlopeAngle, verts.data(), nverts, tris.data(), ntris, triAreas.data());
+			if (rcRasterizeTriangles(&ctx, verts.data(), nverts, tris.data(), triAreas.data(), ntris, *hf, cfg.walkableClimb)) {
+				rcFilterLowHangingWalkableObstacles(&ctx, cfg.walkableClimb, *hf);
+				rcFilterLedgeSpans(&ctx, cfg.walkableHeight, cfg.walkableClimb, *hf);
+				rcFilterWalkableLowHeightSpans(&ctx, cfg.walkableHeight, *hf);
 
 				chf = rcAllocCompactHeightfield();
 				cset = rcAllocContourSet();
@@ -514,13 +514,13 @@ namespace {
 				int dataSize = 0;
 
 				if (chf && cset && pmesh && dmesh
-					&& rcBuildCompactHeightfield(ctx, cfg.walkableHeight, cfg.walkableClimb, *hf, *chf)
-					&& rcErodeWalkableArea(ctx, cfg.walkableRadius, *chf)
-					&& rcBuildDistanceField(ctx, *chf)
-					&& rcBuildRegions(ctx, *chf, 0, cfg.minRegionArea, cfg.mergeRegionArea)
-					&& rcBuildContours(ctx, *chf, cfg.maxSimplificationError, cfg.maxEdgeLen, *cset)
-					&& rcBuildPolyMesh(ctx, *cset, cfg.maxVertsPerPoly, *pmesh)
-					&& rcBuildPolyMeshDetail(ctx, *pmesh, *chf, cfg.detailSampleDist, cfg.detailSampleMaxError, *dmesh)) {
+					&& rcBuildCompactHeightfield(&ctx, cfg.walkableHeight, cfg.walkableClimb, *hf, *chf)
+					&& rcErodeWalkableArea(&ctx, cfg.walkableRadius, *chf)
+					&& rcBuildDistanceField(&ctx, *chf)
+					&& rcBuildRegions(&ctx, *chf, 0, cfg.minRegionArea, cfg.mergeRegionArea)
+					&& rcBuildContours(&ctx, *chf, cfg.maxSimplificationError, cfg.maxEdgeLen, *cset)
+					&& rcBuildPolyMesh(&ctx, *cset, cfg.maxVertsPerPoly, *pmesh)
+					&& rcBuildPolyMeshDetail(&ctx, *pmesh, *chf, cfg.detailSampleDist, cfg.detailSampleMaxError, *dmesh)) {
 					std::vector<unsigned short> flags(pmesh->npolys, NAV_FLAG_WALK);
 					std::vector<float> linkVerts;
 					std::vector<float> linkRad;

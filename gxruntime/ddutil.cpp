@@ -169,6 +169,12 @@ void ddUtil::buildMipMaps(IDirect3DTexture9* tex) {
     DWORD levels = tex->GetLevelCount();
     if (levels <= 1) return;
 
+    D3DSURFACE_DESC top;
+    if (SUCCEEDED(tex->GetLevelDesc(0, &top)) && (top.Usage & D3DUSAGE_AUTOGENMIPMAP)) {
+        tex->GenerateMipSubLevels();
+        return;
+    }
+
     for (DWORD mip = 0; mip + 1 < levels; ++mip) {
         D3DLOCKED_RECT src_lr, dst_lr;
         D3DSURFACE_DESC src_desc, dst_desc;
