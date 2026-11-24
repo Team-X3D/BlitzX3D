@@ -25,6 +25,7 @@ public:
 
 	typedef std::string(*PathMutator)(const std::string&);
 	static void setPathMutator(PathMutator m);
+	static std::string mutatePath(const std::string& f);
 	static void setPath(const std::string& t);
 
 	static void flushAll();

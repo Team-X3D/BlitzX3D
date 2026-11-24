@@ -477,16 +477,17 @@ int bbAvailVirtual() {
 typedef BBStr* (*BBPathMutator)(BBStr*);
 static BBPathMutator pathMutator = nullptr;
 
-void bbSetTextureLoadPathMutator(void* handler) {
-	pathMutator = reinterpret_cast<BBPathMutator>(handler);
-}
-
 static std::string applyPathMutator(const std::string& path) {
 	if (!pathMutator) return path;
 	BBStr* r = pathMutator(new BBStr(path));
 	std::string out = r ? *r : path;
 	delete r;
 	return out;
+}
+
+void bbSetTextureLoadPathMutator(void* handler) {
+	pathMutator = reinterpret_cast<BBPathMutator>(handler);
+	CachedTexture::setPathMutator(pathMutator ? applyPathMutator : nullptr);
 }
 
 Texture* bbLoadTexture(BBStr* file, int flags) {

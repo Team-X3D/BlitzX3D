@@ -1582,7 +1582,7 @@ bbImage* bbLoadAnimImage(BBStr* s, int w, int h, int first, int cnt) {
 }
 
 Texture* bbLoadAnimTextureGrid(BBStr* file, int flags, int columns, int rows, int first, int cnt) {
-    std::string path = *file;
+    std::string path = CachedTexture::mutatePath(*file);
     delete file;
 
     if (columns <= 0 || rows <= 0) {

@@ -220,29 +220,18 @@ CachedTexture::CachedTexture(int w, int h, int flags, int cnt) :
 	rep(new Rep(w, h, flags, cnt)) {
 }
 
+std::string CachedTexture::mutatePath(const std::string& f) {
+	if (!pathMutator) return f;
+	std::string mutated = pathMutator(f);
+	return mutated.empty() ? f : mutated;
+}
+
 CachedTexture::CachedTexture(const std::string& f_, int flags, int w, int h, int first, int cnt) {
 	std::string f = f_;
 	if (f.substr(0, 2) == ".\\") f = f.substr(2);
-	if (path.size()) {
-		std::string t = path + tolower(filenamefile(f));
-		if (rep = findRep(t, flags, w, h, first, cnt)) return;
-		rep = new Rep(t, flags, w, h, first, cnt);
-		rep_set.insert(rep);
-		return;
-	}
+	if (path.size()) f = path + filenamefile(f);
 
-	if (pathMutator) {
-		std::string mutated = pathMutator(f);
-		if (!mutated.empty()) {
-			std::string t = tolower(fullfilename(mutated));
-			if (rep = findRep(t, flags, w, h, first, cnt)) return;
-			rep = new Rep(t, flags, w, h, first, cnt);
-			rep_set.insert(rep);
-			return;
-		}
-	}
-
-	std::string t = tolower(fullfilename(f));
+	std::string t = tolower(fullfilename(mutatePath(f)));
 	if (rep = findRep(t, flags, w, h, first, cnt)) return;
 	rep = new Rep(t, flags, w, h, first, cnt);
 	rep_set.insert(rep);
