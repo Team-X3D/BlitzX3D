@@ -485,6 +485,7 @@ void gxRuntime::flip(bool vwait) {
 	}
 
 	if (graphics) graphics->resolveAntialias();
+	if (vwait) graphics->vwait();
 
 	HRESULT hr = d3dDevice->Present(NULL, NULL, NULL, NULL);
 	if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) {
@@ -1087,7 +1088,7 @@ gxGraphics* gxRuntime::openExclusiveGraphics(int w, int h, int d, bool d3d) {
 	d3dpp.BackBufferWidth = w;
 	d3dpp.BackBufferHeight = h;
 	d3dpp.BackBufferFormat = format;
-	d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+	d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
 	d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
 	d3dpp.BackBufferCount = 1;
 	d3dpp.EnableAutoDepthStencil = FALSE;

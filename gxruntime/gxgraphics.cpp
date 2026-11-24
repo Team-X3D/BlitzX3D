@@ -490,7 +490,7 @@ bool gxGraphics::changeDisplayMode(int width, int height, bool fullscreen, bool 
 	present_params.Windowed = !fullscreen;
 	if (fullscreen) {
 		present_params.FullScreen_RefreshRateInHz = D3DPRESENT_RATE_DEFAULT;
-		present_params.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+		present_params.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
 	}
 	else {
 		present_params.FullScreen_RefreshRateInHz = 0;
@@ -600,8 +600,19 @@ gxFont* gxGraphics::getDefaultFont()const {
 	return def_font;
 }
 
-void gxGraphics::vwait() { // stubby stbu stub
-	// dirDraw->WaitForVerticalBlank(DDWAITVB_BLOCKBEGIN, 0);
+void gxGraphics::vwait() { // goodbye stubby stubson
+	if (!dir3dDev) return;
+	if (present_params.Windowed) {
+		DwmFlush();
+		return;
+	}
+
+	D3DRASTER_STATUS rs;
+	if (FAILED(dir3dDev->GetRasterStatus(0, &rs))) return;
+	while (rs.InVBlank) {
+		Sleep(1);
+		if (FAILED(dir3dDev->GetRasterStatus(0, &rs))) return;
+	}
 }
 
 gxGraphics::DeviceState gxGraphics::getDeviceState() {
