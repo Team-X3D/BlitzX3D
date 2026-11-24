@@ -487,7 +487,9 @@ void gxRuntime::flip(bool vwait) {
 	if (graphics) graphics->resolveAntialias();
 	if (vwait) graphics->vwait();
 
-	HRESULT hr = d3dDevice->Present(NULL, NULL, NULL, NULL);
+	DWORD flags = (!vwait && graphics->present_params.SwapEffect == D3DSWAPEFFECT_FLIPEX) ? D3DPRESENT_FORCEIMMEDIATE : 0;
+	HRESULT hr = d3dDevice->PresentEx(NULL, NULL, NULL, NULL, flags);
+	if (FAILED(hr) && flags) hr = d3dDevice->PresentEx(NULL, NULL, NULL, NULL, 0);
 	if (hr == D3DERR_DEVICELOST || hr == D3DERR_DEVICEHUNG || hr == D3DERR_DEVICEREMOVED) {
 		gfx_lost = true;
 		return;
@@ -1089,10 +1091,10 @@ gxGraphics* gxRuntime::openExclusiveGraphics(int w, int h, int d, bool d3d) {
 	d3dpp.BackBufferHeight = h;
 	d3dpp.BackBufferFormat = format;
 	d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
-	d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+	d3dpp.SwapEffect = D3DSWAPEFFECT_FLIPEX;
 	d3dpp.BackBufferCount = 1;
 	d3dpp.EnableAutoDepthStencil = FALSE;
-	d3dpp.Flags = D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+	d3dpp.Flags = 0;
 
 	memset(&d3ddmEx, 0, sizeof(d3ddmEx));
 	d3ddmEx.Size = sizeof(D3DDISPLAYMODEEX);
@@ -1105,7 +1107,13 @@ gxGraphics* gxRuntime::openExclusiveGraphics(int w, int h, int d, bool d3d) {
 	applyAntialiasToParams(d3dpp);
 
 	DWORD vp_flag = pickVertexProcessingFlag(this->d3d, curr_driver->adapter);
-	if (FAILED(this->d3d->CreateDeviceEx(curr_driver->adapter, D3DDEVTYPE_HAL, hwnd, vp_flag, &d3dpp, &d3ddmEx, &d3dDevice))) {
+	HRESULT hr = this->d3d->CreateDeviceEx(curr_driver->adapter, D3DDEVTYPE_HAL, hwnd, vp_flag, &d3dpp, &d3ddmEx, &d3dDevice);
+	if (FAILED(hr) && d3dpp.SwapEffect == D3DSWAPEFFECT_FLIPEX) {
+		d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+		d3dpp.Flags = D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+		hr = this->d3d->CreateDeviceEx(curr_driver->adapter, D3DDEVTYPE_HAL, hwnd, vp_flag, &d3dpp, &d3ddmEx, &d3dDevice);
+	}
+	if (FAILED(hr)) {
 		if (d3dpp.MultiSampleType != D3DMULTISAMPLE_NONE) {
 			d3dpp.MultiSampleType = D3DMULTISAMPLE_NONE;
 			d3dpp.MultiSampleQuality = 0;

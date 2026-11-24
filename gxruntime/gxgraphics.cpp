@@ -389,7 +389,7 @@ bool gxGraphics::restore() {
 		if (FAILED(hr) && present_params.MultiSampleType != D3DMULTISAMPLE_NONE) {
 			present_params.MultiSampleType = D3DMULTISAMPLE_NONE;
 			present_params.MultiSampleQuality = 0;
-			present_params.Flags |= D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+			if (present_params.SwapEffect != D3DSWAPEFFECT_FLIPEX) present_params.Flags |= D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
 			hr = dir3dDev->ResetEx(&present_params, present_params.Windowed ? nullptr : &runtime->d3ddmEx);
 		}
 		if (FAILED(hr)) return false;
@@ -491,10 +491,14 @@ bool gxGraphics::changeDisplayMode(int width, int height, bool fullscreen, bool 
 	if (fullscreen) {
 		present_params.FullScreen_RefreshRateInHz = D3DPRESENT_RATE_DEFAULT;
 		present_params.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+		present_params.SwapEffect = D3DSWAPEFFECT_FLIPEX;
+		present_params.Flags &= ~D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
 	}
 	else {
 		present_params.FullScreen_RefreshRateInHz = 0;
 		present_params.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+		present_params.SwapEffect = D3DSWAPEFFECT_DISCARD;
+		present_params.Flags |= D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
 	}
 
 	memset(&runtime->d3ddmEx, 0, sizeof(runtime->d3ddmEx));
@@ -511,6 +515,11 @@ bool gxGraphics::changeDisplayMode(int width, int height, bool fullscreen, bool 
 	releaseCopyScratchCanvas();
 	releaseResolveScratch();
 	HRESULT hr = dir3dDev->ResetEx(&present_params, fullscreen ? &runtime->d3ddmEx : nullptr);
+	if (FAILED(hr) && present_params.SwapEffect == D3DSWAPEFFECT_FLIPEX) {
+		present_params.SwapEffect = D3DSWAPEFFECT_DISCARD;
+		present_params.Flags |= D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+		hr = dir3dDev->ResetEx(&present_params, fullscreen ? &runtime->d3ddmEx : nullptr);
+	}
 	if (FAILED(hr) && present_params.MultiSampleType != D3DMULTISAMPLE_NONE) {
 		present_params.MultiSampleType = D3DMULTISAMPLE_NONE;
 		present_params.MultiSampleQuality = 0;
