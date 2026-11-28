@@ -3,6 +3,14 @@
 #include <wininet.h>
 #include <WinDNS.h>
 #include <initializer_list>
+#include <atomic>
+#include <climits>
+#include <cstdint>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unordered_map>
 #include "../MultiLang/MultiLang.h"
 #include "../gxruntime/gxutf8.h"
 
@@ -507,7 +515,10 @@ bool sockets_create() {
 	return true;
 }
 
+static void downloads_shutdown();
+
 bool sockets_destroy() {
+	downloads_shutdown();
 	while (udp_set.size()) bbCloseUDPStream(*udp_set.begin());
 	while (tcp_set.size()) bbCloseTCPStream(*tcp_set.begin());
 	while (server_set.size()) bbCloseTCPServer(*server_set.begin());
@@ -552,16 +563,17 @@ static void DownloadWorker(std::shared_ptr<Download> d, std::string url, std::st
 
 		DWORD timeout = 10000;
 		for (DWORD option : { DWORD(INTERNET_OPTION_CONNECT_TIMEOUT), DWORD(INTERNET_OPTION_RECEIVE_TIMEOUT), DWORD(INTERNET_OPTION_SEND_TIMEOUT) }) {
-			if (!InternetSetOptionA(session, option, &timeout, sizeof(timeout))) { error = GetLastError(); break; }
+			InternetSetOptionA(session, option, &timeout, sizeof(timeout));
 		}
-		if (error || d->cancel) break;
+		if (d->cancel) break;
 
-		request = InternetOpenUrlA(session, url.c_str(), nullptr, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+		request = InternetOpenUrlA(session, url.c_str(), nullptr, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE | INTERNET_FLAG_NO_UI, 0);
 		if (!request) { error = GetLastError(); break; }
 
 		DWORD code = 0, size = sizeof(code);
-		if (!HttpQueryInfoA(request, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, &code, &size, nullptr)) { error = GetLastError(); break; }
-		if (code != 200) { error = 100000 + code; break; }
+		if (HttpQueryInfoA(request, HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER, &code, &size, nullptr)) {
+			if (code < 200 || code >= 300) { error = 100000 + code; break; }
+		}
 
 		char length[64] = {};
 		size = sizeof(length) - 1;
@@ -612,7 +624,7 @@ static void DownloadWorker(std::shared_ptr<Download> d, std::string url, std::st
 	d->status = success ? 2 : (d->cancel.load() ? -2 : -1);
 }
 
-int bbDownloadFile(BBStr* url, BBStr* file) {
+int bbDownloadFileAsync(BBStr* url, BBStr* file) {
 	if (!url || !file) { delete url; delete file; return 0; }
 	if (url->rfind("http://", 0) != 0 && url->rfind("https://", 0) != 0) { delete url; delete file; return 0; }
 
@@ -649,6 +661,28 @@ int bbDownloadFile(BBStr* url, BBStr* file) {
 		
 		return 0;
 	}
+}
+
+static void downloads_shutdown() {
+	std::unordered_map<uint32_t, std::shared_ptr<Download>> local;
+	{
+		std::lock_guard<std::mutex> lock(downloadMutex);
+		local.swap(downloads);
+	}
+	for (auto& kv : local) kv.second->cancel = true;
+	for (auto& kv : local) if (kv.second->worker.joinable()) kv.second->worker.join();
+}
+
+int bbDownloadFile(BBStr* url, BBStr* file) {
+	if (!url || !file) { delete url; delete file; return 0; }
+	std::string u = *url, f = *file;
+	delete url; delete file;
+
+	if (u.rfind("http://", 0) != 0 && u.rfind("https://", 0) != 0) return 0;
+	if (f.empty()) return 0;
+
+	DeleteUrlCacheEntryA(u.c_str());
+	return URLDownloadToFileA(NULL, u.c_str(), f.c_str(), 0, NULL) == S_OK ? 1 : 0;
 }
 
 int bbDownloadStatus(int handle) {
@@ -744,6 +778,7 @@ void sockets_link(void(*rtSym)(const char*, void*)) {
 	rtSym("$ParseDomainTXT$txt$name", bbParseDomainTXT);
 
 	rtSym("%DownloadFile$url$file", bbDownloadFile);
+	rtSym("%DownloadFileAsync$url$file", bbDownloadFileAsync);
 	rtSym("%DownloadStatus%download", bbDownloadStatus);
 	rtSym("%DownloadTotal%download", bbDownloadTotal);
 	rtSym("%DownloadCancel%download", bbDownloadCancel);
