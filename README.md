@@ -35,7 +35,7 @@ Need help, have a question, or found a problem?
 
 ### Used in
 * [**SCP – Terror Hunt**](https://www.moddb.com/mods/scp-terror-hunt-mod)
-* [**SCP – Containment Breach Ultimate Edition Reborn 1.6**](https://github.com/Jabka666/scpcb-ue-my/tree/1.5.x)
+* [**SCP – Containment Breach Ultimate Edition Reborn 1.6**](https://github.com/SnoeGit/scpcb-ue-my)
 * [**SCP – Janitorial Work**](https://www.moddb.com/mods/scp-janitorial-work)
 * [**SCP – Containment Breach Amended**](https://www.moddb.com/mods/scp-amended1)
 * [**SCP – Containment Breach Inclemency**](https://www.moddb.com/mods/cb-inclemency)
