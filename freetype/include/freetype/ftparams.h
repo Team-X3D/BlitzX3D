@@ -4,7 +4,7 @@
  *
  *   FreeType API for possible FT_Parameter tags (specification only).
  *
- * Copyright (C) 2017-2026 by
+ * Copyright (C) 2017-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -19,7 +19,8 @@
 #ifndef FTPARAMS_H_
 #define FTPARAMS_H_
 
-#include <freetype/freetype.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 #ifdef FREETYPE_H
 #error "freetype.h of FreeType 1 has been loaded!"
@@ -115,26 +116,14 @@ FT_BEGIN_HEADER
   /**************************************************************************
    *
    * @enum:
-   *   FT_PARAM_TAG_IGNORE_SBIX
-   *
-   * @description:
-   *   A tag for @FT_Parameter to make @FT_Open_Face ignore an 'sbix' table
-   *   while loading a font.  Use this if @FT_FACE_FLAG_SBIX is set and you
-   *   want to access the outline glyphs in the font.
-   *
-   */
-#define FT_PARAM_TAG_IGNORE_SBIX \
-          FT_MAKE_TAG( 'i', 's', 'b', 'x' )
-
-
-  /**************************************************************************
-   *
-   * @enum:
    *   FT_PARAM_TAG_LCD_FILTER_WEIGHTS
    *
    * @description:
-   *   Overriding global LCD filter weights with custom values for a given
-   *   face is no longer supported and ignored.
+   *   An @FT_Parameter tag to be used with @FT_Face_Properties.  The
+   *   corresponding argument specifies the five LCD filter weights for a
+   *   given face (if using @FT_LOAD_TARGET_LCD, for example), overriding the
+   *   global default values or the values set up with
+   *   @FT_Library_SetLcdFilterWeights.
    *
    * @since:
    *   2.8

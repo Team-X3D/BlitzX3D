@@ -4,7 +4,7 @@
  *
  *   FreeType utility functions for bitmaps (body).
  *
- * Copyright (C) 2004-2026 by
+ * Copyright (C) 2004-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -16,11 +16,12 @@
  */
 
 
-#include <freetype/internal/ftdebug.h>
+#include <ft2build.h>
+#include FT_INTERNAL_DEBUG_H
 
-#include <freetype/ftbitmap.h>
-#include <freetype/ftimage.h>
-#include <freetype/internal/ftobjs.h>
+#include FT_BITMAP_H
+#include FT_IMAGE_H
+#include FT_INTERNAL_OBJECTS_H
 
 
   /**************************************************************************
@@ -66,8 +67,11 @@
   {
     FT_Memory  memory;
     FT_Error   error  = FT_Err_Ok;
-    FT_Int     pitch;
-    FT_Int     flip;
+
+    FT_Int    pitch;
+    FT_ULong  size;
+
+    FT_Int  source_pitch_sign, target_pitch_sign;
 
 
     if ( !library )
@@ -79,29 +83,53 @@
     if ( source == target )
       return FT_Err_Ok;
 
-    flip = ( source->pitch < 0 && target->pitch > 0 ) ||
-           ( source->pitch > 0 && target->pitch < 0 );
-
-    memory = library->memory;
-    FT_FREE( target->buffer );
-
-    *target = *source;
-
-    if ( flip )
-      target->pitch = -target->pitch;
+    source_pitch_sign = source->pitch < 0 ? -1 : 1;
+    target_pitch_sign = target->pitch < 0 ? -1 : 1;
 
     if ( !source->buffer )
-      return FT_Err_Ok;
+    {
+      *target = *source;
+      if ( source_pitch_sign != target_pitch_sign )
+        target->pitch = -target->pitch;
 
+      return FT_Err_Ok;
+    }
+
+    memory = library->memory;
     pitch  = source->pitch;
+
     if ( pitch < 0 )
       pitch = -pitch;
+    size = (FT_ULong)pitch * source->rows;
 
-    FT_MEM_QALLOC_MULT( target->buffer, target->rows, pitch );
+    if ( target->buffer )
+    {
+      FT_Int    target_pitch = target->pitch;
+      FT_ULong  target_size;
+
+
+      if ( target_pitch < 0 )
+        target_pitch = -target_pitch;
+      target_size = (FT_ULong)target_pitch * target->rows;
+
+      if ( target_size != size )
+        (void)FT_QREALLOC( target->buffer, target_size, size );
+    }
+    else
+      (void)FT_QALLOC( target->buffer, size );
 
     if ( !error )
     {
-      if ( flip )
+      unsigned char *p;
+
+
+      p = target->buffer;
+      *target = *source;
+      target->buffer = p;
+
+      if ( source_pitch_sign == target_pitch_sign )
+        FT_MEM_COPY( target->buffer, source->buffer, size );
+      else
       {
         /* take care of bitmap flow */
         FT_UInt   i;
@@ -119,9 +147,6 @@
           t -= pitch;
         }
       }
-      else
-        FT_MEM_COPY( target->buffer, source->buffer,
-                     (FT_Long)source->rows * pitch );
     }
 
     return error;
@@ -456,7 +481,7 @@
      * A gamma of 2.2 is fair to assume.  And then, we need to
      * undo the premultiplication too.
      *
-     *   http://www.brucelindbloom.com/index.html?WorkingSpaceInfo.html#SideNotes
+     *   https://accessibility.kde.org/hsl-adjusted.php
      *
      * We do the computation with integers only, applying a gamma of 2.0.
      * We guarantee 32-bit arithmetic to avoid overflow but the resulting
@@ -464,9 +489,9 @@
      *
      */
 
-    l = (  4731UL /* 0.072186 * 65536 */ * bgra[0] * bgra[0] +
-          46868UL /* 0.715158 * 65536 */ * bgra[1] * bgra[1] +
-          13937UL /* 0.212656 * 65536 */ * bgra[2] * bgra[2] ) >> 16;
+    l = (  4732UL /* 0.0722 * 65536 */ * bgra[0] * bgra[0] +
+          46871UL /* 0.7152 * 65536 */ * bgra[1] * bgra[1] +
+          13933UL /* 0.2126 * 65536 */ * bgra[2] * bgra[2] ) >> 16;
 
     /*
      * Final transparency can be determined as follows.
@@ -518,31 +543,39 @@
     case FT_PIXEL_MODE_LCD_V:
     case FT_PIXEL_MODE_BGRA:
       {
-        FT_Int  width = (FT_Int)source->width;
-        FT_Int  neg   = ( target->pitch == 0 && source->pitch < 0 ) ||
-                          target->pitch  < 0;
+        FT_Int    pad, old_target_pitch, target_pitch;
+        FT_ULong  old_size;
 
 
-        FT_Bitmap_Done( library, target );
+        old_target_pitch = target->pitch;
+        if ( old_target_pitch < 0 )
+          old_target_pitch = -old_target_pitch;
+
+        old_size = target->rows * (FT_UInt)old_target_pitch;
 
         target->pixel_mode = FT_PIXEL_MODE_GRAY;
         target->rows       = source->rows;
         target->width      = source->width;
 
-        if ( alignment )
+        pad = 0;
+        if ( alignment > 0 )
         {
-          FT_Int  rem = width % alignment;
-
-
-          if ( rem )
-            width = alignment > 0 ? width - rem + alignment
-                                  : width - rem - alignment;
+          pad = (FT_Int)source->width % alignment;
+          if ( pad != 0 )
+            pad = alignment - pad;
         }
 
-        if ( FT_QALLOC_MULT( target->buffer, target->rows, width ) )
+        target_pitch = (FT_Int)source->width + pad;
+
+        if ( target_pitch > 0                                               &&
+             (FT_ULong)target->rows > FT_ULONG_MAX / (FT_ULong)target_pitch )
+          return FT_THROW( Invalid_Argument );
+
+        if ( FT_QREALLOC( target->buffer,
+                          old_size, target->rows * (FT_UInt)target_pitch ) )
           return error;
 
-        target->pitch = neg ? -width : width;
+        target->pitch = target->pitch < 0 ? -target_pitch : target_pitch;
       }
       break;
 
@@ -776,12 +809,18 @@
     FT_Bitmap         source_bitmap;
     const FT_Bitmap*  source;
 
+    FT_Vector  source_offset;
+    FT_Vector  target_offset;
+
     FT_Bool  free_source_bitmap          = 0;
     FT_Bool  free_target_bitmap_on_error = 0;
 
-    FT_BBox  sbx, tbx, fbx;
+    FT_Pos  source_llx, source_lly, source_urx, source_ury;
+    FT_Pos  target_llx, target_lly, target_urx, target_ury;
+    FT_Pos  final_llx, final_lly, final_urx, final_ury;
 
     unsigned int  final_rows, final_width;
+    long          x, y;
 
 
     if ( !library || !target || !source_ || !atarget_offset )
@@ -805,32 +844,110 @@
     if ( !( source_->width && source_->rows ) )
       return FT_Err_Ok;               /* nothing to do */
 
-    /* get source bitmap dimensions assuming integer offsets */
-    sbx.xMin = ( source_offset_.x >> 6 );
-    sbx.yMin = ( source_offset_.y >> 6 ) - source_->rows;
-    sbx.xMax = ( source_offset_.x >> 6 ) + source_->width;
-    sbx.yMax = ( source_offset_.y >> 6 );
+    /* assure integer pixel offsets */
+    source_offset.x = FT_PIX_FLOOR( source_offset_.x );
+    source_offset.y = FT_PIX_FLOOR( source_offset_.y );
+    target_offset.x = FT_PIX_FLOOR( atarget_offset->x );
+    target_offset.y = FT_PIX_FLOOR( atarget_offset->y );
 
-    FT_TRACE5(( "FT_Bitmap_Blend:\n" ));
-    FT_TRACE5(( "  source bitmap: (%ld, %ld) -- (%ld, %ld); %u x %u\n",
-      sbx.xMin, sbx.yMin, sbx.xMax, sbx.yMax,
-      source_->width, source_->rows ));
-
-    /* sanity check */
-    if ( sbx.xMin > sbx.xMax      || sbx.yMin > sbx.yMax     ||
-         source_->width > 0x7FFFU || source_->rows > 0x7FFFU )
+    /* get source bitmap dimensions */
+    source_llx = source_offset.x;
+    if ( FT_LONG_MIN + (FT_Pos)( source_->rows << 6 ) + 64 > source_offset.y )
     {
-      FT_TRACE5(( "FT_Bitmap_Blend: source dimension overflow\n" ));
+      FT_TRACE5((
+        "FT_Bitmap_Blend: y coordinate overflow in source bitmap\n" ));
       return FT_THROW( Invalid_Argument );
     }
+    source_lly = source_offset.y - ( source_->rows << 6 );
 
-    if ( !target->width || !target->rows )
+    if ( FT_LONG_MAX - (FT_Pos)( source_->width << 6 ) - 64 < source_llx )
     {
+      FT_TRACE5((
+        "FT_Bitmap_Blend: x coordinate overflow in source bitmap\n" ));
+      return FT_THROW( Invalid_Argument );
+    }
+    source_urx = source_llx + ( source_->width << 6 );
+    source_ury = source_offset.y;
+
+    /* get target bitmap dimensions */
+    if ( target->width && target->rows )
+    {
+      target_llx = target_offset.x;
+      if ( FT_LONG_MIN + (FT_Pos)( target->rows << 6 ) > target_offset.y )
+      {
+        FT_TRACE5((
+          "FT_Bitmap_Blend: y coordinate overflow in target bitmap\n" ));
+        return FT_THROW( Invalid_Argument );
+      }
+      target_lly = target_offset.y - ( target->rows << 6 );
+
+      if ( FT_LONG_MAX - (FT_Pos)( target->width << 6 ) < target_llx )
+      {
+        FT_TRACE5((
+          "FT_Bitmap_Blend: x coordinate overflow in target bitmap\n" ));
+        return FT_THROW( Invalid_Argument );
+      }
+      target_urx = target_llx + ( target->width << 6 );
+      target_ury = target_offset.y;
+    }
+    else
+    {
+      target_llx = FT_LONG_MAX;
+      target_lly = FT_LONG_MAX;
+      target_urx = FT_LONG_MIN;
+      target_ury = FT_LONG_MIN;
+    }
+
+    /* compute final bitmap dimensions */
+    final_llx = FT_MIN( source_llx, target_llx );
+    final_lly = FT_MIN( source_lly, target_lly );
+    final_urx = FT_MAX( source_urx, target_urx );
+    final_ury = FT_MAX( source_ury, target_ury );
+
+    final_width = ( final_urx - final_llx ) >> 6;
+    final_rows  = ( final_ury - final_lly ) >> 6;
+
+#ifdef FT_DEBUG_LEVEL_TRACE
+    FT_TRACE5(( "FT_Bitmap_Blend:\n"
+                "  source bitmap: (%d, %d) -- (%d, %d); %d x %d\n",
+      source_llx / 64, source_lly / 64,
+      source_urx / 64, source_ury / 64,
+      source_->width, source_->rows ));
+
+    if ( target->width && target->rows )
+      FT_TRACE5(( "  target bitmap: (%d, %d) -- (%d, %d); %d x %d\n",
+        target_llx / 64, target_lly / 64,
+        target_urx / 64, target_ury / 64,
+        target->width, target->rows ));
+    else
       FT_TRACE5(( "  target bitmap: empty\n" ));
 
-      final_width = source_->width;
-      final_rows  = source_->rows;
+    if ( final_width && final_rows )
+      FT_TRACE5(( "  final bitmap: (%d, %d) -- (%d, %d); %d x %d\n",
+        final_llx / 64, final_lly / 64,
+        final_urx / 64, final_ury / 64,
+        final_width, final_rows ));
+    else
+      FT_TRACE5(( "  final bitmap: empty\n" ));
+#endif /* FT_DEBUG_LEVEL_TRACE */
 
+    if ( !( final_width && final_rows ) )
+      return FT_Err_Ok;               /* nothing to do */
+
+    /* for blending, set offset vector of final bitmap */
+    /* temporarily to (0,0)                            */
+    source_llx -= final_llx;
+    source_lly -= final_lly;
+
+    if ( target->width && target->rows )
+    {
+      target_llx -= final_llx;
+      target_lly -= final_lly;
+    }
+
+    /* set up target bitmap */
+    if ( target->pixel_mode == FT_PIXEL_MODE_NONE )
+    {
       /* create new empty bitmap */
       target->width      = final_width;
       target->rows       = final_rows;
@@ -838,119 +955,89 @@
       target->pitch      = (int)final_width * 4;
       target->num_grays  = 256;
 
-      if ( FT_ALLOC_MULT( target->buffer, target->rows, target->pitch ) )
+      if ( FT_LONG_MAX / target->pitch < (int)target->rows )
+      {
+        FT_TRACE5(( "FT_Blend_Bitmap: target bitmap too large (%d x %d)\n",
+                     final_width, final_rows ));
+        return FT_THROW( Invalid_Argument );
+      }
+
+      if ( FT_ALLOC( target->buffer, target->pitch * (int)target->rows ) )
         return error;
 
       free_target_bitmap_on_error = 1;
-
-      fbx = sbx;
     }
-    else
+    else if ( target->width != final_width ||
+              target->rows  != final_rows  )
     {
-      /* get target bitmap dimensions assuming integer offsets */
-      tbx.xMin = ( atarget_offset->x >> 6 );
-      tbx.yMin = ( atarget_offset->y >> 6 ) - target->rows;
-      tbx.xMax = ( atarget_offset->x >> 6 ) + target->width;
-      tbx.yMax = ( atarget_offset->y >> 6 );
+      /* adjust old bitmap to enlarged size */
+      int  pitch, new_pitch;
 
-      FT_TRACE5(( "  target bitmap: (%ld, %ld) -- (%ld, %ld); %u x %u\n",
-        tbx.xMin, tbx.yMin, tbx.xMax, tbx.yMax,
-        target->width, target->rows ));
+      unsigned char*  buffer = NULL;
 
-      /* sanity check */
-      if ( tbx.xMin > tbx.xMax || tbx.yMin > tbx.yMax )
+
+      pitch = target->pitch;
+
+      if ( pitch < 0 )
+        pitch = -pitch;
+
+      new_pitch = (int)final_width * 4;
+
+      if ( FT_LONG_MAX / new_pitch < (int)final_rows )
       {
-        FT_TRACE5(( "FT_Bitmap_Blend: targget dimension overflow\n" ));
+        FT_TRACE5(( "FT_Blend_Bitmap: target bitmap too large (%d x %d)\n",
+                     final_width, final_rows ));
         return FT_THROW( Invalid_Argument );
       }
 
-      /* compute final bitmap dimensions */
-      fbx.xMin = FT_MIN( sbx.xMin, tbx.xMin );
-      fbx.yMin = FT_MIN( sbx.yMin, tbx.yMin );
-      fbx.xMax = FT_MAX( sbx.xMax, tbx.xMax );
-      fbx.yMax = FT_MAX( sbx.yMax, tbx.yMax );
+      /* TODO: provide an in-buffer solution for large bitmaps */
+      /*       to avoid allocation of a new buffer             */
+      if ( FT_ALLOC( buffer, new_pitch * (int)final_rows ) )
+        goto Error;
 
-      /* sanity check */
-      if ( fbx.xMin < -0x10000 || fbx.xMax >= 0x10000 ||
-           fbx.yMin < -0x10000 || fbx.yMax >= 0x10000 )
+      /* copy data to new buffer */
+      x = target_llx >> 6;
+      y = target_lly >> 6;
+
+      /* the bitmap flow is from top to bottom, */
+      /* but y is measured from bottom to top   */
+      if ( target->pitch < 0 )
       {
-        FT_TRACE5(( "FT_Bitmap_Blend: final dimension overflow\n" ));
-        return FT_THROW( Invalid_Argument );
+        /* XXX */
+      }
+      else
+      {
+        unsigned char*  p =
+          target->buffer;
+        unsigned char*  q =
+          buffer +
+          ( final_rows - y - target->rows ) * new_pitch +
+          x * 4;
+        unsigned char*  limit_p =
+          p + pitch * (int)target->rows;
+
+
+        while ( p < limit_p )
+        {
+          FT_MEM_COPY( q, p, pitch );
+
+          p += pitch;
+          q += new_pitch;
+        }
       }
 
-      final_width = fbx.xMax - fbx.xMin;
-      final_rows  = fbx.yMax - fbx.yMin;
+      FT_FREE( target->buffer );
 
-      /* adjust target bitmap to enlarged size */
-      if ( target->width < final_width ||
-           target->rows  < final_rows  )
-      {
-        int  pitch, new_pitch;
+      target->width = final_width;
+      target->rows  = final_rows;
 
-        unsigned char*  buffer = NULL;
+      if ( target->pitch < 0 )
+        target->pitch = -new_pitch;
+      else
+        target->pitch = new_pitch;
 
-
-        pitch = target->pitch;
-
-        if ( pitch < 0 )
-          pitch = -pitch;
-
-        new_pitch = (int)final_width * 4;
-
-        /* TODO: provide an in-buffer solution for large bitmaps */
-        /*       to avoid allocation of a new buffer             */
-        if ( FT_ALLOC_MULT( buffer, final_rows, new_pitch ) )
-          goto Error;
-
-        /* copy data to new buffer */
-
-        /* the bitmap flow is from top to bottom, */
-        /* but y is measured from bottom to top   */
-        if ( target->pitch < 0 )
-        {
-          /* XXX */
-        }
-        else
-        {
-          FT_Pos  x = tbx.xMin - fbx.xMin;
-          FT_Pos  y = tbx.yMin - fbx.yMin;
-
-          unsigned char*  p =
-            target->buffer;
-          unsigned char*  q =
-            buffer +
-            ( final_rows - y - target->rows ) * new_pitch +
-            x * 4;
-          unsigned char*  limit_p =
-            p + pitch * (int)target->rows;
-
-
-          while ( p < limit_p )
-          {
-            FT_MEM_COPY( q, p, pitch );
-
-            p += pitch;
-            q += new_pitch;
-          }
-        }
-
-        FT_FREE( target->buffer );
-
-        target->width = final_width;
-        target->rows  = final_rows;
-
-        if ( target->pitch < 0 )
-          target->pitch = -new_pitch;
-        else
-          target->pitch = new_pitch;
-
-        target->buffer = buffer;
-      }
+      target->buffer = buffer;
     }
-
-    FT_TRACE5(( "  final bitmap: (%ld, %ld) -- (%ld, %ld); %u x %u\n",
-      fbx.xMin, fbx.yMin, fbx.xMax, fbx.yMax,
-      final_width, final_rows ));
 
     /* adjust source bitmap if necessary */
     if ( source_->pixel_mode != FT_PIXEL_MODE_GRAY )
@@ -968,6 +1055,8 @@
 
     /* do blending; the code below returns pre-multiplied channels, */
     /* similar to what FreeType gets from `CBDT' tables             */
+    x = source_llx >> 6;
+    y = source_lly >> 6;
 
     /* the bitmap flow is from top to bottom, */
     /* but y is measured from bottom to top   */
@@ -977,9 +1066,6 @@
     }
     else
     {
-      FT_Pos  x = sbx.xMin - fbx.xMin;
-      FT_Pos  y = sbx.yMin - fbx.yMin;
-
       unsigned char*  p =
         source->buffer;
       unsigned char*  q =
@@ -1025,8 +1111,8 @@
       }
     }
 
-    atarget_offset->x = fbx.xMin * 64;
-    atarget_offset->y = fbx.yMax * 64;
+    atarget_offset->x = final_llx;
+    atarget_offset->y = final_lly + ( final_rows << 6 );
 
   Error:
     if ( error && free_target_bitmap_on_error )

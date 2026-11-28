@@ -2,10 +2,10 @@
  *
  * ttkern.h
  *
- *   Routines to parse and access the 'kern' table for kerning
- *   (specification).
+ *   Load the basic TrueType kerning table.  This doesn't handle
+ *   kerning data within the GPOS table at the moment.
  *
- * Copyright (C) 1996-2026 by
+ * Copyright (C) 1996-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -21,8 +21,9 @@
 #define TTKERN_H_
 
 
-#include <freetype/internal/ftstream.h>
-#include <freetype/internal/tttypes.h>
+#include <ft2build.h>
+#include FT_INTERNAL_STREAM_H
+#include FT_INTERNAL_TRUETYPE_TYPES_H
 
 
 FT_BEGIN_HEADER
@@ -39,6 +40,8 @@ FT_BEGIN_HEADER
   tt_face_get_kerning( TT_Face     face,
                        FT_UInt     left_glyph,
                        FT_UInt     right_glyph );
+
+#define TT_FACE_HAS_KERNING( face )  ( (face)->kern_avail_bits != 0 )
 
 
 FT_END_HEADER

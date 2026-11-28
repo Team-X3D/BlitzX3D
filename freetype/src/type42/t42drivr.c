@@ -4,7 +4,7 @@
  *
  *   High-level Type 42 driver interface (body).
  *
- * Copyright (C) 2002-2026 by
+ * Copyright (C) 2002-2019 by
  * Roberto Alameda.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -39,12 +39,12 @@
 #include "t42drivr.h"
 #include "t42objs.h"
 #include "t42error.h"
-#include <freetype/internal/ftdebug.h>
+#include FT_INTERNAL_DEBUG_H
 
-#include <freetype/internal/services/svfntfmt.h>
-#include <freetype/internal/services/svgldict.h>
-#include <freetype/internal/services/svpostnm.h>
-#include <freetype/internal/services/svpsinfo.h>
+#include FT_SERVICE_FONT_FORMAT_H
+#include FT_SERVICE_GLYPH_DICT_H
+#include FT_SERVICE_POSTSCRIPT_NAME_H
+#include FT_SERVICE_POSTSCRIPT_INFO_H
 
 #undef  FT_COMPONENT
 #define FT_COMPONENT  t42
@@ -56,41 +56,33 @@
    *
    */
 
-  FT_CALLBACK_DEF( FT_Error )
-  t42_get_glyph_name( FT_Face     face,        /* T42_Face */
+  static FT_Error
+  t42_get_glyph_name( T42_Face    face,
                       FT_UInt     glyph_index,
                       FT_Pointer  buffer,
                       FT_UInt     buffer_max )
   {
-    T42_Face  t42face = (T42_Face)face;
-
-
-    FT_STRCPYN( buffer,
-                t42face->type1.glyph_names[glyph_index],
-                buffer_max );
+    FT_STRCPYN( buffer, face->type1.glyph_names[glyph_index], buffer_max );
 
     return FT_Err_Ok;
   }
 
 
-  FT_CALLBACK_DEF( FT_UInt )
-  t42_get_name_index( FT_Face           face,        /* T42_Face */
+  static FT_UInt
+  t42_get_name_index( T42_Face          face,
                       const FT_String*  glyph_name )
   {
-    T42_Face  t42face = (T42_Face)face;
-    FT_Int    i;
+    FT_Int  i;
 
 
-    for ( i = 0; i < t42face->type1.num_glyphs; i++ )
+    for ( i = 0; i < face->type1.num_glyphs; i++ )
     {
-      FT_String*  gname = t42face->type1.glyph_names[i];
+      FT_String*  gname = face->type1.glyph_names[i];
 
 
       if ( glyph_name[0] == gname[0] && !ft_strcmp( glyph_name, gname ) )
-        return (FT_UInt)ft_strtol(
-                          (const char *)t42face->type1.charstrings[i],
-                          NULL,
-                          10 );
+        return (FT_UInt)ft_strtol( (const char *)face->type1.charstrings[i],
+                                   NULL, 10 );
     }
 
     return 0;
@@ -110,13 +102,10 @@
    *
    */
 
-  FT_CALLBACK_DEF( const char* )
-  t42_get_ps_font_name( FT_Face  face )    /* T42_Face */
+  static const char*
+  t42_get_ps_font_name( T42_Face  face )
   {
-    T42_Face  t42face = (T42_Face)face;
-
-
-    return (const char*)t42face->type1.font_name;
+    return (const char*)face->type1.font_name;
   }
 
 
@@ -132,7 +121,7 @@
    *
    */
 
-  FT_CALLBACK_DEF( FT_Error )
+  static FT_Error
   t42_ps_get_font_info( FT_Face          face,
                         PS_FontInfoRec*  afont_info )
   {
@@ -142,7 +131,7 @@
   }
 
 
-  FT_CALLBACK_DEF( FT_Error )
+  static FT_Error
   t42_ps_get_font_extra( FT_Face           face,
                          PS_FontExtraRec*  afont_extra )
   {
@@ -152,7 +141,7 @@
   }
 
 
-  FT_CALLBACK_DEF( FT_Int )
+  static FT_Int
   t42_ps_has_glyph_names( FT_Face  face )
   {
     FT_UNUSED( face );
@@ -161,13 +150,22 @@
   }
 
 
+  static FT_Error
+  t42_ps_get_font_private( FT_Face         face,
+                           PS_PrivateRec*  afont_private )
+  {
+    *afont_private = ((T42_Face)face)->type1.private_dict;
+
+    return FT_Err_Ok;
+  }
+
+
   static const FT_Service_PsInfoRec  t42_service_ps_info =
   {
     (PS_GetFontInfoFunc)   t42_ps_get_font_info,    /* ps_get_font_info    */
     (PS_GetFontExtraFunc)  t42_ps_get_font_extra,   /* ps_get_font_extra   */
     (PS_HasGlyphNamesFunc) t42_ps_has_glyph_names,  /* ps_has_glyph_names  */
-    /* Type42 fonts don't have a Private dict */
-    (PS_GetFontPrivateFunc)NULL,                    /* ps_get_font_private */
+    (PS_GetFontPrivateFunc)t42_ps_get_font_private, /* ps_get_font_private */
     /* not implemented */
     (PS_GetFontValueFunc)  NULL                     /* ps_get_font_value   */
   };

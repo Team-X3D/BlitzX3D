@@ -4,7 +4,7 @@
  *
  *   OpenType MATH table validation (body).
  *
- * Copyright (C) 2007-2026 by
+ * Copyright (C) 2007-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * Written by George Williams.
@@ -141,15 +141,14 @@
     OTV_OPTIONAL_TABLE( DeviceTableOffset );
 
 
-    /* OTV_NAME_ENTER( "MathKern" ); */
+    /* OTV_NAME_ENTER( "MathKern" );*/
 
     OTV_LIMIT_CHECK( 2 );
 
     cnt = FT_NEXT_USHORT( p );
 
-    /* (4 * cnt) + (4 * (cnt + 1)) */
-    OTV_LIMIT_CHECK( 8 * cnt + 4 );
-    table_size = 6 + 8 * cnt;
+    OTV_LIMIT_CHECK( 4 * cnt + 2 );
+    table_size = 4 + 4 * cnt;
 
     /* Heights */
     for ( i = 0; i < cnt; i++ )

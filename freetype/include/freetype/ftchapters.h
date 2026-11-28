@@ -15,7 +15,6 @@
    *   General Remarks
    *
    * @sections:
-   *   preamble
    *   header_inclusion
    *   user_allocation
    *
@@ -31,28 +30,9 @@
    *   Core API
    *
    * @sections:
+   *   version
    *   basic_types
-   *   library_setup
-   *   face_creation
-   *   font_testing_macros
-   *   sizing_and_scaling
-   *   glyph_retrieval
-   *   character_mapping
-   *   information_retrieval
-   *   other_api_data
-   *
-   */
-
-
-  /**************************************************************************
-   *
-   * @chapter:
-   *   extended_api
-   *
-   * @title:
-   *   Extended API
-   *
-   * @sections:
+   *   base_interface
    *   glyph_variants
    *   color_management
    *   layer_management
@@ -81,7 +61,6 @@
    *   cid_fonts
    *   pfr_fonts
    *   winfnt_fonts
-   *   svg_fonts
    *   font_formats
    *   gasp_table
    *
@@ -102,7 +81,6 @@
    *   t1_cid_driver
    *   tt_driver
    *   pcf_driver
-   *   ot_svg_driver
    *   properties
    *   parameter_tags
    *   lcd_rendering
@@ -145,7 +123,6 @@
    *   gzip
    *   lzw
    *   bzip2
-   *   debugging_apis
    *
    */
 

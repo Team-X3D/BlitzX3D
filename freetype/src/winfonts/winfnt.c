@@ -4,7 +4,7 @@
  *
  *   FreeType font driver for Windows FNT/FON files
  *
- * Copyright (C) 1996-2026 by
+ * Copyright (C) 1996-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  * Copyright 2003 Huw D M Davies for Codeweavers
  * Copyright 2007 Dmitry Timoshkov for Codeweavers
@@ -18,16 +18,17 @@
  */
 
 
-#include <freetype/ftwinfnt.h>
-#include <freetype/internal/ftdebug.h>
-#include <freetype/internal/ftstream.h>
-#include <freetype/internal/ftobjs.h>
-#include <freetype/ttnameid.h>
+#include <ft2build.h>
+#include FT_WINFONTS_H
+#include FT_INTERNAL_DEBUG_H
+#include FT_INTERNAL_STREAM_H
+#include FT_INTERNAL_OBJECTS_H
+#include FT_TRUETYPE_IDS_H
 
 #include "winfnt.h"
 #include "fnterrs.h"
-#include <freetype/internal/services/svwinfnt.h>
-#include <freetype/internal/services/svfntfmt.h>
+#include FT_SERVICE_WINFNT_H
+#include FT_SERVICE_FONT_FORMAT_H
 
   /**************************************************************************
    *
@@ -217,11 +218,7 @@
     /* first of all, read the FNT header */
     if ( FT_STREAM_SEEK( font->offset )                        ||
          FT_STREAM_READ_FIELDS( winfnt_header_fields, header ) )
-    {
-      FT_TRACE2(( "  not a Windows FNT file\n" ));
-      error = FT_THROW( Unknown_File_Format );
       goto Exit;
-    }
 
     /* check header */
     if ( header->version != 0x200 &&
@@ -288,10 +285,7 @@
     /* does it begin with an MZ header? */
     if ( FT_STREAM_SEEK( 0 )                                      ||
          FT_STREAM_READ_FIELDS( winmz_header_fields, &mz_header ) )
-    {
-      error = FT_ERR( Unknown_File_Format );
       goto Exit;
-    }
 
     error = FT_ERR( Unknown_File_Format );
     if ( mz_header.magic == WINFNT_MZ_MAGIC )
@@ -337,7 +331,7 @@
         {
           FT_TRACE2(( "invalid alignment shift count for resource data\n" ));
           error = FT_THROW( Invalid_File_Format );
-          goto Exit1;
+          goto Exit;
         }
 
 
@@ -352,15 +346,11 @@
 
           count = FT_GET_USHORT_LE();
 
-          FT_TRACE2(( type_id == 0x8007U ? "RT_FONTDIR count %hu\n" :
-                      type_id == 0x8008U ? "RT_FONT count %hu\n" : "",
-                                           count ));
-
           if ( type_id == 0x8008U )
           {
             font_count  = count;
-            font_offset = FT_STREAM_POS() + 4 -
-                          (FT_ULong)( stream->limit - stream->cursor );
+            font_offset = FT_STREAM_POS() + 4 +
+                          (FT_ULong)( stream->cursor - stream->limit );
             break;
           }
 
@@ -431,12 +421,12 @@
           goto Exit;
 
         FT_TRACE2(( "magic %04lx, machine %02x, number_of_sections %u, "
-                    "size_of_optional_header %02x\n",
+                    "size_of_optional_header %02x\n"
+                    "magic32 %02x, rsrc_virtual_address %04lx, "
+                    "rsrc_size %04lx\n",
                     pe32_header.magic, pe32_header.machine,
                     pe32_header.number_of_sections,
-                    pe32_header.size_of_optional_header ));
-        FT_TRACE2(( "magic32 %02x, rsrc_virtual_address %04lx, "
-                    "rsrc_size %04lx\n",
+                    pe32_header.size_of_optional_header,
                     pe32_header.magic32, pe32_header.rsrc_virtual_address,
                     pe32_header.rsrc_size ));
 
@@ -479,13 +469,6 @@
              FT_STREAM_READ_FIELDS( winpe_rsrc_dir_fields, &root_dir ) )
           goto Exit;
 
-        if ( root_dir.number_of_id_entries >
-               0xFFFF - root_dir.number_of_named_entries )
-        {
-          error = FT_THROW( Invalid_File_Format );
-          goto Exit;
-        }
-
         root_dir_offset = pe32_section.pointer_to_raw_data;
 
         for ( i = 0; i < root_dir.number_of_named_entries +
@@ -496,7 +479,7 @@
                                       &dir_entry1 )                )
             goto Exit;
 
-          if ( !( dir_entry1.offset & 0x80000000UL ) /* DataIsDirectory */ )
+          if ( !(dir_entry1.offset & 0x80000000UL ) /* DataIsDirectory */ )
           {
             error = FT_THROW( Invalid_File_Format );
             goto Exit;
@@ -512,13 +495,6 @@
                FT_STREAM_READ_FIELDS( winpe_rsrc_dir_fields, &name_dir ) )
             goto Exit;
 
-          if ( name_dir.number_of_id_entries >
-                 0xFFFF - name_dir.number_of_named_entries )
-          {
-            error = FT_THROW( Invalid_File_Format );
-            goto Exit;
-          }
-
           for ( j = 0; j < name_dir.number_of_named_entries +
                              name_dir.number_of_id_entries; j++ )
           {
@@ -527,7 +503,7 @@
                                         &dir_entry2 )                )
               goto Exit;
 
-            if ( !( dir_entry2.offset & 0x80000000UL ) /* DataIsDirectory */ )
+            if ( !(dir_entry2.offset & 0x80000000UL ) /* DataIsDirectory */ )
             {
               error = FT_THROW( Invalid_File_Format );
               goto Exit;
@@ -542,13 +518,6 @@
                                    dir_entry2.offset )                     ||
                  FT_STREAM_READ_FIELDS( winpe_rsrc_dir_fields, &lang_dir ) )
               goto Exit;
-
-            if ( lang_dir.number_of_id_entries >
-                   0xFFFF - lang_dir.number_of_named_entries )
-            {
-              error = FT_THROW( Invalid_File_Format );
-              goto Exit;
-            }
 
             for ( k = 0; k < lang_dir.number_of_named_entries +
                                lang_dir.number_of_id_entries; k++ )
@@ -628,10 +597,6 @@
 
   Exit:
     return error;
-
-  Exit1:
-    FT_FRAME_EXIT();
-    goto Exit;
   }
 
 
@@ -645,34 +610,31 @@
 
 
   static FT_Error
-  fnt_cmap_init( FT_CMap     cmap,     /* FNT_CMap */
+  fnt_cmap_init( FNT_CMap    cmap,
                  FT_Pointer  pointer )
   {
-    FNT_CMap  fntcmap = (FNT_CMap)cmap;
-    FNT_Face  face    = (FNT_Face)FT_CMAP_FACE( cmap );
-    FNT_Font  font    = face->font;
+    FNT_Face  face = (FNT_Face)FT_CMAP_FACE( cmap );
+    FNT_Font  font = face->font;
 
     FT_UNUSED( pointer );
 
 
-    fntcmap->first = (FT_UInt32)font->header.first_char;
-    fntcmap->count = (FT_UInt32)( font->header.last_char -
-                                  fntcmap->first + 1 );
+    cmap->first = (FT_UInt32)  font->header.first_char;
+    cmap->count = (FT_UInt32)( font->header.last_char - cmap->first + 1 );
 
     return 0;
   }
 
 
   static FT_UInt
-  fnt_cmap_char_index( FT_CMap    cmap,       /* FNT_CMap */
+  fnt_cmap_char_index( FNT_CMap   cmap,
                        FT_UInt32  char_code )
   {
-    FNT_CMap  fntcmap = (FNT_CMap)cmap;
-    FT_UInt   gindex  = 0;
+    FT_UInt  gindex = 0;
 
 
-    char_code -= fntcmap->first;
-    if ( char_code < fntcmap->count )
+    char_code -= cmap->first;
+    if ( char_code < cmap->count )
       /* we artificially increase the glyph index; */
       /* FNT_Load_Glyph reverts to the right one   */
       gindex = (FT_UInt)( char_code + 1 );
@@ -680,27 +642,26 @@
   }
 
 
-  static FT_UInt
-  fnt_cmap_char_next( FT_CMap     cmap,        /* FNT_CMap */
+  static FT_UInt32
+  fnt_cmap_char_next( FNT_CMap    cmap,
                       FT_UInt32  *pchar_code )
   {
-    FNT_CMap   fntcmap   = (FNT_CMap)cmap;
-    FT_UInt    gindex    = 0;
-    FT_UInt32  result    = 0;
+    FT_UInt    gindex = 0;
+    FT_UInt32  result = 0;
     FT_UInt32  char_code = *pchar_code + 1;
 
 
-    if ( char_code <= fntcmap->first )
+    if ( char_code <= cmap->first )
     {
-      result = fntcmap->first;
+      result = cmap->first;
       gindex = 1;
     }
     else
     {
-      char_code -= fntcmap->first;
-      if ( char_code < fntcmap->count )
+      char_code -= cmap->first;
+      if ( char_code < cmap->count )
       {
-        result = fntcmap->first + char_code;
+        result = cmap->first + char_code;
         gindex = (FT_UInt)( char_code + 1 );
       }
     }
@@ -829,7 +790,7 @@
         root->style_flags |= FT_STYLE_FLAG_BOLD;
 
       /* set up the `fixed_sizes' array */
-      if ( FT_QNEW( root->available_sizes ) )
+      if ( FT_NEW_ARRAY( root->available_sizes, 1 ) )
         goto Fail;
 
       root->num_fixed_sizes = 1;
@@ -921,10 +882,10 @@
       }
       family_size = font->header.file_size - font->header.face_name_offset;
       /* Some broken fonts don't delimit the face name with a final */
-      /* null byte -- the frame is erroneously one byte too small.  */
+      /* NULL byte -- the frame is erroneously one byte too small.  */
       /* We thus allocate one more byte, setting it explicitly to   */
       /* zero.                                                      */
-      if ( FT_QALLOC( font->family_name, family_size + 1 ) )
+      if ( FT_ALLOC( font->family_name, family_size + 1 ) )
         goto Fail;
 
       FT_MEM_COPY( font->family_name,
@@ -933,10 +894,9 @@
 
       font->family_name[family_size] = '\0';
 
-      /* shrink it to the actual length */
-      if ( FT_QREALLOC( font->family_name,
-                        family_size + 1,
-                        ft_strlen( font->family_name ) + 1 ) )
+      if ( FT_REALLOC( font->family_name,
+                       family_size,
+                       ft_strlen( font->family_name ) + 1 ) )
         goto Fail;
 
       root->family_name = font->family_name;
@@ -1027,7 +987,7 @@
                   FT_UInt       glyph_index,
                   FT_Int32      load_flags )
   {
-    FNT_Face    face   = (FNT_Face)size->face;
+    FNT_Face    face   = (FNT_Face)FT_SIZE_FACE( size );
     FNT_Font    font;
     FT_Error    error  = FT_Err_Ok;
     FT_Byte*    p;
@@ -1052,7 +1012,7 @@
       goto Exit;
     }
 
-    FT_TRACE1(( "FNT_Load_Glyph: glyph index %u\n", glyph_index ));
+    FT_TRACE1(( "FNT_Load_Glyph: glyph index %d\n", glyph_index ));
 
     if ( glyph_index > 0 )
       glyph_index--;                           /* revert to real index */
@@ -1131,7 +1091,7 @@
 
       /* note: since glyphs are stored in columns and not in rows we */
       /*       can't use ft_glyphslot_set_bitmap                     */
-      if ( FT_QALLOC_MULT( bitmap->buffer, bitmap->rows, pitch ) )
+      if ( FT_ALLOC_MULT( bitmap->buffer, bitmap->rows, pitch ) )
         goto Exit;
 
       column = (FT_Byte*)bitmap->buffer;

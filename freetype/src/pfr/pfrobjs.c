@@ -4,7 +4,7 @@
  *
  *   FreeType PFR object methods (body).
  *
- * Copyright (C) 2002-2026 by
+ * Copyright (C) 2002-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -21,10 +21,10 @@
 #include "pfrgload.h"
 #include "pfrcmap.h"
 #include "pfrsbit.h"
-#include <freetype/ftoutln.h>
-#include <freetype/internal/ftdebug.h>
-#include <freetype/internal/ftcalc.h>
-#include <freetype/ttnameid.h>
+#include FT_OUTLINE_H
+#include FT_INTERNAL_DEBUG_H
+#include FT_INTERNAL_CALC_H
+#include FT_TRUETYPE_IDS_H
 
 #include "pfrerror.h"
 
@@ -50,14 +50,14 @@
     if ( !face )
       return;
 
-    memory = pfrface->memory;
+    memory = pfrface->driver->root.memory;
 
     /* we don't want dangling pointers */
     pfrface->family_name = NULL;
     pfrface->style_name  = NULL;
 
     /* finalize the physical font record */
-    pfr_phy_font_done( &face->phy_font, memory );
+    pfr_phy_font_done( &face->phy_font, FT_FACE_MEMORY( face ) );
 
     /* no need to finalize the logical font or the header */
     FT_FREE( pfrface->available_sizes );
@@ -83,11 +83,7 @@
     /* load the header and check it */
     error = pfr_header_load( &face->header, stream );
     if ( error )
-    {
-      FT_TRACE2(( "  not a PFR font\n" ));
-      error = FT_THROW( Unknown_File_Format );
       goto Exit;
-    }
 
     if ( !pfr_header_check( &face->header ) )
     {
@@ -130,14 +126,14 @@
     if ( error )
       goto Exit;
 
-    /* load the physical font descriptor */
+    /* now load the physical font descriptor */
     error = pfr_phy_font_load( &face->phy_font, stream,
                                face->log_font.phys_offset,
                                face->log_font.phys_size );
     if ( error )
       goto Exit;
 
-    /* set up all root face fields */
+    /* now set up all root face fields */
     {
       PFR_PhyFont  phy_font = &face->phy_font;
 
@@ -160,7 +156,7 @@
         if ( nn == phy_font->num_chars )
         {
           if ( phy_font->num_strikes > 0 )
-            pfrface->face_flags &= ~FT_FACE_FLAG_SCALABLE;
+            pfrface->face_flags = 0;        /* not scalable */
           else
           {
             FT_ERROR(( "pfr_face_init: font doesn't contain glyphs\n" ));
@@ -170,7 +166,7 @@
         }
       }
 
-      if ( !( phy_font->flags & PFR_PHY_PROPORTIONAL ) )
+      if ( ( phy_font->flags & PFR_PHY_PROPORTIONAL ) == 0 )
         pfrface->face_flags |= FT_FACE_FLAG_FIXED_WIDTH;
 
       if ( phy_font->flags & PFR_PHY_VERTICAL )
@@ -207,17 +203,17 @@
 
       pfrface->height = (FT_Short)( ( pfrface->units_per_EM * 12 ) / 10 );
       if ( pfrface->height < pfrface->ascender - pfrface->descender )
-        pfrface->height = (FT_Short)( pfrface->ascender - pfrface->descender );
+        pfrface->height = (FT_Short)(pfrface->ascender - pfrface->descender);
 
       if ( phy_font->num_strikes > 0 )
       {
         FT_UInt          n, count = phy_font->num_strikes;
         FT_Bitmap_Size*  size;
         PFR_Strike       strike;
-        FT_Memory        memory = pfrface->memory;
+        FT_Memory        memory = pfrface->stream->memory;
 
 
-        if ( FT_QNEW_ARRAY( pfrface->available_sizes, count ) )
+        if ( FT_NEW_ARRAY( pfrface->available_sizes, count ) )
           goto Exit;
 
         size   = pfrface->available_sizes;
@@ -326,7 +322,7 @@
     FT_ULong     gps_offset;
 
 
-    FT_TRACE1(( "pfr_slot_load: glyph index %u\n", gindex ));
+    FT_TRACE1(( "pfr_slot_load: glyph index %d\n", gindex ));
 
     if ( gindex > 0 )
       gindex--;
@@ -338,7 +334,7 @@
     }
 
     /* try to load an embedded bitmap */
-    if ( !( load_flags & ( FT_LOAD_NO_SCALE | FT_LOAD_NO_BITMAP ) ) )
+    if ( ( load_flags & ( FT_LOAD_NO_SCALE | FT_LOAD_NO_BITMAP ) ) == 0 )
     {
       error = pfr_slot_load_bitmap(
                 slot,
@@ -355,8 +351,11 @@
       goto Exit;
     }
 
-    gchar      = face->phy_font.chars + gindex;
-    gps_offset = face->header.gps_section_offset;
+    gchar               = face->phy_font.chars + gindex;
+    pfrslot->format     = FT_GLYPH_FORMAT_OUTLINE;
+    outline->n_points   = 0;
+    outline->n_contours = 0;
+    gps_offset          = face->header.gps_section_offset;
 
     /* load the glyph outline (FT_LOAD_NO_RECURSE isn't supported) */
     error = pfr_glyph_load( &slot->glyph, face->root.stream,
@@ -368,9 +367,10 @@
       FT_Glyph_Metrics*  metrics = &pfrslot->metrics;
       FT_Pos             advance;
       FT_UInt            em_metrics, em_outline;
+      FT_Bool            scaling;
 
 
-      pfrslot->format = FT_GLYPH_FORMAT_OUTLINE;
+      scaling = FT_BOOL( !( load_flags & FT_LOAD_NO_SCALE ) );
 
       /* copy outline data */
       *outline = slot->glyph.loader->base.outline;
@@ -425,7 +425,7 @@
 #endif
 
       /* scale when needed */
-      if ( !( load_flags & FT_LOAD_NO_SCALE ) )
+      if ( scaling )
       {
         FT_Int      n;
         FT_Fixed    x_scale = pfrsize->metrics.x_scale;
@@ -482,16 +482,17 @@
     kerning->x = 0;
     kerning->y = 0;
 
-    /* PFR indexing skips .notdef, which becomes UINT_MAX */
-    glyph1--;
-    glyph2--;
+    if ( glyph1 > 0 )
+      glyph1--;
 
-    /* check the array bounds, .notdef is automatically out */
-    if ( glyph1 >= phy_font->num_chars ||
-         glyph2 >= phy_font->num_chars )
-      goto Exit;
+    if ( glyph2 > 0 )
+      glyph2--;
 
     /* convert glyph indices to character codes */
+    if ( glyph1 > phy_font->num_chars ||
+         glyph2 > phy_font->num_chars )
+      goto Exit;
+
     code1 = phy_font->chars[glyph1].char_code;
     code2 = phy_font->chars[glyph2].char_code;
     pair  = PFR_KERN_INDEX( code1, code2 );
@@ -529,8 +530,6 @@
 
         if ( extra > 0 )
         {
-          /* `item->pair_count` is not a power of two;  */
-          /* check value and adjust `base` if necessary */
           p = base + extra * size;
 
           if ( twobytes )
@@ -543,15 +542,14 @@
 
           if ( cpair < pair )
           {
-            if ( twobytes )
-              p -= 4;
+            if ( twobyte_adj )
+              p += 2;
             else
-              p -= 2;
+              p++;
             base = p;
           }
         }
 
-        /* do a power-of-two binary search */
         while ( probe > size )
         {
           probe >>= 1;

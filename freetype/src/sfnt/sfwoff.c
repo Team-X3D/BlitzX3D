@@ -4,7 +4,7 @@
  *
  *   WOFF format management (base).
  *
- * Copyright (C) 1996-2026 by
+ * Copyright (C) 1996-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -16,15 +16,12 @@
  */
 
 
+#include <ft2build.h>
 #include "sfwoff.h"
-#include <freetype/tttags.h>
-#include <freetype/internal/ftcalc.h>
-#include <freetype/internal/ftdebug.h>
-#include <freetype/internal/ftstream.h>
-#include <freetype/ftgzip.h>
-
-
-#ifdef FT_CONFIG_OPTION_USE_ZLIB
+#include FT_TRUETYPE_TAGS_H
+#include FT_INTERNAL_DEBUG_H
+#include FT_INTERNAL_STREAM_H
+#include FT_GZIP_H
 
 
   /**************************************************************************
@@ -65,11 +62,12 @@
     FT_FREE( stream->base );
 
     stream->size  = 0;
+    stream->base  = NULL;
     stream->close = NULL;
   }
 
 
-  FT_COMPARE_DEF( int )
+  FT_CALLBACK_DEF( int )
   compare_offsets( const void*  a,
                    const void*  b )
   {
@@ -112,7 +110,7 @@
     FT_ULong        sfnt_offset;
 
     FT_Int          nn;
-    FT_Tag          old_tag = 0;
+    FT_ULong        old_tag = 0;
 
     static const FT_Frame_Field  woff_header_fields[] =
     {
@@ -150,7 +148,6 @@
     /* Miscellaneous checks. */
     if ( woff.length != stream->size                              ||
          woff.num_tables == 0                                     ||
-         woff.num_tables >  0xFFFU                                ||
          44 + woff.num_tables * 20UL >= woff.length               ||
          12 + woff.num_tables * 16UL >= woff.totalSfntSize        ||
          ( woff.totalSfntSize & 3 ) != 0                          ||
@@ -164,17 +161,28 @@
     }
 
     /* Don't trust `totalSfntSize' before thorough checks. */
-    if ( FT_QALLOC( sfnt, 12 ) || FT_NEW( sfnt_stream ) )
+    if ( FT_ALLOC( sfnt, 12 + woff.num_tables * 16UL ) ||
+         FT_NEW( sfnt_stream )                         )
       goto Exit;
 
     sfnt_header = sfnt;
 
     /* Write sfnt header. */
     {
-      FT_Int  entrySelector = FT_MSB( woff.num_tables );
-      FT_Int  searchRange   = ( 1 << entrySelector ) * 16;
-      FT_Int  rangeShift    = woff.num_tables * 16 - searchRange;
+      FT_UInt  searchRange, entrySelector, rangeShift, x;
 
+
+      x             = woff.num_tables;
+      entrySelector = 0;
+      while ( x )
+      {
+        x            >>= 1;
+        entrySelector += 1;
+      }
+      entrySelector--;
+
+      searchRange = ( 1 << entrySelector ) * 16;
+      rangeShift  = woff.num_tables * 16 - searchRange;
 
       WRITE_ULONG ( sfnt_header, woff.flavor );
       WRITE_USHORT( sfnt_header, woff.num_tables );
@@ -187,13 +195,13 @@
     /* tag value, the tables themselves are not.  We thus have to */
     /* sort them by offset and check that they don't overlap.     */
 
-    if ( FT_QNEW_ARRAY( tables, woff.num_tables )  ||
-         FT_QNEW_ARRAY( indices, woff.num_tables ) )
+    if ( FT_NEW_ARRAY( tables, woff.num_tables )  ||
+         FT_NEW_ARRAY( indices, woff.num_tables ) )
       goto Exit;
 
-    FT_TRACE2(( "\n" ));
-    FT_TRACE2(( "  tag    offset    compLen  origLen  checksum\n" ));
-    FT_TRACE2(( "  -------------------------------------------\n" ));
+    FT_TRACE2(( "\n"
+                "  tag    offset    compLen  origLen  checksum\n"
+                "  -------------------------------------------\n" ));
 
     if ( FT_FRAME_ENTER( 20L * woff.num_tables ) )
       goto Exit;
@@ -310,12 +318,8 @@
       woff_offset += woff.privLength;
     }
 
-    /* Reject unrealistic size or compression factor */
-    if ( sfnt_offset > 0x4000000UL          ||
-         ( sfnt_offset >> 6 ) > woff_offset ||
-         sfnt_offset != woff.totalSfntSize  ||
-         woff_offset != woff.length         )
-
+    if ( sfnt_offset != woff.totalSfntSize ||
+         woff_offset != woff.length        )
     {
       FT_ERROR(( "woff_font_open: invalid `sfnt' table structure\n" ));
       error = FT_THROW( Invalid_Table );
@@ -323,7 +327,9 @@
     }
 
     /* Now use `totalSfntSize'. */
-    if ( FT_QREALLOC( sfnt, 12, woff.totalSfntSize ) )
+    if ( FT_REALLOC( sfnt,
+                     12 + woff.num_tables * 16UL,
+                     woff.totalSfntSize ) )
       goto Exit;
 
     sfnt_header = sfnt + 12;
@@ -355,6 +361,8 @@
       }
       else
       {
+#ifdef FT_CONFIG_OPTION_USE_ZLIB
+
         /* Uncompress with zlib. */
         FT_ULong  output_len = table->OrigLength;
 
@@ -363,13 +371,20 @@
                                     sfnt + table->OrigOffset, &output_len,
                                     stream->cursor, table->CompLength );
         if ( error )
-          goto Exit1;
+          goto Exit;
         if ( output_len != table->OrigLength )
         {
           FT_ERROR(( "woff_font_open: compressed table length mismatch\n" ));
           error = FT_THROW( Invalid_Table );
-          goto Exit1;
+          goto Exit;
         }
+
+#else /* !FT_CONFIG_OPTION_USE_ZLIB */
+
+        error = FT_THROW( Unimplemented_Feature );
+        goto Exit;
+
+#endif /* !FT_CONFIG_OPTION_USE_ZLIB */
       }
 
       FT_FRAME_EXIT();
@@ -409,22 +424,11 @@
     }
 
     return error;
-
-  Exit1:
-    FT_FRAME_EXIT();
-    goto Exit;
   }
 
 
 #undef WRITE_USHORT
 #undef WRITE_ULONG
-
-#else /* !FT_CONFIG_OPTION_USE_ZLIB */
-
-  /* ANSI C doesn't like empty source files */
-  typedef int  sfwoff_dummy_;
-
-#endif /* !FT_CONFIG_OPTION_USE_ZLIB */
 
 
 /* END */

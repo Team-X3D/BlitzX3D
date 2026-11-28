@@ -4,7 +4,7 @@
  *
  *   The FreeType internal cache interface (body).
  *
- * Copyright (C) 2000-2026 by
+ * Copyright (C) 2000-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -16,9 +16,10 @@
  */
 
 
+#include <ft2build.h>
 #include "ftcmanag.h"
-#include <freetype/internal/ftobjs.h>
-#include <freetype/internal/ftdebug.h>
+#include FT_INTERNAL_OBJECTS_H
+#include FT_INTERNAL_DEBUG_H
 
 #include "ftccback.h"
 #include "ftcerror.h"
@@ -90,14 +91,15 @@
   ftc_get_top_node_for_hash( FTC_Cache  cache,
                              FT_Offset  hash )
   {
+    FTC_Node*  pnode;
     FT_Offset  idx;
 
 
     idx = hash & cache->mask;
-    if ( idx >= cache->p )
-      idx = hash & ( cache->mask >> 1 );
-
-    return cache->buckets + idx;
+    if ( idx < cache->p )
+      idx = hash & ( 2 * cache->mask + 1 );
+    pnode = cache->buckets + idx;
+    return pnode;
   }
 
 #endif /* !FTC_INLINE */
@@ -113,12 +115,12 @@
     for (;;)
     {
       FTC_Node  node, *pnode;
-      FT_UFast  p    = cache->p;
-      FT_UFast  size = cache->mask + 1;  /* available size */
-      FT_UFast  half = size >> 1;
+      FT_UFast  p     = cache->p;
+      FT_UFast  mask  = cache->mask;
+      FT_UFast  count = mask + p + 1;    /* number of buckets */
 
 
-      /* do we need to expand the buckets array? */
+      /* do we need to shrink the buckets array? */
       if ( cache->slack < 0 )
       {
         FTC_Node  new_list = NULL;
@@ -127,22 +129,20 @@
         /* try to expand the buckets array _before_ splitting
          * the bucket lists
          */
-        if ( p == size )
+        if ( p >= mask )
         {
           FT_Memory  memory = cache->memory;
           FT_Error   error;
 
 
           /* if we can't expand the array, leave immediately */
-          if ( FT_QRENEW_ARRAY( cache->buckets, size, size * 2 ) )
+          if ( FT_RENEW_ARRAY( cache->buckets,
+                               ( mask + 1 ) * 2, ( mask + 1 ) * 4 ) )
             break;
-
-          cache->mask = 2 * size - 1;
-          half        = size;
         }
 
-        /* the bucket to split */
-        pnode = cache->buckets + p - half;
+        /* split a single bucket */
+        pnode = cache->buckets + p;
 
         for (;;)
         {
@@ -150,7 +150,7 @@
           if ( !node )
             break;
 
-          if ( node->hash & half )
+          if ( node->hash & ( mask + 1 ) )
           {
             *pnode     = node->link;
             node->link = new_list;
@@ -160,50 +160,56 @@
             pnode = &node->link;
         }
 
-        cache->buckets[p] = new_list;
+        cache->buckets[p + mask + 1] = new_list;
 
         cache->slack += FTC_HASH_MAX_LOAD;
-        cache->p      = p + 1;
 
-        FT_TRACE2(( "ftc_cache_resize: cache %u increased to %u hashes\n",
-                    cache->index, cache->p ));
+        if ( p >= mask )
+        {
+          cache->mask = 2 * mask + 1;
+          cache->p    = 0;
+        }
+        else
+          cache->p = p + 1;
       }
 
-      /* do we need to shrink the buckets array? */
-      else if ( cache->slack > (FT_Long)p * FTC_HASH_SUB_LOAD )
+      /* do we need to expand the buckets array? */
+      else if ( cache->slack > (FT_Long)count * FTC_HASH_SUB_LOAD )
       {
-        FTC_Node  old_list = cache->buckets[--p];
+        FT_UFast   old_index = p + mask;
+        FTC_Node*  pold;
 
 
-        if ( p < FTC_HASH_INITIAL_SIZE )
+        if ( old_index + 1 <= FTC_HASH_INITIAL_SIZE )
           break;
 
-        if ( p == half )
+        if ( p == 0 )
         {
           FT_Memory  memory = cache->memory;
           FT_Error   error;
 
 
           /* if we can't shrink the array, leave immediately */
-          if ( FT_QRENEW_ARRAY( cache->buckets, size, half ) )
+          if ( FT_RENEW_ARRAY( cache->buckets,
+                               ( mask + 1 ) * 2, mask + 1 ) )
             break;
 
-          cache->mask = half - 1;
+          cache->mask >>= 1;
+          p             = cache->mask;
         }
+        else
+          p--;
 
-        /* the bucket to merge */
-        pnode = cache->buckets + p - half;
-
+        pnode = cache->buckets + p;
         while ( *pnode )
           pnode = &(*pnode)->link;
 
-        *pnode = old_list;
+        pold   = cache->buckets + old_index;
+        *pnode = *pold;
+        *pold  = NULL;
 
         cache->slack -= FTC_HASH_MAX_LOAD;
         cache->p      = p;
-
-        FT_TRACE2(( "ftc_cache_resize: cache %u decreased to %u hashes\n",
-                    cache->index, cache->p ));
       }
 
       /* otherwise, the hash table is balanced */
@@ -235,7 +241,7 @@
       if ( node == node0 )
         break;
 
-      pnode = &node->link;
+      pnode = &(*pnode)->link;
     }
 
     *pnode      = node0->link;
@@ -303,7 +309,7 @@
 #if 0
     /* check, just in case of general corruption :-) */
     if ( manager->num_nodes == 0 )
-      FT_TRACE0(( "ftc_node_destroy: invalid cache node count (%u)\n",
+      FT_TRACE0(( "ftc_node_destroy: invalid cache node count (%d)\n",
                   manager->num_nodes ));
 #endif
   }
@@ -319,44 +325,43 @@
 
 
   FT_LOCAL_DEF( FT_Error )
-  ftc_cache_init( FTC_Cache  cache )
-  {
-    FT_Memory  memory = cache->memory;
-    FT_Error   error;
-
-
-    cache->p     = FTC_HASH_INITIAL_SIZE;
-    cache->mask  = FTC_HASH_INITIAL_SIZE - 1;
-    cache->slack = FTC_HASH_INITIAL_SIZE * FTC_HASH_MAX_LOAD;
-
-    FT_MEM_NEW_ARRAY( cache->buckets, FTC_HASH_INITIAL_SIZE );
-    return error;
-  }
-
-
-  FT_LOCAL_DEF( FT_Error )
   FTC_Cache_Init( FTC_Cache  cache )
   {
     return ftc_cache_init( cache );
   }
 
 
-  FT_LOCAL_DEF( void )
-  ftc_cache_done( FTC_Cache  cache )
+  FT_LOCAL_DEF( FT_Error )
+  ftc_cache_init( FTC_Cache  cache )
   {
     FT_Memory  memory = cache->memory;
+    FT_Error   error;
 
 
-    if ( cache->buckets )
+    cache->p     = 0;
+    cache->mask  = FTC_HASH_INITIAL_SIZE - 1;
+    cache->slack = FTC_HASH_INITIAL_SIZE * FTC_HASH_MAX_LOAD;
+
+    (void)FT_NEW_ARRAY( cache->buckets, FTC_HASH_INITIAL_SIZE * 2 );
+    return error;
+  }
+
+
+  static void
+  FTC_Cache_Clear( FTC_Cache  cache )
+  {
+    if ( cache && cache->buckets )
     {
       FTC_Manager  manager = cache->manager;
-      FT_UFast     count   = cache->p;
       FT_UFast     i;
+      FT_UFast     count;
 
+
+      count = cache->p + cache->mask + 1;
 
       for ( i = 0; i < count; i++ )
       {
-        FTC_Node  node = cache->buckets[i], next;
+        FTC_Node  *pnode = cache->buckets + i, next, node = *pnode;
 
 
         while ( node )
@@ -373,14 +378,30 @@
           cache->clazz.node_free( node, cache );
           node = next;
         }
+        cache->buckets[i] = NULL;
       }
+      ftc_cache_resize( cache );
     }
+  }
 
-    FT_FREE( cache->buckets );
 
-    cache->p     = 0;
-    cache->mask  = 0;
-    cache->slack = 0;
+  FT_LOCAL_DEF( void )
+  ftc_cache_done( FTC_Cache  cache )
+  {
+    if ( cache->memory )
+    {
+      FT_Memory  memory = cache->memory;
+
+
+      FTC_Cache_Clear( cache );
+
+      FT_FREE( cache->buckets );
+      cache->mask  = 0;
+      cache->p     = 0;
+      cache->slack = 0;
+
+      cache->memory = NULL;
+    }
   }
 
 
@@ -397,7 +418,7 @@
                  FTC_Node   node )
   {
     node->hash        = hash;
-    node->cache_index = (FT_UShort)cache->index;
+    node->cache_index = (FT_UInt16)cache->index;
     node->ref_count   = 0;
 
     ftc_node_hash_link( node, cache );
@@ -439,7 +460,7 @@
     {
       error = cache->clazz.node_new( &node, query, cache );
     }
-    FTC_CACHE_TRYLOOP_END( NULL )
+    FTC_CACHE_TRYLOOP_END( NULL );
 
     if ( error )
       node = NULL;
@@ -508,7 +529,7 @@
           goto NewNode;
         }
         else
-          pnode = &(*pnode)->link;
+          pnode = &((*pnode)->link);
       }
     }
 
@@ -543,38 +564,54 @@
   FTC_Cache_RemoveFaceID( FTC_Cache   cache,
                           FTC_FaceID  face_id )
   {
+    FT_UFast     i, count;
     FTC_Manager  manager = cache->manager;
-    FT_UFast     count   = cache->p;
-    FT_UFast     i;
+    FTC_Node     frees   = NULL;
 
 
+    count = cache->p + cache->mask + 1;
     for ( i = 0; i < count; i++ )
     {
-      FTC_Node*  pnode = cache->buckets + i;
+      FTC_Node*  bucket = cache->buckets + i;
+      FTC_Node*  pnode  = bucket;
 
 
       for (;;)
       {
         FTC_Node  node = *pnode;
+        FT_Bool   list_changed = FALSE;
 
 
         if ( !node )
           break;
 
-        if ( cache->clazz.node_remove_faceid( node, face_id, cache, NULL ) )
+        if ( cache->clazz.node_remove_faceid( node, face_id,
+                                              cache, &list_changed ) )
         {
-          *pnode = node->link;
-
-          manager->cur_weight -= cache->clazz.node_weight( node, cache );
-          ftc_node_mru_unlink( node, manager );
-
-          cache->clazz.node_free( node, cache );
-
-          cache->slack++;
+          *pnode     = node->link;
+          node->link = frees;
+          frees      = node;
         }
         else
           pnode = &node->link;
       }
+    }
+
+    /* remove all nodes in the free list */
+    while ( frees )
+    {
+      FTC_Node  node;
+
+
+      node  = frees;
+      frees = node->link;
+
+      manager->cur_weight -= cache->clazz.node_weight( node, cache );
+      ftc_node_mru_unlink( node, manager );
+
+      cache->clazz.node_free( node, cache );
+
+      cache->slack++;
     }
 
     ftc_cache_resize( cache );

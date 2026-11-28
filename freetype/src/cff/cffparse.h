@@ -4,7 +4,7 @@
  *
  *   CFF token stream parser (specification)
  *
- * Copyright (C) 1996-2026 by
+ * Copyright (C) 1996-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -20,8 +20,9 @@
 #define CFFPARSE_H_
 
 
-#include <freetype/internal/cfftypes.h>
-#include <freetype/internal/ftobjs.h>
+#include <ft2build.h>
+#include FT_INTERNAL_CFF_TYPES_H
+#include FT_INTERNAL_OBJECTS_H
 
 
 FT_BEGIN_HEADER
@@ -76,10 +77,6 @@ FT_BEGIN_HEADER
   cff_parse_num( CFF_Parser  parser,
                  FT_Byte**   d );
 
-  FT_LOCAL( FT_Fixed )
-  cff_parse_fixed( CFF_Parser  parser,
-                   FT_Byte**   d );
-
   FT_LOCAL( FT_Error )
   cff_parser_init( CFF_Parser  parser,
                    FT_UInt     code,
@@ -107,7 +104,6 @@ FT_BEGIN_HEADER
     cff_kind_string,
     cff_kind_bool,
     cff_kind_delta,
-    cff_kind_delta_fixed,
     cff_kind_callback,
     cff_kind_blend,
 
@@ -137,6 +133,15 @@ FT_BEGIN_HEADER
 
 FT_END_HEADER
 
+
+#ifdef CFF_CONFIG_OPTION_OLD_ENGINE
+  typedef struct  CFF_T2_String_
+  {
+    FT_Byte*  start;
+    FT_Byte*  limit;
+
+  } CFF_T2_StringRec, *CFF_T2_String;
+#endif /* CFF_CONFIG_OPTION_OLD_ENGINE */
 
 #endif /* CFFPARSE_H_ */
 

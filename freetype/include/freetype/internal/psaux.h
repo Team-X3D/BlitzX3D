@@ -5,7 +5,7 @@
  *   Auxiliary functions and data structures related to PostScript fonts
  *   (specification).
  *
- * Copyright (C) 1996-2026 by
+ * Copyright (C) 1996-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -21,13 +21,14 @@
 #define PSAUX_H_
 
 
-#include <freetype/internal/ftobjs.h>
-#include <freetype/internal/t1types.h>
-#include <freetype/internal/fthash.h>
-#include <freetype/internal/tttypes.h>
-#include <freetype/internal/services/svpscmap.h>
-#include <freetype/internal/cfftypes.h>
-#include <freetype/internal/cffotypes.h>
+#include <ft2build.h>
+#include FT_INTERNAL_OBJECTS_H
+#include FT_INTERNAL_TYPE1_TYPES_H
+#include FT_INTERNAL_HASH_H
+#include FT_INTERNAL_TRUETYPE_TYPES_H
+#include FT_SERVICE_POSTSCRIPT_CMAPS_H
+#include FT_INTERNAL_CFF_TYPES_H
+#include FT_INTERNAL_CFF_OBJECTS_TYPES_H
 
 
 
@@ -132,6 +133,9 @@ FT_BEGIN_HEADER
    *   max_elems ::
    *     The maximum number of elements in table.
    *
+   *   num_elems ::
+   *     The current number of elements in table.
+   *
    *   elements ::
    *     A table of element addresses within the block.
    *
@@ -152,6 +156,7 @@ FT_BEGIN_HEADER
     FT_ULong           init;
 
     FT_Int             max_elems;
+    FT_Int             num_elems;
     FT_Byte**          elements;       /* addresses of table elements */
     FT_UInt*           lengths;        /* lengths of table elements   */
 
@@ -225,7 +230,6 @@ FT_BEGIN_HEADER
 
   typedef enum  T1_FieldLocation_
   {
-    T1_FIELD_LOCATION_NONE = 0,
     T1_FIELD_LOCATION_CID_INFO,
     T1_FIELD_LOCATION_FONT_DICT,
     T1_FIELD_LOCATION_FONT_EXTRA,
@@ -250,7 +254,6 @@ FT_BEGIN_HEADER
   /* structure type used to model object fields */
   typedef struct  T1_FieldRec_
   {
-    FT_UInt             len;          /* field identifier length        */
     const char*         ident;        /* field identifier               */
     T1_FieldLocation    location;
     T1_FieldType        type;         /* type of field                  */
@@ -275,9 +278,8 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_SIMPLE_FIELD( _ident, _type, _fname, _dict ) \
           {                                                 \
-            sizeof ( _ident ) - 1,                          \
             _ident, T1CODE, _type,                          \
-            NULL,                                           \
+            0,                                              \
             FT_FIELD_OFFSET( _fname ),                      \
             FT_FIELD_SIZE( _fname ),                        \
             0, 0,                                           \
@@ -286,7 +288,6 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_CALLBACK_FIELD( _ident, _reader, _dict ) \
           {                                             \
-            sizeof ( _ident ) - 1,                      \
             _ident, T1CODE, T1_FIELD_TYPE_CALLBACK,     \
             (T1_Field_ParseFunc)_reader,                \
             0, 0,                                       \
@@ -296,9 +297,8 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_TABLE_FIELD( _ident, _type, _fname, _max, _dict ) \
           {                                                      \
-            sizeof ( _ident ) - 1,                               \
             _ident, T1CODE, _type,                               \
-            NULL,                                                \
+            0,                                                   \
             FT_FIELD_OFFSET( _fname ),                           \
             FT_FIELD_SIZE_DELTA( _fname ),                       \
             _max,                                                \
@@ -308,9 +308,8 @@ FT_BEGIN_HEADER
 
 #define T1_NEW_TABLE_FIELD2( _ident, _type, _fname, _max, _dict ) \
           {                                                       \
-            sizeof ( _ident ) - 1,                                \
             _ident, T1CODE, _type,                                \
-            NULL,                                                 \
+            0,                                                    \
             FT_FIELD_OFFSET( _fname ),                            \
             FT_FIELD_SIZE_DELTA( _fname ),                        \
             _max, 0,                                              \
@@ -359,13 +358,6 @@ FT_BEGIN_HEADER
 
 #define T1_FIELD_CALLBACK( _ident, _name, _dict )       \
           T1_NEW_CALLBACK_FIELD( _ident, _name, _dict )
-
-#define T1_FIELD_ZERO                                         \
-          {                                                   \
-            0,                                                \
-            NULL, T1_FIELD_LOCATION_NONE, T1_FIELD_TYPE_NONE, \
-            NULL, 0, 0, 0, 0, 0                               \
-          }
 
 
   /*************************************************************************/

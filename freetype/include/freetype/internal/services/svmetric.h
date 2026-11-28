@@ -4,7 +4,7 @@
  *
  *   The FreeType services for metrics variations (specification).
  *
- * Copyright (C) 2016-2026 by
+ * Copyright (C) 2016-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -19,7 +19,7 @@
 #ifndef SVMETRIC_H_
 #define SVMETRIC_H_
 
-#include <freetype/internal/ftserv.h>
+#include FT_INTERNAL_SERVICE_H
 
 
 FT_BEGIN_HEADER
@@ -77,9 +77,6 @@ FT_BEGIN_HEADER
   typedef void
   (*FT_Metrics_Adjust_Func)( FT_Face  face );
 
-  typedef void
-  (*FT_Size_Reset_Func)( FT_Size  size );
-
 
   FT_DEFINE_SERVICE( MetricsVariations )
   {
@@ -93,7 +90,6 @@ FT_BEGIN_HEADER
     FT_VOrg_Adjust_Func      vorg_adjust;
 
     FT_Metrics_Adjust_Func   metrics_adjust;
-    FT_Size_Reset_Func       size_reset;
   };
 
 
@@ -105,8 +101,7 @@ FT_BEGIN_HEADER
                                                 tsb_adjust_,       \
                                                 bsb_adjust_,       \
                                                 vorg_adjust_,      \
-                                                metrics_adjust_,   \
-                                                size_reset_      ) \
+                                                metrics_adjust_  ) \
   static const FT_Service_MetricsVariationsRec  class_ =           \
   {                                                                \
     hadvance_adjust_,                                              \
@@ -116,8 +111,7 @@ FT_BEGIN_HEADER
     tsb_adjust_,                                                   \
     bsb_adjust_,                                                   \
     vorg_adjust_,                                                  \
-    metrics_adjust_,                                               \
-    size_reset_                                                    \
+    metrics_adjust_                                                \
   };
 
   /* */

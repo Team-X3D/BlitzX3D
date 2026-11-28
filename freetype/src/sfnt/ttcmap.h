@@ -4,7 +4,7 @@
  *
  *   TrueType character mapping table (cmap) support (specification).
  *
- * Copyright (C) 2002-2026 by
+ * Copyright (C) 2002-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -20,9 +20,10 @@
 #define TTCMAP_H_
 
 
-#include <freetype/internal/tttypes.h>
-#include <freetype/internal/ftvalid.h>
-#include <freetype/internal/services/svttcmap.h>
+#include <ft2build.h>
+#include FT_INTERNAL_TRUETYPE_TYPES_H
+#include FT_INTERNAL_VALIDATE_H
+#include FT_SERVICE_TT_CMAP_H
 
 FT_BEGIN_HEADER
 
@@ -32,11 +33,9 @@ FT_BEGIN_HEADER
 
   typedef struct  TT_CMapRec_
   {
-    FT_CMapRec     cmap;
-    FT_Byte*       data;        /* pointer to in-memory cmap table */
-    FT_Int         flags;       /* for format 4 only               */
-    FT_CMap_Class  cmap_class;  /* class before applying 'DMAP'    */
-    FT_CMap        dmap;        /* overriding 'DMAP' subtable      */
+    FT_CMapRec  cmap;
+    FT_Byte*    data;           /* pointer to in-memory cmap table */
+    FT_Int      flags;          /* for format 4 only               */
 
   } TT_CMapRec, *TT_CMap;
 
@@ -92,11 +91,6 @@ FT_BEGIN_HEADER
   };
 
 
-#undef  TTCMAPCITEM
-#define TTCMAPCITEM( a )  FT_CALLBACK_TABLE  const TT_CMap_ClassRec  a;
-#include "ttcmapc.h"
-
-
   typedef struct  TT_ValidatorRec_
   {
     FT_ValidatorRec  validator;
@@ -113,12 +107,6 @@ FT_BEGIN_HEADER
 
   FT_LOCAL( FT_Error )
   tt_face_build_cmaps( TT_Face  face );
-
-  FT_LOCAL( FT_Error )
-  tt_face_build_dmaps( TT_Face  face );
-
-  FT_LOCAL( void )
-  tt_face_done_dmaps( TT_Face  face );
 
   /* used in tt-cmaps service */
   FT_LOCAL( FT_Error )

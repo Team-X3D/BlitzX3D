@@ -4,7 +4,7 @@
  *
  *   Simple MRU list-cache (specification).
  *
- * Copyright (C) 2000-2026 by
+ * Copyright (C) 2000-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used,
@@ -44,8 +44,8 @@
 #define FTCMRU_H_
 
 
-#include <freetype/freetype.h>
-#include <freetype/internal/compiler-macros.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 #ifdef FREETYPE_H
 #error "freetype.h of FreeType 1 has been loaded!"
@@ -95,6 +95,11 @@ FT_BEGIN_HEADER
                            FT_Pointer   key,
                            FT_Pointer   data );
 
+  typedef FT_Error
+  (*FTC_MruNode_ResetFunc)( FTC_MruNode  node,
+                            FT_Pointer   key,
+                            FT_Pointer   data );
+
   typedef void
   (*FTC_MruNode_DoneFunc)( FTC_MruNode  node,
                            FT_Pointer   data );
@@ -106,6 +111,7 @@ FT_BEGIN_HEADER
 
     FTC_MruNode_CompareFunc  node_compare;
     FTC_MruNode_InitFunc     node_init;
+    FTC_MruNode_ResetFunc    node_reset;
     FTC_MruNode_DoneFunc     node_done;
 
   } FTC_MruListClassRec;

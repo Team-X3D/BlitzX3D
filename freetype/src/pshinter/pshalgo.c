@@ -4,7 +4,7 @@
  *
  *   PostScript hinting algorithm (body).
  *
- * Copyright (C) 2001-2026 by
+ * Copyright (C) 2001-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used
@@ -16,9 +16,10 @@
  */
 
 
-#include <freetype/internal/ftobjs.h>
-#include <freetype/internal/ftdebug.h>
-#include <freetype/internal/ftcalc.h>
+#include <ft2build.h>
+#include FT_INTERNAL_OBJECTS_H
+#include FT_INTERNAL_DEBUG_H
+#include FT_INTERNAL_CALC_H
 #include "pshalgo.h"
 
 #include "pshnterr.h"
@@ -33,6 +34,10 @@
   PSH_HintFunc    ps_debug_hint_func  = NULL;
   PSH_Glyph       ps_debug_glyph      = NULL;
 #endif
+
+
+#define  COMPUTE_INFLEXS  /* compute inflection points to optimize `S' */
+                          /* and similar glyphs                        */
 
 
   /*************************************************************************/
@@ -96,7 +101,7 @@
 
     if ( idx >= table->max_hints )
     {
-      FT_TRACE0(( "psh_hint_table_record: invalid hint index %u\n", idx ));
+      FT_TRACE0(( "psh_hint_table_record: invalid hint index %d\n", idx ));
       return;
     }
 
@@ -178,13 +183,13 @@
     count = hints->num_hints;
 
     /* allocate our tables */
-    if ( FT_QNEW_ARRAY( table->sort,  2 * count     ) ||
-         FT_QNEW_ARRAY( table->hints,     count     ) ||
-         FT_QNEW_ARRAY( table->zones, 2 * count + 1 ) )
+    if ( FT_NEW_ARRAY( table->sort,  2 * count     ) ||
+         FT_NEW_ARRAY( table->hints,     count     ) ||
+         FT_NEW_ARRAY( table->zones, 2 * count + 1 ) )
       goto Exit;
 
     table->max_hints   = count;
-    table->sort_global = FT_OFFSET( table->sort, count );
+    table->sort_global = table->sort + count;
     table->num_hints   = 0;
     table->num_zones   = 0;
     table->zone        = NULL;
@@ -301,18 +306,17 @@
     /* now, sort the hints; they are guaranteed to not overlap */
     /* so we can compare their "org_pos" field directly        */
     {
-      FT_UInt    i1, i2;
+      FT_Int     i1, i2;
       PSH_Hint   hint1, hint2;
       PSH_Hint*  sort = table->sort;
 
 
       /* a simple bubble sort will do, since in 99% of cases, the hints */
       /* will be already sorted -- and the sort will be linear          */
-      for ( i1 = 1; i1 < count; i1++ )
+      for ( i1 = 1; i1 < (FT_Int)count; i1++ )
       {
         hint1 = sort[i1];
-        /* this loop stops when i2 wraps around after reaching 0 */
-        for ( i2 = i1 - 1; i2 < i1; i2-- )
+        for ( i2 = i1 - 1; i2 >= 0; i2-- )
         {
           hint2 = sort[i2];
 
@@ -512,7 +516,7 @@
             if ( !psh_hint_is_fitted( parent ) )
               psh_hint_align( parent, globals, dimension, glyph );
 
-            /* keep original relation between hints, that is, use the */
+            /* keep original relation between hints, this is, use the */
             /* scaled distance between the centers of the hints to    */
             /* compute the new position                               */
             par_org_center = parent->org_pos + ( parent->org_len >> 1 );
@@ -866,7 +870,7 @@
       return;
     }
 
-#endif /* DEBUG_HINTER */
+#endif /* DEBUG_HINTER*/
 
     hint  = table->hints;
     count = table->max_hints;
@@ -916,6 +920,117 @@
 #define  psh_corner_orientation  ft_corner_orientation
 
 
+#ifdef COMPUTE_INFLEXS
+
+  /* compute all inflex points in a given glyph */
+  static void
+  psh_glyph_compute_inflections( PSH_Glyph  glyph )
+  {
+    FT_UInt  n;
+
+
+    for ( n = 0; n < glyph->num_contours; n++ )
+    {
+      PSH_Point  first, start, end, before, after;
+      FT_Pos     in_x, in_y, out_x, out_y;
+      FT_Int     orient_prev, orient_cur;
+      FT_Int     finished = 0;
+
+
+      /* we need at least 4 points to create an inflection point */
+      if ( glyph->contours[n].count < 4 )
+        continue;
+
+      /* compute first segment in contour */
+      first = glyph->contours[n].start;
+
+      start = end = first;
+      do
+      {
+        end = end->next;
+        if ( end == first )
+          goto Skip;
+
+        in_x = end->org_u - start->org_u;
+        in_y = end->org_v - start->org_v;
+
+      } while ( in_x == 0 && in_y == 0 );
+
+      /* extend the segment start whenever possible */
+      before = start;
+      do
+      {
+        do
+        {
+          start  = before;
+          before = before->prev;
+          if ( before == first )
+            goto Skip;
+
+          out_x = start->org_u - before->org_u;
+          out_y = start->org_v - before->org_v;
+
+        } while ( out_x == 0 && out_y == 0 );
+
+        orient_prev = psh_corner_orientation( in_x, in_y, out_x, out_y );
+
+      } while ( orient_prev == 0 );
+
+      first = start;
+      in_x  = out_x;
+      in_y  = out_y;
+
+      /* now, process all segments in the contour */
+      do
+      {
+        /* first, extend current segment's end whenever possible */
+        after = end;
+        do
+        {
+          do
+          {
+            end   = after;
+            after = after->next;
+            if ( after == first )
+              finished = 1;
+
+            out_x = after->org_u - end->org_u;
+            out_y = after->org_v - end->org_v;
+
+          } while ( out_x == 0 && out_y == 0 );
+
+          orient_cur = psh_corner_orientation( in_x, in_y, out_x, out_y );
+
+        } while ( orient_cur == 0 );
+
+        if ( ( orient_cur ^ orient_prev ) < 0 )
+        {
+          do
+          {
+            psh_point_set_inflex( start );
+            start = start->next;
+          }
+          while ( start != end );
+
+          psh_point_set_inflex( start );
+        }
+
+        start       = end;
+        end         = after;
+        orient_prev = orient_cur;
+        in_x        = out_x;
+        in_y        = out_y;
+
+      } while ( !finished );
+
+    Skip:
+      ;
+    }
+  }
+
+#endif /* COMPUTE_INFLEXS */
+
+
   static void
   psh_glyph_done( PSH_Glyph  glyph )
   {
@@ -935,12 +1050,12 @@
   }
 
 
-  static PSH_Dir
+  static int
   psh_compute_dir( FT_Pos  dx,
                    FT_Pos  dy )
   {
-    FT_Pos   ax, ay;
-    PSH_Dir  result = PSH_DIR_NONE;
+    FT_Pos  ax, ay;
+    int     result = PSH_DIR_NONE;
 
 
     ax = FT_ABS( dx );
@@ -1003,7 +1118,7 @@
     FT_UInt     n;
     PSH_Point   point = glyph->points;
     FT_Vector*  vec   = glyph->outline->points;
-    FT_Byte*    tags  = glyph->outline->tags;
+    char*       tags  = glyph->outline->tags;
 
 
     for ( n = 0; n < glyph->num_points; n++ )
@@ -1052,12 +1167,12 @@
     memory = glyph->memory = globals->memory;
 
     /* allocate and setup points + contours arrays */
-    if ( FT_QNEW_ARRAY( glyph->points,   outline->n_points   ) ||
-         FT_QNEW_ARRAY( glyph->contours, outline->n_contours ) )
+    if ( FT_NEW_ARRAY( glyph->points,   outline->n_points   ) ||
+         FT_NEW_ARRAY( glyph->contours, outline->n_contours ) )
       goto Exit;
 
-    glyph->num_points   = outline->n_points;
-    glyph->num_contours = outline->n_contours;
+    glyph->num_points   = (FT_UInt)outline->n_points;
+    glyph->num_contours = (FT_UInt)outline->n_contours;
 
     {
       FT_UInt      first = 0, next, n;
@@ -1071,7 +1186,7 @@
         PSH_Point  point;
 
 
-        next  = outline->contours[n] + 1;
+        next  = (FT_UInt)outline->contours[n] + 1;
         count = next - first;
 
         contour->start = points + first;
@@ -1113,35 +1228,39 @@
         FT_Pos  dxi, dyi, dxo, dyo;
 
 
-        point->flags = 0;
         if ( !( outline->tags[n] & FT_CURVE_TAG_ON ) )
-          psh_point_set_off( point );
+          point->flags = PSH_POINT_OFF;
 
         dxi = vec[n].x - vec[n_prev].x;
         dyi = vec[n].y - vec[n_prev].y;
 
-        point->dir_in = psh_compute_dir( dxi, dyi );
+        point->dir_in = (FT_Char)psh_compute_dir( dxi, dyi );
 
         dxo = vec[n_next].x - vec[n].x;
         dyo = vec[n_next].y - vec[n].y;
 
-        point->dir_out = psh_compute_dir( dxo, dyo );
+        point->dir_out = (FT_Char)psh_compute_dir( dxo, dyo );
 
         /* detect smooth points */
-        if ( psh_point_is_off( point ) )
-          psh_point_set_smooth( point );
+        if ( point->flags & PSH_POINT_OFF )
+          point->flags |= PSH_POINT_SMOOTH;
 
         else if ( point->dir_in == point->dir_out )
         {
           if ( point->dir_out != PSH_DIR_NONE           ||
                psh_corner_is_flat( dxi, dyi, dxo, dyo ) )
-            psh_point_set_smooth( point );
+            point->flags |= PSH_POINT_SMOOTH;
         }
       }
     }
 
     glyph->outline = outline;
     glyph->globals = globals;
+
+#ifdef COMPUTE_INFLEXS
+    psh_glyph_load_points( glyph, 0 );
+    psh_glyph_compute_inflections( glyph );
+#endif /* COMPUTE_INFLEXS */
 
     /* now deal with hints tables */
     error = psh_hint_table_init( &glyph->hint_tables [0],
@@ -1165,58 +1284,136 @@
   }
 
 
-  /* compute all extreme and inflection points */
-  /* in a glyph for a given dimension          */
+  /* compute all extrema in a glyph for a given dimension */
   static void
   psh_glyph_compute_extrema( PSH_Glyph  glyph )
   {
     FT_UInt  n;
 
 
+    /* first of all, compute all local extrema */
     for ( n = 0; n < glyph->num_contours; n++ )
     {
-      PSH_Point  first, point, before, after;
+      PSH_Point  first = glyph->contours[n].start;
+      PSH_Point  point, before, after;
 
 
-      /* we need at least 3 points to create an extremum */
-      if ( glyph->contours[n].count < 3 )
+      if ( glyph->contours[n].count == 0 )
         continue;
 
-      first = glyph->contours[n].start;
-      point = first->prev;
-      after = first;
+      point  = first;
+      before = point;
 
       do
       {
-        before = point;
+        before = before->prev;
+        if ( before == first )
+          goto Skip;
+
+      } while ( before->org_u == point->org_u );
+
+      first = point = before->next;
+
+      for (;;)
+      {
+        after = point;
+        do
+        {
+          after = after->next;
+          if ( after == first )
+            goto Next;
+
+        } while ( after->org_u == point->org_u );
+
+        if ( before->org_u < point->org_u )
+        {
+          if ( after->org_u < point->org_u )
+          {
+            /* local maximum */
+            goto Extremum;
+          }
+        }
+        else /* before->org_u > point->org_u */
+        {
+          if ( after->org_u > point->org_u )
+          {
+            /* local minimum */
+          Extremum:
+            do
+            {
+              psh_point_set_extremum( point );
+              point = point->next;
+
+            } while ( point != after );
+          }
+        }
+
+        before = after->prev;
         point  = after;
-        after  = point->next;
 
-        if ( ( before->org_u < point->org_u && point->org_u < after->org_u ) ||
-             ( before->org_u > point->org_u && point->org_u > after->org_u ) )
-          continue;
+      } /* for  */
 
-        /* otherwise this is either extremum or inflection point */
-        psh_point_set_extremum( point );
+    Next:
+      ;
+    }
 
-        /* also note its direction */
-        if ( before->org_v < after->org_v )
-          psh_point_set_positive( point );
-        else if ( before->org_v > after->org_v )
-          psh_point_set_negative( point );
+    /* for each extremum, determine its direction along the */
+    /* orthogonal axis                                      */
+    for ( n = 0; n < glyph->num_points; n++ )
+    {
+      PSH_Point  point, before, after;
 
-      } while ( after != first );
+
+      point  = &glyph->points[n];
+      before = point;
+      after  = point;
+
+      if ( psh_point_is_extremum( point ) )
+      {
+        do
+        {
+          before = before->prev;
+          if ( before == point )
+            goto Skip;
+
+        } while ( before->org_v == point->org_v );
+
+        do
+        {
+          after = after->next;
+          if ( after == point )
+            goto Skip;
+
+        } while ( after->org_v == point->org_v );
+      }
+
+      if ( before->org_v < point->org_v &&
+           after->org_v  > point->org_v )
+      {
+        psh_point_set_positive( point );
+      }
+      else if ( before->org_v > point->org_v &&
+                after->org_v  < point->org_v )
+      {
+        psh_point_set_negative( point );
+      }
+
+    Skip:
+      ;
     }
   }
 
 
-  /* the min and max are based on contour orientation and fill rule */
+  /* major_dir is the direction for points on the bottom/left of the stem; */
+  /* Points on the top/right of the stem will have a direction of          */
+  /* -major_dir.                                                           */
+
   static void
   psh_hint_table_find_strong_points( PSH_Hint_Table  table,
                                      PSH_Point       point,
                                      FT_UInt         count,
                                      FT_Int          threshold,
-                                     PSH_Dir         major_dir )
+                                     FT_Int          major_dir )
   {
     PSH_Hint*  sort      = table->sort;
     FT_UInt    num_hints = table->num_hints;
@@ -1224,53 +1421,59 @@
 
     for ( ; count > 0; count--, point++ )
     {
-      PSH_Dir  point_dir;
-      FT_Pos   org_u = point->org_u;
+      FT_Int  point_dir = 0;
+      FT_Pos  org_u     = point->org_u;
 
 
       if ( psh_point_is_strong( point ) )
         continue;
 
-      point_dir =
-        (PSH_Dir)( ( point->dir_in | point->dir_out ) & major_dir );
+      if ( PSH_DIR_COMPARE( point->dir_in, major_dir ) )
+        point_dir = point->dir_in;
 
-      if ( point_dir & ( PSH_DIR_DOWN | PSH_DIR_RIGHT ) )
+      else if ( PSH_DIR_COMPARE( point->dir_out, major_dir ) )
+        point_dir = point->dir_out;
+
+      if ( point_dir )
       {
-        FT_UInt  nn;
-
-
-        for ( nn = 0; nn < num_hints; nn++ )
+        if ( point_dir == major_dir )
         {
-          PSH_Hint  hint = sort[nn];
-          FT_Pos    d    = org_u - hint->org_pos;
+          FT_UInt  nn;
 
 
-          if ( d < threshold && -d < threshold )
+          for ( nn = 0; nn < num_hints; nn++ )
           {
-            psh_point_set_strong( point );
-            point->flags2 |= PSH_POINT_EDGE_MIN;
-            point->hint    = hint;
-            break;
+            PSH_Hint  hint = sort[nn];
+            FT_Pos    d    = org_u - hint->org_pos;
+
+
+            if ( d < threshold && -d < threshold )
+            {
+              psh_point_set_strong( point );
+              point->flags2 |= PSH_POINT_EDGE_MIN;
+              point->hint    = hint;
+              break;
+            }
           }
         }
-      }
-      else if ( point_dir & ( PSH_DIR_UP | PSH_DIR_LEFT ) )
-      {
-        FT_UInt  nn;
-
-
-        for ( nn = 0; nn < num_hints; nn++ )
+        else if ( point_dir == -major_dir )
         {
-          PSH_Hint  hint = sort[nn];
-          FT_Pos    d    = org_u - hint->org_pos - hint->org_len;
+          FT_UInt  nn;
 
 
-          if ( d < threshold && -d < threshold )
+          for ( nn = 0; nn < num_hints; nn++ )
           {
-            psh_point_set_strong( point );
-            point->flags2 |= PSH_POINT_EDGE_MAX;
-            point->hint    = hint;
-            break;
+            PSH_Hint  hint = sort[nn];
+            FT_Pos    d    = org_u - hint->org_pos - hint->org_len;
+
+
+            if ( d < threshold && -d < threshold )
+            {
+              psh_point_set_strong( point );
+              point->flags2 |= PSH_POINT_EDGE_MAX;
+              point->hint    = hint;
+              break;
+            }
           }
         }
       }
@@ -1353,9 +1556,8 @@
   /* the accepted shift for strong points in fractional pixels */
 #define PSH_STRONG_THRESHOLD  32
 
-  /* the maximum shift value in font units tuned to distinguish */
-  /* between stems and serifs in URW+ font collection           */
-#define PSH_STRONG_THRESHOLD_MAXIMUM  12
+  /* the maximum shift value in font units */
+#define PSH_STRONG_THRESHOLD_MAXIMUM  30
 
 
   /* find strong points in a glyph */
@@ -1370,7 +1572,7 @@
     PS_Mask         mask      = table->hint_masks->masks;
     FT_UInt         num_masks = table->hint_masks->num_masks;
     FT_UInt         first     = 0;
-    PSH_Dir         major_dir = ( dimension == 0 ) ? PSH_DIR_VERTICAL
+    FT_Int          major_dir = ( dimension == 0 ) ? PSH_DIR_VERTICAL
                                                    : PSH_DIR_HORIZONTAL;
     PSH_Dimension   dim       = &glyph->globals->dimension[dimension];
     FT_Fixed        scale     = dim->scale_mult;
@@ -1455,8 +1657,8 @@
 
 
       /* check tangents */
-      if ( !( point->dir_in  & PSH_DIR_HORIZONTAL ) &&
-           !( point->dir_out & PSH_DIR_HORIZONTAL ) )
+      if ( !PSH_DIR_COMPARE( point->dir_in,  PSH_DIR_HORIZONTAL ) &&
+           !PSH_DIR_COMPARE( point->dir_out, PSH_DIR_HORIZONTAL ) )
         continue;
 
       /* skip strong points */
@@ -1604,7 +1806,7 @@
       FT_Error  error;
 
 
-      if ( FT_QNEW_ARRAY( strongs, num_strongs ) )
+      if ( FT_NEW_ARRAY( strongs, num_strongs ) )
         return;
     }
 
@@ -1641,7 +1843,8 @@
              point->dir_in != point->dir_out )
           continue;
 
-        if ( !psh_point_is_extremum( point ) )
+        if ( !psh_point_is_extremum( point ) &&
+             !psh_point_is_inflex( point )   )
           continue;
 
         point->flags &= ~PSH_POINT_SMOOTH;
@@ -1916,17 +2119,14 @@
       FT_Fixed  old_x_scale = x_scale;
       FT_Fixed  old_y_scale = y_scale;
 
-      FT_Fixed  scaled = 0;
-      FT_Fixed  fitted = 0;
+      FT_Fixed  scaled;
+      FT_Fixed  fitted;
 
       FT_Bool  rescale = FALSE;
 
 
-      if ( globals->blues.normal_top.count )
-      {
-        scaled = FT_MulFix( globals->blues.normal_top.zones->org_ref, y_scale );
-        fitted = FT_PIX_ROUND( scaled );
-      }
+      scaled = FT_MulFix( globals->blues.normal_top.zones->org_ref, y_scale );
+      fitted = FT_PIX_ROUND( scaled );
 
       if ( fitted != 0 && scaled != fitted )
       {

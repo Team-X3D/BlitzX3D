@@ -5,7 +5,7 @@
  *   PostScript hinter global hinting management (body).
  *   Inspired by the new auto-hinter module.
  *
- * Copyright (C) 2001-2026 by
+ * Copyright (C) 2001-2019 by
  * David Turner, Robert Wilhelm, and Werner Lemberg.
  *
  * This file is part of the FreeType project, and may only be used
@@ -17,9 +17,10 @@
  */
 
 
-#include <freetype/freetype.h>
-#include <freetype/internal/ftobjs.h>
-#include <freetype/internal/ftcalc.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include FT_INTERNAL_OBJECTS_H
+#include FT_INTERNAL_CALC_H
 #include "pshglob.h"
 
 #ifdef DEBUG_HINTER
@@ -376,24 +377,36 @@
     /* not.  We simply need to compare the vertical scale     */
     /* parameter to the raw bluescale value.  Here is why:    */
     /*                                                        */
-    /* The specs explain how the bluescale is calculated      */
-    /* from the desired maximum rounded pointsize at 300 dpi  */
-    /* and assuming upem of 1000.                             */
+    /*   We need to suppress overshoots for all pointsizes.   */
+    /*   At 300dpi that satisfies:                            */
     /*                                                        */
-    /*    bluescale = ( pointsize - 0.49 ) / 240              */
+    /*      pointsize < 240*bluescale + 0.49                  */
     /*                                                        */
-    /* For unrounded pointsize in general terms               */
+    /*   This corresponds to:                                 */
     /*                                                        */
-    /*    bluescale = ( pointsize * dpi / 72 ) / upem         */
+    /*      pixelsize < 1000*bluescale + 49/24                */
     /*                                                        */
-    /* which is                                               */
+    /*      scale*EM_Size < 1000*bluescale + 49/24            */
     /*                                                        */
-    /*    bluescale = pixelsize / upem                        */
+    /*   However, for normal Type 1 fonts, EM_Size is 1000!   */
+    /*   We thus only check:                                  */
     /*                                                        */
-    /* Therefore, the bluescale value can be used directly    */
-    /* as a scale limit, now that it is in comparable units   */
+    /*      scale < bluescale + 49/24000                      */
     /*                                                        */
-    blues->no_overshoots = FT_BOOL( scale < blues->blue_scale );
+    /*   which we shorten to                                  */
+    /*                                                        */
+    /*      "scale < bluescale"                               */
+    /*                                                        */
+    /* Note that `blue_scale' is stored 1000 times its real   */
+    /* value, and that `scale' converts from font units to    */
+    /* fractional pixels.                                     */
+    /*                                                        */
+
+    /* 1000 / 64 = 125 / 8 */
+    if ( scale >= 0x20C49BAL )
+      blues->no_overshoots = FT_BOOL( scale < blues->blue_scale * 8 / 125 );
+    else
+      blues->no_overshoots = FT_BOOL( scale * 125 < blues->blue_scale * 8 );
 
     /*                                                        */
     /*  The blue threshold is the font units distance under   */
@@ -408,8 +421,8 @@
       FT_Int  threshold = blues->blue_shift;
 
 
-      if ( threshold > 0 && FT_MulFix( threshold, scale ) > 32 )
-        threshold = 32 * 0x10000L / scale;
+      while ( threshold > 0 && FT_MulFix( threshold, scale ) > 32 )
+        threshold--;
 
       blues->blue_threshold = threshold;
     }
@@ -638,7 +651,7 @@
     FT_Error     error;
 
 
-    if ( !FT_QNEW( globals ) )
+    if ( !FT_NEW( globals ) )
     {
       FT_UInt    count;
       FT_Short*  read;
@@ -696,6 +709,7 @@
 
       /* limit the BlueScale value to `1 / max_of_blue_zone_heights' */
       {
+        FT_Fixed  max_scale;
         FT_Short  max_height = 1;
 
 
@@ -712,12 +726,11 @@
                                           priv->family_other_blues,
                                           max_height );
 
-        /* restrict BlueScale value that is amplified 1000-fold and */
-        /* rescale it to be comparable to the metrics scale         */
-        if ( FT_MulFix( max_height, priv->blue_scale ) < 1000 )
-          globals->blues.blue_scale = priv->blue_scale * 8 / 125;
-        else
-          globals->blues.blue_scale = 64 * 0x10000L / max_height;
+        /* BlueScale is scaled 1000 times */
+        max_scale = FT_DivFix( 1000, max_height );
+        globals->blues.blue_scale = priv->blue_scale < max_scale
+                                      ? priv->blue_scale
+                                      : max_scale;
       }
 
       globals->blues.blue_shift = priv->blue_shift;

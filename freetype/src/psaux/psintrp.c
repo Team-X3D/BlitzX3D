@@ -37,9 +37,8 @@
 
 
 #include "psft.h"
-#include <freetype/internal/ftcalc.h>
-#include <freetype/internal/ftdebug.h>
-#include <freetype/internal/services/svcfftl.h>
+#include FT_INTERNAL_DEBUG_H
+#include FT_SERVICE_CFF_TABLE_LOAD_H
 
 #include "psglue.h"
 #include "psfont.h"
@@ -415,7 +414,7 @@
   /* Blend numOperands on the stack,                */
   /* store results into the first numBlends values, */
   /* then pop remaining arguments.                  */
-  static FT_Error
+  static void
   cf2_doBlend( const CFF_Blend  blend,
                CF2_Stack        opStack,
                CF2_UInt         numBlends )
@@ -423,22 +422,11 @@
     CF2_UInt  delta;
     CF2_UInt  base;
     CF2_UInt  i, j;
-    CF2_UInt  numOperands;
-    CF2_UInt  count = cf2_stack_count( opStack );
+    CF2_UInt  numOperands = (CF2_UInt)( numBlends * blend->lenBV );
 
 
-    if ( blend->lenBV == 0                ||
-         numBlends > count / blend->lenBV )
-      return FT_THROW( Stack_Underflow );
-
-    numOperands = numBlends * blend->lenBV;  /* cannot overflow here */
-    if ( numOperands > count )
-      return FT_THROW( Stack_Underflow );
-
-    base  = count - numOperands;
+    base  = cf2_stack_count( opStack ) - numOperands;
     delta = base + numBlends;
-
-    FT_TRACE6(( " (" ));
 
     for ( i = 0; i < numBlends; i++ )
     {
@@ -454,18 +442,12 @@
                                     cf2_stack_getReal( opStack,
                                                        delta++ ) ) );
 
-      FT_TRACE6(( "%f ", (double)sum / 65536 ));
-
       /* store blended result  */
       cf2_stack_setReal( opStack, i + base, sum );
     }
 
-    FT_TRACE6(( "blended)\n" ));
-
     /* leave only `numBlends' results on stack */
     cf2_stack_pop( opStack, numOperands - numBlends );
-
-    return FT_Err_Ok;
   }
 
 
@@ -487,7 +469,7 @@
    */
   FT_LOCAL_DEF( void )
   cf2_interpT2CharString( CF2_Font              font,
-                          const CF2_Buffer      buf,
+                          CF2_Buffer            buf,
                           CF2_OutlineCallbacks  callbacks,
                           const FT_Vector*      translation,
                           FT_Bool               doingSeac,
@@ -629,7 +611,7 @@
     /*       Our copy of it does not change that requirement.         */
     cf2_arrstack_setCount( &subrStack, CF2_MAX_SUBR + 1 );
 
-    charstring = (CF2_Buffer)cf2_arrstack_getBuffer( &subrStack );
+    charstring  = (CF2_Buffer)cf2_arrstack_getBuffer( &subrStack );
 
     /* catch errors so far */
     if ( *error )
@@ -752,7 +734,7 @@
           FT_UInt  numBlends;
 
 
-          FT_TRACE4(( " blend" ));
+          FT_TRACE4(( " blend\n" ));
 
           if ( !font->isCFF2 )
             break;    /* clear stack & ignore */
@@ -780,10 +762,13 @@
 
           /* do the blend */
           numBlends = (FT_UInt)cf2_stack_popInt( opStack );
-
-          lastError = cf2_doBlend( &font->blend, opStack, numBlends );
-          if ( lastError )
+          if ( numBlends > stackSize )
+          {
+            lastError = FT_THROW( Invalid_Glyph_Format );
             goto exit;
+          }
+
+          cf2_doBlend( &font->blend, opStack, numBlends );
 
           font->blend.usedBV = TRUE;
         }
@@ -993,8 +978,8 @@
           FT_TRACE4(( "%s", op1 == cf2_cmdCALLGSUBR ? " callgsubr"
                                                     : " callsubr" ));
 
-          if ( ( !font->isT1 && charstringIndex >= CF2_MAX_SUBR )       ||
-               (  font->isT1 && charstringIndex >= T1_MAX_SUBRS_CALLS ) )
+          if ( ( !font->isT1 && charstringIndex > CF2_MAX_SUBR )       ||
+               (  font->isT1 && charstringIndex > T1_MAX_SUBRS_CALLS ) )
           {
             /* max subr plus one for charstring */
             lastError = FT_THROW( Invalid_Glyph_Format );
@@ -1355,9 +1340,9 @@
                       if ( decoder->glyph_names == 0 )
 #endif /* FT_CONFIG_OPTION_INCREMENTAL */
                       {
-                        FT_ERROR(( "cf2_interpT2CharString:\n" ));
-                        FT_ERROR(( "  (Type 1 seac) glyph names table"
-                                   " not available in this font\n" ));
+                        FT_ERROR((
+                          "cf2_interpT2CharString: (Type 1 seac)"
+                          " glyph names table not available in this font\n" ));
                         lastError = FT_THROW( Invalid_Glyph_Format );
                         goto exit;
                       }
@@ -1383,9 +1368,9 @@
 
                     if ( bchar_index < 0 || achar_index < 0 )
                     {
-                      FT_ERROR(( "cf2_interpT2CharString:\n" ));
-                      FT_ERROR(( "  (Type 1 seac) invalid"
-                                 " seac character code arguments\n" ));
+                      FT_ERROR((
+                        "cf2_interpT2CharString: (Type 1 seac)"
+                        " invalid seac character code arguments\n" ));
                       lastError = FT_THROW( Invalid_Glyph_Format );
                       goto exit;
                     }
@@ -1448,13 +1433,6 @@
                       lastError = error2; /* pass FreeType error through */
                       goto exit;
                     }
-
-                    /* save the left bearing and width of the SEAC   */
-                    /* glyph as they will be erased by the next load */
-
-                    left_bearing = *decoder->builder.left_bearing;
-                    advance      = *decoder->builder.advance;
-
                     cf2_interpT2CharString( font,
                                             &component,
                                             callbacks,
@@ -1465,14 +1443,11 @@
                                             &dummyWidth );
                     cf2_freeT1SeacComponent( decoder, &component );
 
-                    /* If the SEAC glyph doesn't have a (H)SBW of its */
-                    /* own use the values from the base glyph.        */
+                    /* save the left bearing and width of the base       */
+                    /* character as they will be erased by the next load */
 
-                    if ( !haveWidth )
-                    {
-                      left_bearing = *decoder->builder.left_bearing;
-                      advance      = *decoder->builder.advance;
-                    }
+                    left_bearing = *decoder->builder.left_bearing;
+                    advance      = *decoder->builder.advance;
 
                     decoder->builder.left_bearing->x = 0;
                     decoder->builder.left_bearing->y = 0;
@@ -1498,8 +1473,8 @@
                                             &dummyWidth );
                     cf2_freeT1SeacComponent( decoder, &component );
 
-                    /* restore the left side bearing and advance width   */
-                    /* of the SEAC glyph or base character (saved above) */
+                    /* restore the left side bearing and   */
+                    /* advance width of the base character */
 
                     *decoder->builder.left_bearing = left_bearing;
                     *decoder->builder.advance      = advance;
@@ -1685,13 +1660,7 @@
                      */
 
                     count = cf2_stack_count( opStack );
-                    if ( (CF2_UInt)arg_cnt > count )
-                    {
-                      FT_ERROR(( "cf2_interpT2CharString (Type 1 mode):"
-                                 " stack underflow\n" ));
-                      lastError = FT_THROW( Invalid_Glyph_Format );
-                      goto exit;
-                    }
+                    FT_ASSERT( (CF2_UInt)arg_cnt <= count );
 
                     opIdx += count - (CF2_UInt)arg_cnt;
 
@@ -1914,25 +1883,24 @@
                       /*     cvi( <idx> ) of BuildCharArray with  */
                       /*     WeightVector                         */
                       {
-                        FT_UInt   idx;
-                        PS_Blend  blend         = decoder->blend;
-                        FT_UInt   len_buildchar = decoder->len_buildchar;
+                        FT_Int    idx;
+                        PS_Blend  blend = decoder->blend;
 
 
                         if ( arg_cnt != 1 || !blend )
                           goto Unexpected_OtherSubr;
 
-                        idx = (FT_UInt)cf2_stack_popInt( opStack );
+                        idx = cf2_stack_popInt( opStack );
 
-                        if ( len_buildchar < blend->num_designs       ||
-                             len_buildchar - blend->num_designs < idx )
+                        if ( idx < 0                             ||
+                             (FT_UInt)idx + blend->num_designs >
+                               decoder->len_buildchar            )
                           goto Unexpected_OtherSubr;
 
-                        if ( decoder->buildchar && blend->weight_vector )
-                          ft_memcpy( &decoder->buildchar[idx],
-                                     blend->weight_vector,
-                                     blend->num_designs *
-                                       sizeof ( blend->weight_vector[0] ) );
+                        ft_memcpy( &decoder->buildchar[idx],
+                                   blend->weight_vector,
+                                   blend->num_designs *
+                                   sizeof ( blend->weight_vector[0] ) );
                       }
                       break;
 
@@ -2026,16 +1994,17 @@
                       /* <val> <idx> 2 24 callothersubr               */
                       /* ==> set BuildCharArray[cvi( <idx> )] = <val> */
                       {
-                        CF2_UInt  idx;
+                        CF2_Int   idx;
                         PS_Blend  blend = decoder->blend;
 
 
                         if ( arg_cnt != 2 || !blend )
                           goto Unexpected_OtherSubr;
 
-                        idx = (CF2_UInt)cf2_stack_popInt( opStack );
+                        idx = cf2_stack_popInt( opStack );
 
-                        if ( idx >= decoder->len_buildchar )
+                        if ( idx < 0                                ||
+                             (FT_UInt)idx >= decoder->len_buildchar )
                           goto Unexpected_OtherSubr;
 
                         decoder->buildchar[idx] =
@@ -2048,16 +2017,17 @@
                       /* ==> push BuildCharArray[cvi( idx )] */
                       /*     onto T1 stack                   */
                       {
-                        CF2_UInt  idx;
+                        CF2_Int   idx;
                         PS_Blend  blend = decoder->blend;
 
 
                         if ( arg_cnt != 1 || !blend )
                           goto Unexpected_OtherSubr;
 
-                        idx = (CF2_UInt)cf2_stack_popInt( opStack );
+                        idx = cf2_stack_popInt( opStack );
 
-                        if ( idx >= decoder->len_buildchar )
+                        if ( idx < 0                                ||
+                             (FT_UInt)idx >= decoder->len_buildchar )
                           goto Unexpected_OtherSubr;
 
                         cf2_stack_pushFixed( opStack,
@@ -2199,29 +2169,29 @@
                 case cf2_escPUT:
                   {
                     CF2_F16Dot16  val;
-                    CF2_UInt      idx;
+                    CF2_Int       idx;
 
 
                     FT_TRACE4(( " put\n" ));
 
-                    idx = (CF2_UInt)cf2_stack_popInt( opStack );
+                    idx = cf2_stack_popInt( opStack );
                     val = cf2_stack_popFixed( opStack );
 
-                    if ( idx < CF2_STORAGE_SIZE )
+                    if ( idx >= 0 && idx < CF2_STORAGE_SIZE )
                       storage[idx] = val;
                   }
                   continue; /* do not clear the stack */
 
                 case cf2_escGET:
                   {
-                    CF2_UInt  idx;
+                    CF2_Int  idx;
 
 
                     FT_TRACE4(( " get\n" ));
 
-                    idx = (CF2_UInt)cf2_stack_popInt( opStack );
+                    idx = cf2_stack_popInt( opStack );
 
-                    if ( idx < CF2_STORAGE_SIZE )
+                    if ( idx >= 0 && idx < CF2_STORAGE_SIZE )
                       cf2_stack_pushFixed( opStack, storage[idx] );
                   }
                   continue; /* do not clear the stack */
@@ -2290,7 +2260,23 @@
 
                     arg = cf2_stack_popFixed( opStack );
                     if ( arg > 0 )
-                      arg = (CF2_F16Dot16)FT_SqrtFixed( (FT_UInt32)arg );
+                    {
+                      /* use a start value that doesn't make */
+                      /* the algorithm's addition overflow   */
+                      FT_Fixed  root = arg < 10 ? arg : arg >> 1;
+                      FT_Fixed  new_root;
+
+
+                      /* Babylonian method */
+                      for (;;)
+                      {
+                        new_root = ( root + FT_DivFix( arg, root ) + 1 ) >> 1;
+                        if ( new_root == root )
+                          break;
+                        root = new_root;
+                      }
+                      arg = new_root;
+                    }
                     else
                       arg = 0;
 
