@@ -1917,7 +1917,7 @@
       if ( FT_IS_NAMED_INSTANCE( FT_FACE( face ) ) ||
            FT_IS_VARIATION( FT_FACE( face ) )      )
       {
-        short        i, limit;
+        FT_UInt      i, limit;
         FT_SubGlyph  subglyph;
 
         FT_Outline  outline;
@@ -1927,11 +1927,17 @@
         FT_Vector*  unrounded = NULL;
 
 
-        limit = (short)gloader->current.num_subglyphs;
+        limit = gloader->current.num_subglyphs;
+
+        if ( limit > 0x7FFFU - 4U )
+        {
+          error = FT_THROW( Invalid_Table );
+          goto Exit;
+        }
 
         /* construct an outline structure for              */
         /* communication with `TT_Vary_Apply_Glyph_Deltas' */
-        outline.n_points   = (short)( gloader->current.num_subglyphs + 4 );
+        outline.n_points   = (short)( limit + 4 );
         outline.n_contours = outline.n_points;
 
         outline.points   = NULL;
@@ -1954,31 +1960,31 @@
           points[i].x = subglyph->arg1;
           points[i].y = subglyph->arg2;
           tags[i]     = 1;
-          contours[i] = i;
+          contours[i] = (short)i;
         }
 
         points[i].x = loader->pp1.x;
         points[i].y = loader->pp1.y;
         tags[i]     = 1;
-        contours[i] = i;
+        contours[i] = (short)i;
 
         i++;
         points[i].x = loader->pp2.x;
         points[i].y = loader->pp2.y;
         tags[i]     = 1;
-        contours[i] = i;
+        contours[i] = (short)i;
 
         i++;
         points[i].x = loader->pp3.x;
         points[i].y = loader->pp3.y;
         tags[i]     = 1;
-        contours[i] = i;
+        contours[i] = (short)i;
 
         i++;
         points[i].x = loader->pp4.x;
         points[i].y = loader->pp4.y;
         tags[i]     = 1;
-        contours[i] = i;
+        contours[i] = (short)i;
 
         outline.points   = points;
         outline.tags     = tags;

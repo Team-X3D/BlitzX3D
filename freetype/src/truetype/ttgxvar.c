@@ -1065,7 +1065,7 @@
                 delta == 1 ? "" : "s",
                 vertical ? "VVAR" : "HVAR" ));
 
-    *avalue += delta;
+    *avalue = (FT_Int)( (FT_UInt)*avalue + (FT_UInt)delta );
 
   Exit:
     return error;
@@ -3600,8 +3600,8 @@
     FT_Int  first_delta;
     FT_Int  cur_delta;
 
-    FT_Int    point;
-    FT_Short  contour;
+    FT_Int  point;
+    FT_Int  contour;
 
 
     /* ignore empty outlines */

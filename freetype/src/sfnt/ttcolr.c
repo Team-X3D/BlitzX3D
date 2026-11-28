@@ -282,6 +282,11 @@
     FT_Byte*  dst;
 
 
+    if ( srcSlot->format != FT_GLYPH_FORMAT_BITMAP         ||
+         srcSlot->bitmap.pixel_mode != FT_PIXEL_MODE_GRAY  ||
+         ( srcSlot->bitmap.rows && !srcSlot->bitmap.buffer ) )
+      return FT_THROW( Invalid_Argument );
+
     if ( !dstSlot->bitmap.buffer )
     {
       /* Initialize destination of color bitmap */
